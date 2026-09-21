@@ -40,7 +40,7 @@ Ignition 8.3.8 updated its embedded Jython runtime from 2.7.3 to 2.7.4. The `JYT
 
 1. **Linux, WSL2, or macOS** with Bash.
 2. **Docker Engine + Docker Compose v2** (`docker compose`, not the legacy Python `docker-compose`).
-3. **Java** available on `PATH` for the standalone Jython checker. Java 17 is a practical default for an Ignition 8.3 development workstation.
+3. **Java JDK** available on `PATH` for the standalone Jython checker and `.modl` metadata inspection (`java` + `jar`). Java 17 is a practical default for an Ignition 8.3 development workstation.
 4. **curl or wget** to download the configured Jython standalone JAR from Maven Central.
 5. Enough RAM/disk for the Ignition image and Gateway. The default Gateway max heap is 2048 MB.
 
@@ -169,7 +169,7 @@ cp /path/to/MCP-module.modl "$(./devctl module cache-path)/"
 ./devctl bootstrap
 ```
 
-Inspect the effective module set for this environment:
+Inspect the effective module set for this environment. Private `.modl` files are read from their embedded `module.xml`, so the configured module ID and its artifact appear as one logical row with name, version, source and status:
 
 ```bash
 # Effective built-in + private/third-party modules
@@ -240,6 +240,61 @@ Use the cheapest relevant layer first:
 
 A standalone Jython pass does **not** prove that `system.tag.*`, `system.opc.*`, Gateway scope, Java objects, Ignition MCP tools, or installed modules behave correctly. Those paths must be verified against the real Gateway.
 
+## Module capability preflight
+
+A large class of Ignition failures can be rejected **before starting a Gateway**. `devctl` contains a static capability-to-module catalog for module-owned `system.*` namespaces and can also extract module IDs from Ignition resource API paths.
+
+Manual checks:
+
+```bash
+# Known Ignition scripting capability
+./devctl module require system.report.executeReport
+./devctl module require system.perspective.navigate
+
+# Ignition resource API path: module ID is embedded in the path
+./devctl module require '/data/api/v1/resources/names/com.inductiveautomation.opcua/device'
+
+# Explicit module ID escape hatch for a capability not yet in the catalog
+./devctl module require module:com.inductiveautomation.reporting
+```
+
+When a module is missing from `GATEWAY_MODULES_ENABLED`, the check fails with a remediation command:
+
+```text
+[module-preflight] ERROR: system.report.executeReport requires com.inductiveautomation.reporting (not enabled by GATEWAY_MODULES_ENABLED)
+[module-preflight] Fix: ./devctl module enable com.inductiveautomation.reporting
+```
+
+Apply the configuration fix:
+
+```bash
+./devctl module enable com.inductiveautomation.reporting
+```
+
+For private/third-party modules, preflight also checks that a matching `.modl` artifact exists. The artifact ID is read from the root `module.xml`; a configured ID without an artifact is reported as `MISSING-ARTIFACT`.
+
+Validate the whole module configuration:
+
+```bash
+./devctl module validate
+```
+
+Scan source trees for known module-owned `system.*` calls and `/data/api/v1/resources/...` references:
+
+```bash
+./devctl module scan src/ignition src/fastmcp
+```
+
+To make this automatic, configure colon-separated paths in `.env`:
+
+```dotenv
+MODULE_REQUIREMENT_PATHS=src/ignition:src/fastmcp
+JYTHON_SOURCE_PATHS=scripts/mcp
+```
+
+`./devctl check` now runs `module validate` first and automatically scans `MODULE_REQUIREMENT_PATHS` plus `JYTHON_SOURCE_PATHS` before project checks. This is a **static pre-Gateway check**: it proves the configured module set/artifacts satisfy known requirements, not that a running Gateway has successfully loaded the module. Real runtime verification remains `./devctl gateway smoke` and project-specific Gateway/OpenAPI assertions.
+
+The mapping is data-driven in [`config/capability-modules.tsv`](config/capability-modules.tsv), so project-specific or newly introduced Ignition capabilities can be added without changing the command engine.
 ## Using a deterministic Gateway baseline
 
 A baseline `.gwbk` lets every clean integration run begin from the same tags, projects, security profiles, device/OPC configuration, and other Gateway state.
@@ -415,6 +470,7 @@ Examples:
 PROJECT_CHECK_CMD=./gradlew :gateway:test
 PROJECT_TEST_CMD=python -m pytest -q
 JYTHON_SOURCE_PATHS=src/ignition:scripts/mcp
+MODULE_REQUIREMENT_PATHS=src/ignition:src/fastmcp
 ```
 
 `JYTHON_SOURCE_PATHS` is colon-separated.
@@ -521,6 +577,10 @@ This avoids spending GitHub Actions time pulling the full Ignition runtime for e
 ./devctl module add <file.modl>
 ./devctl module list [--private|--built-in]
 ./devctl module catalog
+./devctl module require <capability> [...]
+./devctl module scan <file|dir> [...]
+./devctl module validate
+./devctl module enable <module-id> [...]
 ./devctl module cache-path
 ./devctl module clear
 
