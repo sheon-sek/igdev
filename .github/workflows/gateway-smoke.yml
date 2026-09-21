@@ -1,0 +1,38 @@
+name: gateway-smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      ignition_version:
+        description: Ignition version to smoke-test
+        required: true
+        default: "8.3.8"
+
+permissions:
+  contents: read
+
+jobs:
+  gateway-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: |
+          cp .env.example .env
+          sed -i 's/^ACCEPT_IGNITION_EULA=N$/ACCEPT_IGNITION_EULA=Y/' .env
+          sed -i 's/^GATEWAY_MODULES_ENABLED=.*/GATEWAY_MODULES_ENABLED=/' .env
+          sed -i 's/^ACCEPT_MODULE_CERTS=.*/ACCEPT_MODULE_CERTS=/' .env
+          sed -i 's/^IGNITION_VERSION=.*/IGNITION_VERSION=${{ inputs.ignition_version }}/' .env
+      - name: Start and smoke-test Gateway
+        run: |
+          ./devctl bootstrap
+          ./devctl gateway up
+          ./devctl gateway wait --timeout 240
+          ./devctl gateway smoke
+      - name: Logs on failure
+        if: failure()
+        run: ./devctl gateway logs --tail 400 || true
+      - name: Cleanup
+        if: always()
+        run: ./devctl gateway down --volumes || true
