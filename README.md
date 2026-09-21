@@ -1,5 +1,7 @@
 # Ignition Development Environment Automation
 
+**English** | [简体中文](README.zh-CN.md)
+
 Reusable local development and CI foundation for AI-agent-driven Ignition engineering.
 
 The default profile targets **Ignition 8.3.8** and uses a **Jython 2.7.4 standalone checker** so Claude Code, Codex CLI, OMP CLI, developers, `act`, and GitHub Actions can share one validation contract instead of discovering failures only after a remote CI push.
@@ -47,6 +49,71 @@ Ignition 8.3.8 updated its embedded Jython runtime from 2.7.3 to 2.7.4. The `JYT
 - [`act`](https://github.com/nektos/act) for `./devctl ci-local`.
 - A deterministic development Gateway backup (`.gwbk`).
 - Private/EA `.modl` files, especially `MCP-module.modl`.
+
+### Ubuntu 26.04 LTS quick install
+
+The commands below are a minimal setup for a fresh Ubuntu 26.04/WSL2 Ubuntu 26.04 development machine.
+
+#### Docker Engine + Compose v2
+
+Use Docker's official `apt` repository:
+
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Allow the current user to run Docker without sudo.
+sudo usermod -aG docker "$USER"
+newgrp docker
+
+docker run hello-world
+docker compose version
+```
+
+#### Java 17
+
+Ubuntu 26.04 provides `openjdk-17-jdk`:
+
+```bash
+sudo apt update
+sudo apt install -y openjdk-17-jdk
+java -version
+```
+
+#### `act`
+
+The upstream installer can be used directly:
+
+```bash
+curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh | bash
+```
+
+Depending on how/where the installer is invoked, the binary may be left at `./bin/act`. If so, make it globally available:
+
+```bash
+sudo mv ./bin/act /usr/local/bin/act
+sudo chmod +x /usr/local/bin/act
+act --version
+```
+
+Alternatively, the upstream installer also documents running the script with `sudo bash` for a system-wide installation.
+
+On the **first** `./devctl ci-local`, `act` asks which runner image size to use. Choose **Medium**. It is the default option, is roughly 500 MB, and includes the tools needed to bootstrap most Actions. Large is much heavier; Micro is intentionally incomplete.
 
 Run the prerequisite check:
 
@@ -102,10 +169,20 @@ cp /path/to/MCP-module.modl "$(./devctl module cache-path)/"
 ./devctl bootstrap
 ```
 
-List effective private modules:
+Inspect the effective module set for this environment:
 
 ```bash
+# Effective built-in + private/third-party modules
 ./devctl module list
+
+# Only effective built-in modules
+./devctl module list --built-in
+
+# Only effective private/third-party modules
+./devctl module list --private
+
+# Full Ignition 8.3 built-in module catalog available to GATEWAY_MODULES_ENABLED
+./devctl module catalog
 ```
 
 ### 4. Start the real Gateway
@@ -248,7 +325,7 @@ The repository emits compatibility warnings for the known Ignition 8.3.8/8.3.9 -
 
 ## Built-in/third-party module configuration
 
-The defaults in `.env.example` are oriented toward the engineering/MCP environment:
+The defaults in `.env.example` are intentionally a **subset** oriented toward engineering/MCP work:
 
 ```dotenv
 GATEWAY_MODULES_ENABLED=com.inductiveautomation.perspective,com.inductiveautomation.historian,com.inductiveautomation.opcua,com.inductiveautomation.webdev,com.inductiveautomation.mcp
@@ -256,7 +333,61 @@ ACCEPT_MODULE_CERTS=com.inductiveautomation.mcp
 ACCEPT_MODULE_LICENSES=
 ```
 
-Modify these for each project's required module set. Ignition 8.3 supports `GATEWAY_MODULES_ENABLED`, `ACCEPT_MODULE_CERTS`, and `ACCEPT_MODULE_LICENSES` for containerized module lifecycle/acceptance.
+`GATEWAY_MODULES_ENABLED` is a comma-delimited whitelist of fully-qualified built-in and third-party module identifiers. When it is non-empty, `./devctl module list --built-in` reports only the built-in modules selected by that environment. Private/third-party identifiers and local `.modl` files are shown by `./devctl module list --private`. With no filter, `module list` shows both groups.
+
+If `GATEWAY_MODULES_ENABLED` is empty, the environment does not apply a module whitelist, so `module list --built-in` treats the full built-in image catalog as effective.
+
+### Ignition 8.3 built-in module identifiers
+
+The following catalog is sourced from the Ignition 8.3 Docker image documentation and is also stored machine-readably in [`config/builtin-modules.tsv`](config/builtin-modules.tsv). Use `./devctl module catalog` to print the same catalog from the CLI.
+
+| Module identifier | Image module file |
+|---|---|
+| `com.inductiveautomation.alarm-notification` | `Alarm Notification-module.modl` |
+| `com.inductiveautomation.opcua.drivers.ablegacy` | `Allen-Bradley Drivers-module.modl` |
+| `com.inductiveautomation.opcua.drivers.bacnet` | `BACnet Driver-module.modl` |
+| `com.inductiveautomation.opcua.drivers.dnp3` | `DNP3-Driver.modl` |
+| `com.inductiveautomation.opcua.drivers.dnp3v2` | `DNP3-Driver-v2.modl` |
+| `com.inductiveautomation.eam` | `Enterprise Administration-module.modl` |
+| `com.inductiveautomation.eventstream` | `EventStream-module.modl` |
+| `com.inductiveautomation.historian` | `Historian-module.modl` |
+| `com.inductiveautomation.opcua.drivers.iec61850` | `IEC 61850 Driver-module.modl` |
+| `com.inductiveautomation.connectors.kafka` | `Kafka Connector-module.modl` |
+| `com.inductiveautomation.opcua.drivers.logix` | `Logix Driver-module.modl` |
+| `com.inductiveautomation.opcua.drivers.micro800` | `Micro800 Driver-module.modl` |
+| `com.inductiveautomation.opcua.drivers.mitsubishi` | `Mitsubishi-Driver.modl` |
+| `com.inductiveautomation.opcua.drivers.modbus` | `Modbus Driver v2-module.modl` |
+| `com.inductiveautomation.connectors.mongodb` | `MongoDB Connector-module.modl` |
+| `com.inductiveautomation.opcua.drivers.omron` | `Omron-Driver.modl` |
+| `com.inductiveautomation.opcua` | `OPC-UA-module.modl` |
+| `com.inductiveautomation.perspective` | `Perspective-module.modl` |
+| `com.inductiveautomation.reporting` | `Reporting-module.modl` |
+| `com.inductiveautomation.sfc` | `SFC-module.modl` |
+| `com.inductiveautomation.opcua.drivers.siemens` | `Siemens Drivers-module.modl` |
+| `com.inductiveautomation.opcua.drivers.siemens-symbolic` | `Siemens Enhanced Driver-module.modl` |
+| `com.inductiveautomation.sms-notification` | `SMS Notification-module.modl` |
+| `com.inductiveautomation.sqlbridge` | `SQL Bridge-module.modl` |
+| `com.inductiveautomation.historian.sql` | `SQL Historian-module.modl` |
+| `com.inductiveautomation.symbol-factory` | `Symbol Factory-module.modl` |
+| `com.inductiveautomation.opcua.drivers.tcpudp` | `UDP and TCP Drivers-module.modl` |
+| `com.inductiveautomation.vision` | `Vision-module.modl` |
+| `com.inductiveautomation.phone-notification` | `Voice Notification-module.modl` |
+| `com.inductiveautomation.webdev` | `Web Developer Module.modl` |
+| `com.inductiveautomation.jdbc.postgresql` | `PostgreSQL JDBC Driver Module.modl` |
+| `com.inductiveautomation.jdbc.mariadb` | `MariaDB JDBC Driver Module.modl` |
+| `com.inductiveautomation.jdbc.mssql` | `MSSQL JDBC Driver Module.modl` |
+
+Solution Suite identifiers documented by Ignition are separate selectors rather than individual module IDs:
+
+| Suite | Identifier |
+|---|---|
+| Application Building Suite | `com.inductiveautomation.suite.application` |
+| Industrial Historian Suite | `com.inductiveautomation.suite.historian` |
+| DataOps Suite | `com.inductiveautomation.suite.dataops` |
+| Enterprise Integration Suite | `com.inductiveautomation.suite.enterprise` |
+| Alarm Management Suite | `com.inductiveautomation.suite.alarms` |
+
+Modify the effective module set per project. For a private/third-party `.modl`, keep the file out of Git and add its fully-qualified identifier to `GATEWAY_MODULES_ENABLED` when you want it explicitly enabled/non-quarantined at Gateway launch. Use `ACCEPT_MODULE_CERTS` and `ACCEPT_MODULE_LICENSES` only for modules whose certificate/license terms you have reviewed and accepted.
 
 For an unsigned development module only, explicitly opt in locally:
 
@@ -348,7 +479,7 @@ Install `act`, then:
 ./devctl ci-local
 ```
 
-The default first run is online so `act` can fetch its runner image/actions.
+The default first run is online so `act` can fetch its runner image/actions. On the first interactive prompt, choose the **Medium** runner image.
 
 After the required images/actions are already cached, set:
 
@@ -388,7 +519,8 @@ This avoids spending GitHub Actions time pulling the full Ignition runtime for e
 ./devctl jython-check <file|dir> [...]
 
 ./devctl module add <file.modl>
-./devctl module list
+./devctl module list [--private|--built-in]
+./devctl module catalog
 ./devctl module cache-path
 ./devctl module clear
 
