@@ -39,3 +39,5 @@ Do not edit the Dockerfile to change runtime versions. Change `IGNITION_VERSION`
 ## Private modules
 
 Never commit EA, licensed, or private `.modl` files. Add them with `./devctl module add <file.modl>` or place them in the version-scoped global cache reported by `./devctl module cache-path`.
+
+Use `./devctl module list` for the full effective environment, `--built-in` or `--private` to filter it, and `./devctl module catalog` when choosing from the complete Ignition 8.3 built-in image catalog.
