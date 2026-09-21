@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib.sh
+source "$ROOT_DIR/scripts/lib.sh"
+# shellcheck source=scripts/commands.sh
+source "$ROOT_DIR/scripts/commands.sh"
+
+cmd="${1:-help}"
+shift || true
+case "$cmd" in
+  doctor) cmd_doctor "$@" ;;
+  bootstrap) cmd_bootstrap "$@" ;;
+  versions) cmd_versions "$@" ;;
+  self-test) cmd_self_test "$@" ;;
+  check) cmd_check "$@" ;;
+  test) cmd_test "$@" ;;
+  build) cmd_build "$@" ;;
+  verify) cmd_verify "$@" ;;
+  ci-local) cmd_ci_local "$@" ;;
+  jython-check) cmd_jython_check "$@" ;;
+  module) cmd_module "$@" ;;
+  baseline) cmd_baseline "$@" ;;
+  gateway) cmd_gateway "$@" ;;
+  help|-h|--help|'') usage ;;
+  *) die "Unknown command: $cmd (run ./devctl help)" ;;
+esac
