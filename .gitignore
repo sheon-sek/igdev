@@ -1,0 +1,21 @@
+# Local configuration / secrets
+.env
+.env.*.local
+
+# Runtime state and downloaded tools
+.runtime/
+
+# Private / licensed Ignition modules
+modules/private/*.modl
+docker/ignition/modules/*.modl
+
+# Gateway backups
+*.gwbk
+
+# act runtime artifacts
+.act-artifacts/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
