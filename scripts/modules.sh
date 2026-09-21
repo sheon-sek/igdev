@@ -57,7 +57,7 @@ private_records(){
 	for f in "$d"/*.modl "$PRIVATE_MODULE_DIR"/*.modl; do
 		if info="$(modl_info "$f")"; then
 			IFS=$'\t' read -r id name ver <<< "$info"
-			[[ "$f" == "$PRIVATE_MODULE_DIR"/* ]] && src=checkout-local || src=global-cache
+			[[ "$f" == "$PRIVATE_MODULE_DIR"/* ]] && src=local || src=global-cache
 			printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$name" "$ver" "$(basename "$f")" "$src" >> "$t"
 		else
 			printf 'file:%s\t<unreadable>\t-\t%s\tunknown\n' "$f" "$(basename "$f")" >> "$t"
