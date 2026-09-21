@@ -64,6 +64,18 @@ cmd_versions() {
 cmd_self_test() {
   bash -n "$ROOT_DIR/devctl" "$ROOT_DIR/scripts/lib.sh" "$ROOT_DIR/scripts/commands.sh" "$ROOT_DIR/hooks/check.sh" "$ROOT_DIR/hooks/test.sh" "$ROOT_DIR/hooks/gateway-smoke.sh"
   log 'Bash syntax OK'
+  local catalog
+  catalog="$(builtin_catalog_file)"
+  [[ -s "$catalog" ]] || die "Built-in module catalog is missing or empty: $catalog"
+  if awk -F '\t' '!/^#/ && NF >= 2 { count[$1]++ } END { for (id in count) if (count[id] > 1) exit 1 }' "$catalog"; then
+    log 'Built-in module catalog OK'
+  else
+    die 'Built-in module catalog contains duplicate module IDs'
+  fi
+  cmd_module list --built-in >/dev/null
+  cmd_module list --private >/dev/null
+  cmd_module catalog >/dev/null
+  log 'Module listing commands OK'
   if have docker && docker compose version >/dev/null 2>&1; then
     stage_modules; stage_backup_from_config
     compose config --quiet
