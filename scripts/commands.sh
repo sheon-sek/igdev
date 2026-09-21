@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # User-facing command implementations. Sourced by devctl.
+# shellcheck source=scripts/modules.sh
+source "$ROOT_DIR/scripts/modules.sh"
 
 usage() {
   cat <<'USAGE'
@@ -8,7 +10,8 @@ Usage: ./devctl <command> [args]
 Core:      doctor | bootstrap [--accept-eula] | versions | self-test
 Checks:    check | test | build | verify | ci-local | jython-check <path> [...]
 Modules:   module add <file.modl> | module list [--private|--built-in] | module catalog
-           module cache-path | module clear
+           module require <capability> [...] | module scan <file|dir> [...]
+           module validate | module enable <module-id> [...] | module cache-path | module clear
 Baseline:  baseline set <file.gwbk> | baseline clear | baseline status
 Gateway:   gateway up | down [--volumes] | reset | restart | wait [--timeout SEC]
            gateway smoke | status | logs [args...] | url
@@ -17,7 +20,7 @@ USAGE
 
 cmd_doctor() {
   local failed=0
-  for c in bash docker java; do
+  for c in bash docker java jar; do
     if have "$c"; then printf 'OK   %s\n' "$c"; else printf 'MISS %s\n' "$c"; failed=1; fi
   done
   if have docker && docker compose version >/dev/null 2>&1; then printf 'OK   docker compose\n'; else printf 'MISS docker compose v2\n'; failed=1; fi
@@ -62,7 +65,7 @@ cmd_versions() {
 }
 
 cmd_self_test() {
-  bash -n "$ROOT_DIR/devctl" "$ROOT_DIR/scripts/lib.sh" "$ROOT_DIR/scripts/commands.sh" "$ROOT_DIR/hooks/check.sh" "$ROOT_DIR/hooks/test.sh" "$ROOT_DIR/hooks/gateway-smoke.sh"
+  bash -n "$ROOT_DIR/devctl" "$ROOT_DIR/scripts/lib.sh" "$ROOT_DIR/scripts/modules.sh" "$ROOT_DIR/scripts/commands.sh" "$ROOT_DIR/hooks/check.sh" "$ROOT_DIR/hooks/test.sh" "$ROOT_DIR/hooks/gateway-smoke.sh"
   log 'Bash syntax OK'
   local catalog
   catalog="$(builtin_catalog_file)"
@@ -75,7 +78,12 @@ cmd_self_test() {
   cmd_module list --built-in >/dev/null
   cmd_module list --private >/dev/null
   cmd_module catalog >/dev/null
-  log 'Module listing commands OK'
+  local capability_catalog
+  capability_catalog="$(capability_catalog_file)"
+  [[ -s "$capability_catalog" ]] || die "Module capability catalog is missing or empty: $capability_catalog"
+  [[ "$(cap_modules system.report.executeReport)" == "com.inductiveautomation.reporting" ]] || die 'Reporting capability mapping is invalid'
+  [[ "$(cap_modules '/data/api/v1/resources/names/com.inductiveautomation.opcua/device')" == "com.inductiveautomation.opcua" ]] || die 'Resource API capability mapping is invalid'
+  log 'Module listing and capability mapping commands OK'
   if have docker && docker compose version >/dev/null 2>&1; then
     stage_modules; stage_backup_from_config
     compose config --quiet
@@ -108,6 +116,15 @@ cmd_jython_check() {
 
 cmd_check() {
   load_config
+  cmd_module validate
+
+  local scan_spec="${MODULE_REQUIREMENT_PATHS:-}"
+  [[ -n "$JYTHON_SOURCE_PATHS" ]] && scan_spec="${scan_spec:+$scan_spec:}$JYTHON_SOURCE_PATHS"
+  if [[ -n "$scan_spec" ]]; then
+    local oldifs="$IFS"; IFS=':' read -r -a module_paths <<< "$scan_spec"; IFS="$oldifs"
+    cmd_module scan "${module_paths[@]}"
+  fi
+
   "$ROOT_DIR/hooks/check.sh"
   run_project_cmd PROJECT_CHECK_CMD "$PROJECT_CHECK_CMD"
   if [[ -n "$JYTHON_SOURCE_PATHS" ]]; then
@@ -130,105 +147,6 @@ cmd_ci_local() {
   [[ "$ACT_OFFLINE" == 1 ]] && args+=(--pull=false --action-offline-mode)
   (cd "$ROOT_DIR" && act "${args[@]}")
 }
-
-builtin_catalog_file() { printf '%s/config/builtin-modules.tsv\n' "$ROOT_DIR"; }
-
-builtin_module_record() {
-  local id="$1"
-  awk -F '\t' -v id="$id" '$1 == id { print $0; exit }' "$(builtin_catalog_file)"
-}
-
-print_builtin_catalog() {
-  printf '%-62s %s\n' 'MODULE ID' 'MODULE FILE'
-  printf '%-62s %s\n' '---------' '-----------'
-  awk -F '\t' '!/^#/ && NF >= 2 { printf "%-62s %s\\n", $1, $2 }' "$(builtin_catalog_file)"
-}
-
-print_effective_builtin_modules() {
-  load_config
-  local id record
-  if [[ -z "$GATEWAY_MODULES_ENABLED" ]]; then
-    awk -F '\t' '!/^#/ && NF >= 2 { printf "  %-62s %s\\n", $1, $2 }' "$(builtin_catalog_file)"
-    return 0
-  fi
-  local oldifs="$IFS"
-  IFS=',' read -r -a ids <<< "$GATEWAY_MODULES_ENABLED"
-  IFS="$oldifs"
-  for id in "${ids[@]}"; do
-    record="$(builtin_module_record "$id")"
-    [[ -n "$record" ]] || continue
-    printf '  %-62s %s\n' "$id" "${record#*$'\t'}"
-  done
-}
-
-print_effective_private_modules() {
-  load_config
-  local id record d f
-  if [[ -n "$GATEWAY_MODULES_ENABLED" ]]; then
-    local oldifs="$IFS"
-    IFS=',' read -r -a ids <<< "$GATEWAY_MODULES_ENABLED"
-    IFS="$oldifs"
-    for id in "${ids[@]}"; do
-      [[ -n "$id" ]] || continue
-      record="$(builtin_module_record "$id")"
-      [[ -n "$record" ]] && continue
-      printf '  configured-id  %s\n' "$id"
-    done
-  fi
-  d="$(module_cache_path)"
-  shopt -s nullglob
-  for f in "$d"/*.modl; do printf '  global-cache   %s\n' "$(basename "$f")"; done
-  for f in "$PRIVATE_MODULE_DIR"/*.modl; do printf '  checkout-local %s\n' "$(basename "$f")"; done
-  shopt -u nullglob
-}
-
-cmd_module() {
-  local action="${1:-}"; shift || true
-  case "$action" in
-    add)
-      (($# == 1)) || die 'Usage: ./devctl module add <file.modl>'
-      [[ -f "$1" && "$1" == *.modl ]] || die "Expected existing .modl: $1"
-      mkdir -p "$PRIVATE_MODULE_DIR"
-      cp -f "$1" "$PRIVATE_MODULE_DIR/"
-      stage_modules
-      log "Added $(basename "$1")"
-      ;;
-    list)
-      local filter="${1:-}"
-      [[ $# -le 1 ]] || die 'Usage: ./devctl module list [--private|--built-in]'
-      case "$filter" in
-        '')
-          printf 'Built-in modules effective for this environment:\n'
-          print_effective_builtin_modules
-          printf '\nPrivate / third-party modules effective for this environment:\n'
-          print_effective_private_modules
-          ;;
-        --built-in)
-          printf 'Built-in modules effective for this environment:\n'
-          print_effective_builtin_modules
-          ;;
-        --private)
-          printf 'Private / third-party modules effective for this environment:\n'
-          print_effective_private_modules
-          ;;
-        *) die "Unknown module list option: $filter" ;;
-      esac
-      ;;
-    catalog)
-      (($# == 0)) || die 'Usage: ./devctl module catalog'
-      print_builtin_catalog
-      ;;
-    cache-path) module_cache_path ;;
-    clear)
-      mkdir -p "$PRIVATE_MODULE_DIR"
-      find "$PRIVATE_MODULE_DIR" -maxdepth 1 -type f -name '*.modl' -delete
-      stage_modules
-      log 'Cleared checkout-local modules'
-      ;;
-    *) die "Unknown module action: ${action:-<none>}" ;;
-  esac
-}
-
 
 cmd_baseline() {
   local action="${1:-}"; shift || true; mkdir -p "$RESTORE_DIR"
