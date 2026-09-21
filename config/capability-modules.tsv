@@ -1,0 +1,18 @@
+# Static capability -> required module map for pre-Gateway checks.
+# kind<TAB>pattern<TAB>required_module_ids(comma-separated)<TAB>description
+# REST resource endpoints under /data/api/v1/resources are resolved dynamically from the module ID embedded in the path.
+prefix	system.perspective.	com.inductiveautomation.perspective	Perspective scripting functions
+prefix	system.report.	com.inductiveautomation.reporting	Reporting scripting functions
+prefix	system.sfc.	com.inductiveautomation.sfc	SFC scripting functions
+prefix	system.eam.	com.inductiveautomation.eam	Enterprise Administration scripting functions
+prefix	system.eventstream.	com.inductiveautomation.eventstream	Event Streams scripting functions
+prefix	system.kafka.	com.inductiveautomation.connectors.kafka	Kafka Connector scripting functions
+prefix	system.mongodb.	com.inductiveautomation.connectors.mongodb	MongoDB Connector scripting functions
+prefix	system.bacnet.	com.inductiveautomation.opcua.drivers.bacnet,com.inductiveautomation.opcua	BACnet driver scripting functions
+prefix	system.iec61850.	com.inductiveautomation.opcua.drivers.iec61850,com.inductiveautomation.opcua	IEC 61850 driver scripting functions
+prefix	system.dnp.	com.inductiveautomation.opcua.drivers.dnp3v2,com.inductiveautomation.opcua	DNP3 driver scripting functions
+prefix	system.dnp3.	com.inductiveautomation.opcua.drivers.dnp3,com.inductiveautomation.opcua	Legacy DNP3 driver scripting functions
+prefix	system.opcua.	com.inductiveautomation.opcua	OPC UA scripting functions
+prefix	system.historian.	com.inductiveautomation.historian	Core Historian scripting functions
+prefix	system.vision.	com.inductiveautomation.vision	Vision scripting functions
+exact	system.alarm.listPipelines	com.inductiveautomation.alarm-notification	Alarm Notification pipeline access
