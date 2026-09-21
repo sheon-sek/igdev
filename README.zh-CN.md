@@ -40,7 +40,7 @@ Ignition 8.3.8 将其内建 Jython 从 2.7.3 更新到 2.7.4。仓库中的 `JYT
 
 1. **Linux、WSL2 或 macOS**，并有 Bash。
 2. **Docker Engine + Docker Compose v2**，即 `docker compose`，不是旧版 Python `docker-compose`。
-3. **Java** 在 `PATH` 中，用于运行 standalone Jython checker。Ignition 8.3 开发机建议使用 Java 17。
+3. **Java JDK** 在 `PATH` 中，用于 standalone Jython checker 和 `.modl` 元数据读取（需要 `java` 与 `jar`）。Ignition 8.3 开发机建议使用 Java 17。
 4. **curl 或 wget**，用于从 Maven Central 下载 Jython standalone JAR。
 5. 足够的 RAM 与磁盘空间用于 Ignition image 与 Gateway。默认 Gateway 最大 heap 为 2048 MB。
 
@@ -186,7 +186,7 @@ cp /path/to/MCP-module.modl "$(./devctl module cache-path)/"
 ./devctl bootstrap
 ```
 
-查看当前环境 module：
+查看当前环境 module。Private `.modl` 会直接读取内部根目录的 `module.xml`，因此配置里的 module ID 与磁盘上的 artifact 会合并成同一条记录，并显示名称、版本、来源和状态：
 
 ```bash
 # 当前环境所有有效 built-in + private/third-party
@@ -256,6 +256,61 @@ cp /path/to/MCP-module.modl "$(./devctl module cache-path)/"
 
 Standalone Jython checker 通过，**不代表** `system.tag.*`、`system.opc.*`、Gateway scope、Java object、Ignition MCP tools 或安装模块在真实 Ignition 中一定正确。涉及这些能力时必须对真实 Gateway 做验证。
 
+## Module 能力预检查
+
+很多 Ignition 错误现在可以在**启动真实 Gateway 之前**直接排除。`devctl` 内置了一份静态的 capability → module 映射，用于识别由特定 module 提供的 `system.*` namespace；对于 Ignition Resource API，还可以直接从 URL path 中提取 module ID。
+
+手动检查：
+
+```bash
+# Ignition scripting function
+./devctl module require system.report.executeReport
+./devctl module require system.perspective.navigate
+
+# Resource API；module ID 已包含在 path 中
+./devctl module require '/data/api/v1/resources/names/com.inductiveautomation.opcua/device'
+
+# catalog 尚未收录时，也可以直接指定 module ID
+./devctl module require module:com.inductiveautomation.reporting
+```
+
+如果所需 module 没有出现在 `GATEWAY_MODULES_ENABLED`，会立即失败并给出修复建议：
+
+```text
+[module-preflight] ERROR: system.report.executeReport requires com.inductiveautomation.reporting (not enabled by GATEWAY_MODULES_ENABLED)
+[module-preflight] Fix: ./devctl module enable com.inductiveautomation.reporting
+```
+
+直接修正 `.env`：
+
+```bash
+./devctl module enable com.inductiveautomation.reporting
+```
+
+对于 private/third-party module，preflight 不只检查 ID，还会读取 `.modl` 根目录中的 `module.xml`，确认实际存在相同 ID 的 artifact。配置了 ID 却没有对应文件时会明确显示 `MISSING-ARTIFACT`。
+
+验证整个 module 配置：
+
+```bash
+./devctl module validate
+```
+
+扫描源码中的已知 module-owned `system.*` function 和 `/data/api/v1/resources/...`：
+
+```bash
+./devctl module scan src/ignition src/fastmcp
+```
+
+要让它自动执行，可在 `.env` 设置冒号分隔路径：
+
+```dotenv
+MODULE_REQUIREMENT_PATHS=src/ignition:src/fastmcp
+JYTHON_SOURCE_PATHS=scripts/mcp
+```
+
+现在 `./devctl check` 会**先执行** `module validate`，再自动扫描 `MODULE_REQUIREMENT_PATHS` 与 `JYTHON_SOURCE_PATHS`，之后才进入项目自己的 check/test。这一层属于 **pre-Gateway 静态检查**：它能证明配置和本地 artifact 满足已知 module requirement，但不能证明运行中的 Gateway 已成功加载 module。最终 runtime 行为仍应通过 `./devctl gateway smoke` 和项目自己的 Gateway/OpenAPI assertion 验证。
+
+映射表放在 [`config/capability-modules.tsv`](config/capability-modules.tsv)，因此以后出现新的 Ignition capability 或项目专用规则时，可以直接扩展数据，不必修改命令引擎。
 ## 确定性的 `.gwbk` baseline
 
 准备一份包含测试 tags、projects、security、device/OPC config 等固定状态的开发 backup：
@@ -354,7 +409,7 @@ ACCEPT_MODULE_LICENSES=
 
 - `./devctl module list`：当前环境有效 built-in + private/third-party。
 - `./devctl module list --built-in`：当前有效 built-in。
-- `./devctl module list --private`：当前 private/third-party ID 与本地 `.modl` 来源。
+- `./devctl module list --private`：当前 private/third-party module；按 module ID 合并，并显示 artifact 元数据、来源与状态。
 - `./devctl module catalog`：Ignition 8.3 Docker image 内建 module 的完整可选清单。
 
 如果 `GATEWAY_MODULES_ENABLED` 为空，则环境不施加 module whitelist，因此 `module list --built-in` 会把完整 built-in image catalog 视为有效集合。
@@ -437,6 +492,7 @@ IGNITION_ALLOW_UNSIGNED_MODULES=true
 PROJECT_CHECK_CMD=./gradlew :gateway:test
 PROJECT_TEST_CMD=python -m pytest -q
 JYTHON_SOURCE_PATHS=src/ignition:scripts/mcp
+MODULE_REQUIREMENT_PATHS=src/ignition:src/fastmcp
 ```
 
 `JYTHON_SOURCE_PATHS` 使用冒号分隔。
@@ -533,6 +589,10 @@ ACT_OFFLINE=1
 ./devctl module add <file.modl>
 ./devctl module list [--private|--built-in]
 ./devctl module catalog
+./devctl module require <capability> [...]
+./devctl module scan <file|dir> [...]
+./devctl module validate
+./devctl module enable <module-id> [...]
 ./devctl module cache-path
 ./devctl module clear
 
