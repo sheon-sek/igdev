@@ -7,7 +7,8 @@ Usage: ./devctl <command> [args]
 
 Core:      doctor | bootstrap [--accept-eula] | versions | self-test
 Checks:    check | test | build | verify | ci-local | jython-check <path> [...]
-Modules:   module add <file.modl> | module list | module cache-path | module clear
+Modules:   module add <file.modl> | module list [--private|--built-in] | module catalog
+           module cache-path | module clear
 Baseline:  baseline set <file.gwbk> | baseline clear | baseline status
 Gateway:   gateway up | down [--volumes] | reset | restart | wait [--timeout SEC]
            gateway smoke | status | logs [args...] | url
@@ -118,25 +119,104 @@ cmd_ci_local() {
   (cd "$ROOT_DIR" && act "${args[@]}")
 }
 
+builtin_catalog_file() { printf '%s/config/builtin-modules.tsv\n' "$ROOT_DIR"; }
+
+builtin_module_record() {
+  local id="$1"
+  awk -F '\t' -v id="$id" '$1 == id { print $0; exit }' "$(builtin_catalog_file)"
+}
+
+print_builtin_catalog() {
+  printf '%-62s %s\n' 'MODULE ID' 'MODULE FILE'
+  printf '%-62s %s\n' '---------' '-----------'
+  awk -F '\t' '!/^#/ && NF >= 2 { printf "%-62s %s\\n", $1, $2 }' "$(builtin_catalog_file)"
+}
+
+print_effective_builtin_modules() {
+  load_config
+  local id record
+  if [[ -z "$GATEWAY_MODULES_ENABLED" ]]; then
+    awk -F '\t' '!/^#/ && NF >= 2 { printf "  %-62s %s\\n", $1, $2 }' "$(builtin_catalog_file)"
+    return 0
+  fi
+  local oldifs="$IFS"
+  IFS=',' read -r -a ids <<< "$GATEWAY_MODULES_ENABLED"
+  IFS="$oldifs"
+  for id in "${ids[@]}"; do
+    record="$(builtin_module_record "$id")"
+    [[ -n "$record" ]] || continue
+    printf '  %-62s %s\n' "$id" "${record#*$'\t'}"
+  done
+}
+
+print_effective_private_modules() {
+  load_config
+  local id record d f
+  if [[ -n "$GATEWAY_MODULES_ENABLED" ]]; then
+    local oldifs="$IFS"
+    IFS=',' read -r -a ids <<< "$GATEWAY_MODULES_ENABLED"
+    IFS="$oldifs"
+    for id in "${ids[@]}"; do
+      [[ -n "$id" ]] || continue
+      record="$(builtin_module_record "$id")"
+      [[ -n "$record" ]] && continue
+      printf '  configured-id  %s\n' "$id"
+    done
+  fi
+  d="$(module_cache_path)"
+  shopt -s nullglob
+  for f in "$d"/*.modl; do printf '  global-cache   %s\n' "$(basename "$f")"; done
+  for f in "$PRIVATE_MODULE_DIR"/*.modl; do printf '  checkout-local %s\n' "$(basename "$f")"; done
+  shopt -u nullglob
+}
+
 cmd_module() {
   local action="${1:-}"; shift || true
   case "$action" in
-    add) (($# == 1)) || die 'Usage: ./devctl module add <file.modl>'; [[ -f "$1" && "$1" == *.modl ]] || die "Expected existing .modl: $1"; mkdir -p "$PRIVATE_MODULE_DIR"; cp -f "$1" "$PRIVATE_MODULE_DIR/"; stage_modules; log "Added $(basename "$1")" ;;
+    add)
+      (($# == 1)) || die 'Usage: ./devctl module add <file.modl>'
+      [[ -f "$1" && "$1" == *.modl ]] || die "Expected existing .modl: $1"
+      mkdir -p "$PRIVATE_MODULE_DIR"
+      cp -f "$1" "$PRIVATE_MODULE_DIR/"
+      stage_modules
+      log "Added $(basename "$1")"
+      ;;
     list)
-      load_config
-      local d f
-      d="$(module_cache_path)"; printf 'Global (%s):\n' "$d"
-      shopt -s nullglob
-      for f in "$d"/*.modl; do printf '  %s\n' "$(basename "$f")"; done
-      printf 'Checkout-local (%s):\n' "$PRIVATE_MODULE_DIR"
-      for f in "$PRIVATE_MODULE_DIR"/*.modl; do printf '  %s\n' "$(basename "$f")"; done
-      shopt -u nullglob
+      local filter="${1:-}"
+      [[ $# -le 1 ]] || die 'Usage: ./devctl module list [--private|--built-in]'
+      case "$filter" in
+        '')
+          printf 'Built-in modules effective for this environment:\n'
+          print_effective_builtin_modules
+          printf '\nPrivate / third-party modules effective for this environment:\n'
+          print_effective_private_modules
+          ;;
+        --built-in)
+          printf 'Built-in modules effective for this environment:\n'
+          print_effective_builtin_modules
+          ;;
+        --private)
+          printf 'Private / third-party modules effective for this environment:\n'
+          print_effective_private_modules
+          ;;
+        *) die "Unknown module list option: $filter" ;;
+      esac
+      ;;
+    catalog)
+      (($# == 0)) || die 'Usage: ./devctl module catalog'
+      print_builtin_catalog
       ;;
     cache-path) module_cache_path ;;
-    clear) mkdir -p "$PRIVATE_MODULE_DIR"; find "$PRIVATE_MODULE_DIR" -maxdepth 1 -type f -name '*.modl' -delete; stage_modules; log 'Cleared checkout-local modules' ;;
+    clear)
+      mkdir -p "$PRIVATE_MODULE_DIR"
+      find "$PRIVATE_MODULE_DIR" -maxdepth 1 -type f -name '*.modl' -delete
+      stage_modules
+      log 'Cleared checkout-local modules'
+      ;;
     *) die "Unknown module action: ${action:-<none>}" ;;
   esac
 }
+
 
 cmd_baseline() {
   local action="${1:-}"; shift || true; mkdir -p "$RESTORE_DIR"
