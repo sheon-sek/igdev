@@ -1,0 +1,41 @@
+---
+services:
+  gateway:
+    build:
+      context: ./docker/ignition
+      args:
+        IGNITION_VERSION: ${IGNITION_VERSION}
+    image: ignition-devenv:${IGNITION_VERSION}-${DEV_INSTANCE_ID}
+    ports:
+      - "${GATEWAY_BIND_ADDRESS}:${GATEWAY_HTTP_PORT}:8088"
+      - "${GATEWAY_BIND_ADDRESS}:${GATEWAY_HTTPS_PORT}:8043"
+      - "${GATEWAY_BIND_ADDRESS}:${GATEWAY_DEBUG_PORT}:8000"
+    volumes:
+      - gateway-data:/usr/local/bin/ignition/data
+      - ./.runtime/restore:/restore:ro
+    environment:
+      ACCEPT_IGNITION_EULA: ${ACCEPT_IGNITION_EULA}
+      GATEWAY_ADMIN_USERNAME: ${GATEWAY_ADMIN_USERNAME}
+      GATEWAY_ADMIN_PASSWORD: ${GATEWAY_ADMIN_PASSWORD}
+      IGNITION_EDITION: ${IGNITION_EDITION}
+      GATEWAY_MODULES_ENABLED: ${GATEWAY_MODULES_ENABLED}
+      ACCEPT_MODULE_CERTS: ${ACCEPT_MODULE_CERTS}
+      ACCEPT_MODULE_LICENSES: ${ACCEPT_MODULE_LICENSES}
+      TZ: ${TZ}
+    command: >-
+      -n ${GATEWAY_NAME}
+      -m ${GATEWAY_MAX_MEMORY_MB}
+      -a localhost
+      -h ${GATEWAY_HTTP_PORT}
+      -s ${GATEWAY_HTTPS_PORT}
+      ${GATEWAY_RESTORE_ARGS}
+      --
+      -Dignition.allowunsignedmodules=${IGNITION_ALLOW_UNSIGNED_MODULES}
+    restart: unless-stopped
+    logging:
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+volumes:
+  gateway-data:
