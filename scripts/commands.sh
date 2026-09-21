@@ -122,7 +122,16 @@ cmd_module() {
   local action="${1:-}"; shift || true
   case "$action" in
     add) (($# == 1)) || die 'Usage: ./devctl module add <file.modl>'; [[ -f "$1" && "$1" == *.modl ]] || die "Expected existing .modl: $1"; mkdir -p "$PRIVATE_MODULE_DIR"; cp -f "$1" "$PRIVATE_MODULE_DIR/"; stage_modules; log "Added $(basename "$1")" ;;
-    list) load_config; printf 'Global (%s):\n' "$(module_cache_path)"; find "$(module_cache_path)" -maxdepth 1 -type f -name '*.modl' -printf '  %f\n' 2>/dev/null || true; printf 'Checkout-local (%s):\n' "$PRIVATE_MODULE_DIR"; find "$PRIVATE_MODULE_DIR" -maxdepth 1 -type f -name '*.modl' -printf '  %f\n' 2>/dev/null || true ;;
+    list)
+      load_config
+      local d f
+      d="$(module_cache_path)"; printf 'Global (%s):\n' "$d"
+      shopt -s nullglob
+      for f in "$d"/*.modl; do printf '  %s\n' "$(basename "$f")"; done
+      printf 'Checkout-local (%s):\n' "$PRIVATE_MODULE_DIR"
+      for f in "$PRIVATE_MODULE_DIR"/*.modl; do printf '  %s\n' "$(basename "$f")"; done
+      shopt -u nullglob
+      ;;
     cache-path) module_cache_path ;;
     clear) mkdir -p "$PRIVATE_MODULE_DIR"; find "$PRIVATE_MODULE_DIR" -maxdepth 1 -type f -name '*.modl' -delete; stage_modules; log 'Cleared checkout-local modules' ;;
     *) die "Unknown module action: ${action:-<none>}" ;;
