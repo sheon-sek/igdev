@@ -274,59 +274,77 @@ Standalone Jython checker 通过，**不代表** `system.tag.*`、`system.opc.*`
 
 ## Module 能力预检查
 
-很多 Ignition 错误现在可以在**启动真实 Gateway 之前**直接排除。`devctl` 内置了一份静态的 capability → module 映射，用于识别由特定 module 提供的 `system.*` namespace；对于 Ignition Resource API，还可以直接从 URL path 中提取 module ID。
+大量 Ignition 错误应该在 **Gateway 启动之前**就被挡住。现在 native scripting 检查不再只是 namespace/prefix 推测，而是 exact function 检查：
 
-手动检查：
+- [`config/native-system-functions.tsv`](config/native-system-functions.tsv) 是 `devctl` 使用的 Ignition **8.3 Gateway scope** 原生函数 source of truth。当前收录官方 8.3 System Functions 文档中的 **37 个 `system.*` namespace、392 个展开后的 exact native function**。
+- 每个函数明确分类为 `platform`、`module` 或 `conditional`；需要额外 module 时同时记录完整 module ID。
+- 扫描到的 `system.*` 如果不在 Gateway catalog 中会直接报错，**不会再静默跳过**。因此拼写错误、非 Gateway scope 函数、目标版本不匹配都会更早暴露。
+- `/data/api/v1/resources/...` 仍可从路径中的 `com.*` segment 动态识别 module ID。
+- [`config/capability-modules.tsv`](config/capability-modules.tsv) 只保留给项目自定义的非 `system.*` capability alias，避免 native dependency 出现两份 source of truth。
+
+手动检查示例：
 
 ```bash
-# Ignition scripting function
-./devctl module require system.report.executeReport
-./devctl module require system.perspective.navigate
+# Platform function：函数有效，不需要额外可选 module
+./devctl module require system.tag.readBlocking
 
-# Resource API；module ID 已包含在 path 中
+# 由 module 提供的 native functions
+./devctl module require system.report.executeReport
+./devctl module require system.security.validateUser
+./devctl module require system.roster.getRosters
+
+# Conditional device API：先检查 OPC UA 基础 module；
+# 实际 device type 可能还需要具体 Driver module，单凭函数名无法静态推断
+./devctl module require system.device.addDevice
+
+# Resource API：module ID 直接嵌在路径中
 ./devctl module require '/data/api/v1/resources/names/com.inductiveautomation.opcua/device'
 
-# catalog 尚未收录时，也可以直接指定 module ID
+# 项目特殊 requirement 的显式 escape hatch
 ./devctl module require module:com.inductiveautomation.reporting
 ```
 
-如果所需 module 没有出现在 `GATEWAY_MODULES_ENABLED`，会立即失败并给出修复建议：
+拼错函数名或使用非 Gateway scope 函数现在会明确失败：
+
+```text
+[module-preflight] ERROR: unknown or non-Gateway Ignition 8.3 native function: system.tag.readBlokcing
+[module-preflight] Check the function name, Gateway scope, and target Ignition version.
+```
+
+如果所需 module 没有出现在 `GATEWAY_MODULES_ENABLED`，仍会给出直接修复命令：
 
 ```text
 [module-preflight] ERROR: system.report.executeReport requires com.inductiveautomation.reporting (not enabled by GATEWAY_MODULES_ENABLED)
 [module-preflight] Fix: ./devctl module enable com.inductiveautomation.reporting
 ```
 
-直接修正 `.env`：
+对于不属于 built-in Docker image catalog 的私有/可选 module，preflight 还会要求本地存在匹配的 `.modl` artifact。例如 OPC HDA (`com.inductiveautomation.opccom`)、Twilio (`com.inductiveautomation.twilio`) 与 SECS/GEM (`com.inductiveautomation.secsgem`)。Module ID 从 `.modl` 根目录的 `module.xml` 读取。
 
-```bash
-./devctl module enable com.inductiveautomation.reporting
-```
-
-对于 private/third-party module，preflight 不只检查 ID，还会读取 `.modl` 根目录中的 `module.xml`，确认实际存在相同 ID 的 artifact。配置了 ID 却没有对应文件时会明确显示 `MISSING-ARTIFACT`。
-
-验证整个 module 配置：
+检查整个 module 配置：
 
 ```bash
 ./devctl module validate
 ```
 
-扫描源码中的已知 module-owned `system.*` function 和 `/data/api/v1/resources/...`：
+扫描源码中的 native `system.*` 与 `/data/api/v1/resources/...`：
 
 ```bash
 ./devctl module scan src/ignition src/fastmcp
 ```
 
-要让它自动执行，可在 `.env` 设置冒号分隔路径：
+scanner 现在也能识别 `system.historian.types.dataPoint` 这种多层 native function；每一个扫描到的 native call 都先做 exact Gateway catalog validation，再做 module requirement validation。
+
+要自动接入日常检查，在 `.env` 配置：
 
 ```dotenv
 MODULE_REQUIREMENT_PATHS=src/ignition:src/fastmcp
 JYTHON_SOURCE_PATHS=scripts/mcp
 ```
 
-现在 `./devctl check` 会**先执行** `module validate`，再自动扫描 `MODULE_REQUIREMENT_PATHS` 与 `JYTHON_SOURCE_PATHS`，之后才进入项目自己的 check/test。这一层属于 **pre-Gateway 静态检查**：它能证明配置和本地 artifact 满足已知 module requirement，但不能证明运行中的 Gateway 已成功加载 module。最终 runtime 行为仍应通过 `./devctl gateway smoke` 和项目自己的 Gateway/OpenAPI assertion 验证。
+`./devctl check` 会先执行 `module validate`，再扫描 `MODULE_REQUIREMENT_PATHS` + `JYTHON_SOURCE_PATHS`，然后才进入项目检查与 Jython compilation。`./devctl self-test` 还会验证 catalog 的函数数量、37 个 namespace、重复项、classification、代表性 module mapping、nested-call scanner，以及 unknown-function rejection。
 
-映射表放在 [`config/capability-modules.tsv`](config/capability-modules.tsv)，因此以后出现新的 Ignition capability 或项目专用规则时，可以直接扩展数据，不必修改命令引擎。
+这仍然属于 **pre-Gateway 静态检查**：它证明目标 Ignition 8.3 Gateway native API inventory 与当前 module/artifact 配置相符，但不证明运行中的 Gateway 已成功加载 module，也无法仅从函数名判断所有 runtime 参数（例如具体 device driver）。最终 runtime verification 仍由 `./devctl gateway smoke` 和项目自己的 Gateway/OpenAPI assertions 完成。
+
 ## 确定性的 `.gwbk` baseline
 
 准备一份包含测试 tags、projects、security、device/OPC config 等固定状态的开发 backup：

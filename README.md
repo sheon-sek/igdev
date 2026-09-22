@@ -256,36 +256,51 @@ A standalone Jython pass does **not** prove that `system.tag.*`, `system.opc.*`,
 
 ## Module capability preflight
 
-A large class of Ignition failures can be rejected **before starting a Gateway**. `devctl` contains a static capability-to-module catalog for module-owned `system.*` namespaces and can also extract module IDs from Ignition resource API paths.
+A large class of Ignition failures can be rejected **before starting a Gateway**. Native scripting checks are now exact rather than namespace-only:
+
+- [`config/native-system-functions.tsv`](config/native-system-functions.tsv) is the Ignition **8.3 Gateway-scope** source of truth used by `devctl`. It contains 392 exact native functions across all 37 documented `system.*` namespaces, expanded from the official Ignition 8.3 System Functions reference.
+- Every catalog entry is classified as `platform`, `module`, or `conditional`, with required module IDs recorded when applicable.
+- A detected `system.*` call that is not in the Gateway catalog is an error. It is **not silently ignored**; this catches misspellings, non-Gateway functions, and version mismatches early.
+- `/data/api/v1/resources/...` paths still resolve module IDs dynamically from the `com.*` segment.
+- [`config/capability-modules.tsv`](config/capability-modules.tsv) is reserved for optional project-specific, non-`system.*` aliases so native dependencies cannot drift between two catalogs.
 
 Manual checks:
 
 ```bash
-# Known Ignition scripting capability
+# Platform function: valid Gateway API, no optional module required
+./devctl module require system.tag.readBlocking
+
+# Module-owned functions
 ./devctl module require system.report.executeReport
-./devctl module require system.perspective.navigate
+./devctl module require system.security.validateUser
+./devctl module require system.roster.getRosters
+
+# Conditional device API: OPC UA base is checked; the concrete device type may
+# additionally require its driver module, which cannot be inferred from the call name
+./devctl module require system.device.addDevice
 
 # Ignition resource API path: module ID is embedded in the path
 ./devctl module require '/data/api/v1/resources/names/com.inductiveautomation.opcua/device'
 
-# Explicit module ID escape hatch for a capability not yet in the catalog
+# Explicit module ID escape hatch for a project-specific requirement
 ./devctl module require module:com.inductiveautomation.reporting
 ```
 
-When a module is missing from `GATEWAY_MODULES_ENABLED`, the check fails with a remediation command:
+A typo or non-Gateway function now fails explicitly:
+
+```text
+[module-preflight] ERROR: unknown or non-Gateway Ignition 8.3 native function: system.tag.readBlokcing
+[module-preflight] Check the function name, Gateway scope, and target Ignition version.
+```
+
+When a required module is missing from `GATEWAY_MODULES_ENABLED`, the check fails with a remediation command:
 
 ```text
 [module-preflight] ERROR: system.report.executeReport requires com.inductiveautomation.reporting (not enabled by GATEWAY_MODULES_ENABLED)
 [module-preflight] Fix: ./devctl module enable com.inductiveautomation.reporting
 ```
 
-Apply the configuration fix:
-
-```bash
-./devctl module enable com.inductiveautomation.reporting
-```
-
-For private/third-party modules, preflight also checks that a matching `.modl` artifact exists. The artifact ID is read from the root `module.xml`; a configured ID without an artifact is reported as `MISSING-ARTIFACT`.
+For private/optional modules that are not part of the built-in Docker image catalog, preflight also requires a matching `.modl` artifact. This applies to cataloged APIs such as OPC HDA (`com.inductiveautomation.opccom`), Twilio (`com.inductiveautomation.twilio`), and SECS/GEM (`com.inductiveautomation.secsgem`). The artifact ID is read from the root `module.xml`.
 
 Validate the whole module configuration:
 
@@ -293,11 +308,13 @@ Validate the whole module configuration:
 ./devctl module validate
 ```
 
-Scan source trees for known module-owned `system.*` calls and `/data/api/v1/resources/...` references:
+Scan source trees for native `system.*` calls and `/data/api/v1/resources/...` references:
 
 ```bash
 ./devctl module scan src/ignition src/fastmcp
 ```
+
+The scanner recognizes nested native functions such as `system.historian.types.dataPoint`, validates every detected native call against the exact Gateway catalog, and then checks its module requirements.
 
 To make this automatic, configure colon-separated paths in `.env`:
 
@@ -306,9 +323,10 @@ MODULE_REQUIREMENT_PATHS=src/ignition:src/fastmcp
 JYTHON_SOURCE_PATHS=scripts/mcp
 ```
 
-`./devctl check` now runs `module validate` first and automatically scans `MODULE_REQUIREMENT_PATHS` plus `JYTHON_SOURCE_PATHS` before project checks. This is a **static pre-Gateway check**: it proves the configured module set/artifacts satisfy known requirements, not that a running Gateway has successfully loaded the module. Real runtime verification remains `./devctl gateway smoke` and project-specific Gateway/OpenAPI assertions.
+`./devctl check` runs `module validate`, then scans `MODULE_REQUIREMENT_PATHS` plus `JYTHON_SOURCE_PATHS`, and only then enters project checks/Jython compilation. The native catalog itself is also verified by `./devctl self-test` for expected function count, all 37 namespaces, duplicate entries, classification validity, representative module mappings, nested-call scanning, and unknown-function rejection.
 
-The mapping is data-driven in [`config/capability-modules.tsv`](config/capability-modules.tsv), so project-specific or newly introduced Ignition capabilities can be added without changing the command engine.
+This remains a **static pre-Gateway check**. It validates the target Ignition 8.3 Gateway API inventory and configured module/artifact requirements; it does not prove that a running Gateway successfully loaded the module or that a call will succeed with a particular runtime argument. Runtime verification remains `./devctl gateway smoke` and project-specific Gateway/OpenAPI assertions.
+
 ## Using a deterministic Gateway baseline
 
 A baseline `.gwbk` lets every clean integration run begin from the same tags, projects, security profiles, device/OPC configuration, and other Gateway state.

@@ -83,11 +83,58 @@ cmd_self_test() {
   cmd_module list --built-in >/dev/null
   cmd_module list --private >/dev/null
   cmd_module catalog >/dev/null
-  local capability_catalog
+  local capability_catalog native_catalog native_count native_namespaces
   capability_catalog="$(capability_catalog_file)"
   [[ -s "$capability_catalog" ]] || die "Module capability catalog is missing or empty: $capability_catalog"
-  [[ "$(cap_modules system.report.executeReport)" == "com.inductiveautomation.reporting" ]] || die 'Reporting capability mapping is invalid'
+  native_catalog="$(native_function_catalog_file)"
+  [[ -s "$native_catalog" ]] || die "Native system function catalog is missing or empty: $native_catalog"
+
+  native_count="$(awk -F '\t' '!/^#/ && NF>=3 {n++} END{print n+0}' "$native_catalog")"
+  [[ "$native_count" == 392 ]] || die "Native system function catalog expected 392 Gateway functions, found $native_count"
+  if awk -F '\t' '!/^#/ && NF>=3 {count[$1]++} END{for(fn in count)if(count[fn]>1)exit 1}' "$native_catalog"; then
+    log 'Native system function catalog has no duplicate functions'
+  else
+    die 'Native system function catalog contains duplicate functions'
+  fi
+  if awk -F '\t' '!/^#/ && NF>=3 {
+      if ($1 !~ /^system\.[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/) exit 1
+      if ($2 != "platform" && $2 != "module" && $2 != "conditional") exit 1
+      if ($2 == "platform" && $3 != "-") exit 1
+      if (($2 == "module" || $2 == "conditional") && ($3 == "-" || $3 == "")) exit 1
+    }' "$native_catalog"; then
+    log 'Native system function classifications OK'
+  else
+    die 'Native system function catalog has invalid function/classification/module fields'
+  fi
+  native_namespaces="$(awk -F '\t' '!/^#/ && NF>=3 {split($1,p,"."); seen[p[2]]=1} END{for(k in seen)n++; print n+0}' "$native_catalog")"
+  [[ "$native_namespaces" == 37 ]] || die "Native system function catalog expected 37 namespaces, found $native_namespaces"
+
+  cap_modules system.tag.readBlocking >/dev/null || die 'Platform native function lookup failed'
+  [[ -z "$(cap_modules system.tag.readBlocking)" ]] || die 'Platform native function unexpectedly requires a module'
+  cap_modules system.serial.openSerialPort >/dev/null || die 'Ignition 8.3 system.serial platform mapping is invalid'
+  [[ -z "$(cap_modules system.serial.openSerialPort)" ]] || die 'Ignition 8.3 system.serial must not require a legacy Serial module'
+  [[ "$(cap_modules system.report.executeReport)" == "com.inductiveautomation.reporting" ]] || die 'Reporting native function mapping is invalid'
+  [[ "$(cap_modules system.security.validateUser)" == "com.inductiveautomation.vision" ]] || die 'Security native function mapping is invalid'
+  [[ "$(cap_modules system.groups.loadFromFile)" == "com.inductiveautomation.sqlbridge" ]] || die 'Transaction Group native function mapping is invalid'
+  [[ "$(cap_modules system.roster.getRosters)" == "com.inductiveautomation.alarm-notification" ]] || die 'Roster native function mapping is invalid'
+  [[ "$(cap_modules system.opchda.readRaw)" == "com.inductiveautomation.opccom" ]] || die 'OPC HDA native function mapping is invalid'
+  [[ "$(cap_modules system.twilio.sendSms)" == "com.inductiveautomation.twilio" ]] || die 'Twilio native function mapping is invalid'
+  [[ "$(cap_modules system.secsgem.sendRequest)" == "com.inductiveautomation.secsgem" ]] || die 'SECS/GEM native function mapping is invalid'
+  [[ "$(cap_modules system.device.addDevice)" == "com.inductiveautomation.opcua" ]] || die 'Device native function base mapping is invalid'
+  [[ "$(cap_modules system.historian.types.dataPoint)" == "com.inductiveautomation.historian" ]] || die 'Nested Historian native function mapping is invalid'
+  if cap_modules system.tag.readBlokcing >/dev/null 2>&1; then
+    die 'Unknown native functions must not pass capability lookup'
+  fi
   [[ "$(cap_modules '/data/api/v1/resources/names/com.inductiveautomation.opcua/device')" == "com.inductiveautomation.opcua" ]] || die 'Resource API capability mapping is invalid'
+
+  local native_scan_dir native_scan_out
+  native_scan_dir="$(mktemp -d)"; native_scan_out="$native_scan_dir/out"
+  printf '%s\n' 'system.historian.types.dataPoint(1, 2, 3)' 'system.tag.readBlocking([])' > "$native_scan_dir/test.py"
+  scan_file_capabilities "$native_scan_dir/test.py" "$native_scan_out"
+  grep -Fxq 'system.historian.types.dataPoint' "$native_scan_out" || { rm -rf "$native_scan_dir"; die 'Nested native function scan is invalid'; }
+  grep -Fxq 'system.tag.readBlocking' "$native_scan_out" || { rm -rf "$native_scan_dir"; die 'Native function scan is invalid'; }
+  rm -rf "$native_scan_dir"
+  log 'Native Gateway function inventory and exact lookup OK'
   if have jar; then
     local module_test_dir module_test_info
     module_test_dir="$(mktemp -d)"

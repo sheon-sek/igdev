@@ -3,6 +3,7 @@
 
 builtin_catalog_file(){ printf '%s/config/builtin-modules.tsv\n' "$ROOT_DIR"; }
 capability_catalog_file(){ printf '%s/config/capability-modules.tsv\n' "$ROOT_DIR"; }
+native_function_catalog_file(){ printf '%s/config/native-system-functions.tsv\n' "$ROOT_DIR"; }
 
 trim(){ local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
 csv_has(){
@@ -93,6 +94,19 @@ print_private(){
 	fi
 }
 
+native_function_record(){
+	awk -F '\t' -v fn="$1" '!/^#/ && $1==fn{print;exit}' "$(native_function_catalog_file)"
+}
+native_function_known(){ [[ -n "$(native_function_record "$1")" ]]; }
+native_function_class(){
+	local rec; rec="$(native_function_record "$1")"; [[ -n "$rec" ]] || return 1
+	printf '%s\n' "$(printf '%s\n' "$rec" | cut -f2)"
+}
+native_function_note(){
+	local rec; rec="$(native_function_record "$1")"; [[ -n "$rec" ]] || return 1
+	printf '%s\n' "$(printf '%s\n' "$rec" | cut -f4-)"
+}
+
 rest_module(){
 	local p="${1#* }" seg old="$IFS"
 	[[ "$p" == *"/data/api/v1/resources/"* ]] || return 1
@@ -102,10 +116,21 @@ rest_module(){
 	return 1
 }
 cap_modules(){
-	local c="$(trim "$1")" kind pat mods desc r
+	local c="$(trim "$1")" kind pat mods desc r rec fn cls note
 	[[ "$c" == module:* ]]&&{ printf '%s\n' "${c#module:}"; return; }
 	[[ "$c" == com.* ]]&&{ printf '%s\n' "$c"; return; }
 	r="$(rest_module "$c" 2>/dev/null)"&&{ printf '%s\n' "$r"; return; }
+
+	# system.* calls are validated against the exact Ignition 8.3 Gateway catalog.
+	if [[ "$c" == system.* ]]; then
+		rec="$(native_function_record "$c")"; [[ -n "$rec" ]] || return 1
+		IFS=$'\t' read -r fn cls mods note <<< "$rec"
+		[[ "$mods" == "-" ]] && return 0
+		printf '%s\n' "$mods"
+		return 0
+	fi
+
+	# Project-specific non-system aliases remain data-driven.
 	while IFS=$'\t' read -r kind pat mods desc; do
 		[[ -n "$kind" && "$kind" != \#* ]]||continue
 		[[ "$kind" == exact && "$c" == "$pat" ]]&&{ printf '%s\n' "$mods"; return; }
@@ -120,8 +145,21 @@ module_ready(){
 	private_has "$id"||{ printf 'no matching .modl artifact found'; return 1; }
 }
 require_one(){
-	local c="$1" mods id why fail=0 old="$IFS"
-	mods="$(cap_modules "$c")"||{ echo "[module-preflight] UNKNOWN: no mapping for $c" >&2; return 2; }
+	local c="$1" mods id why fail=0 old="$IFS" cls note
+	if ! mods="$(cap_modules "$c")"; then
+		if [[ "$c" == system.* ]]; then
+			echo "[module-preflight] ERROR: unknown or non-Gateway Ignition 8.3 native function: $c" >&2
+			echo "[module-preflight] Check the function name, Gateway scope, and target Ignition version." >&2
+		else
+			echo "[module-preflight] UNKNOWN: no mapping for $c" >&2
+		fi
+		return 2
+	fi
+	if [[ "$c" == system.* && -z "$mods" ]]; then
+		cls="$(native_function_class "$c")"
+		echo "[module-preflight] OK: $c -> $cls (no optional module required)"
+		return 0
+	fi
 	IFS=',' read -r -a ids <<< "$mods"; IFS="$old"
 	for id in "${ids[@]}"; do
 		id="$(trim "$id")"
@@ -132,6 +170,9 @@ require_one(){
 		echo "[module-preflight] Fix: ./devctl module enable ${mods//,/ }" >&2
 		for id in "${ids[@]}"; do id="$(trim "$id")"; is_builtin "$id"||private_has "$id"||echo "[module-preflight] Add artifact: ./devctl module add /path/to/module.modl" >&2; done
 		return 1
+	fi
+	if [[ "$c" == system.* && "$(native_function_class "$c")" == conditional ]]; then
+		note="$(native_function_note "$c")"; [[ -z "$note" ]] || echo "[module-preflight] NOTE: $c: $note"
 	fi
 }
 enable_ids(){
@@ -161,7 +202,7 @@ validate_modules(){
 }
 scan_file_capabilities(){
 	local f="$1" out="$2"
-	grep -Eo 'system\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*' "$f" 2>/dev/null >>"$out"||true
+	grep -Eo 'system\.[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+' "$f" 2>/dev/null >>"$out"||true
 	grep -Eo '/data/api/v1/resources(/[A-Za-z0-9._~%:-]+)+' "$f" 2>/dev/null >>"$out"||true
 }
 scan_paths(){
@@ -179,11 +220,15 @@ scan_paths(){
 	done
 	sort -u "$t" -o "$t"
 	while IFS= read -r c; do
+		if [[ "$c" == system.* ]]; then
+			count=$((count+1)); require_one "$c"||fail=1
+			continue
+		fi
 		mods="$(cap_modules "$c" 2>/dev/null)"||continue
 		count=$((count+1)); require_one "$c"||fail=1
 	done < "$t"
 	rm -f "$t"
-	((count))&&log "Checked $count module-dependent capability reference(s)"
+	((count))&&log "Checked $count native/module-dependent capability reference(s)"
 	return "$fail"
 }
 
