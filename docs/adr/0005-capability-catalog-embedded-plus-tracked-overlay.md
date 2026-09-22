@@ -1,0 +1,5 @@
+# Capability knowledge: embedded Core Catalog plus tracked Project Overlay
+
+Ignition 8.3.8 capability knowledge (33 built-in modules, 392 native `system.*` functions with module mappings, 694 REST operations) is domain knowledge of the toolchain, not of any repository, so it ships embedded in the igdev binary, keyed by Ignition version. But installed modules (EA, private, third-party) extend capabilities, and `.modl` archives do not reliably enumerate what they expose (`module.xml` yields only id/name/version today). We decided capability resolution is Core Catalog ⊕ Project Overlay on all three knowledge planes (native functions, capability rules, REST), and the overlay is tracked, hand-authored or CLI-written reviewable files (`catalog import-openapi`, `catalog add-function`); the `.modl` itself is never trusted as a capability source, and live `catalog sync --gateway` may only propose candidates, never write silently.
+
+Consequences: private-module endpoints and functions stop requiring new CLI releases; `catalog status --json` reports both layers with digests; embedded-catalog integrity tests assert digests, never hand-copied row counts.
