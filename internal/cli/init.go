@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sheon-sek/igdev/internal/atomicfile"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/textdiff"
@@ -260,36 +261,7 @@ func writeTracked(path, name string, existing, data []byte, newMode os.FileMode)
 // writeAtomic replaces path with data in one rename. Nothing observes a partial
 // file, a crash leaves the old bytes, and no .bak is ever created.
 func writeAtomic(path string, data []byte, mode os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-")
-	if err != nil {
-		return writeFault(path, err)
-	}
-	tmpName := tmp.Name()
-	cleanup := func() {
-		tmp.Close()
-		os.Remove(tmpName)
-	}
-	if _, err := tmp.Write(data); err != nil {
-		cleanup()
-		return writeFault(path, err)
-	}
-	if err := tmp.Chmod(mode); err != nil {
-		cleanup()
-		return writeFault(path, err)
-	}
-	// The rename is atomic, but only the sync makes the bytes durable before it:
-	// a tracked file must not be able to come back empty after a crash.
-	if err := tmp.Sync(); err != nil {
-		cleanup()
-		return writeFault(path, err)
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
-		return writeFault(path, err)
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
+	if err := atomicfile.Write(path, data, mode, 0o755); err != nil {
 		return writeFault(path, err)
 	}
 	return nil

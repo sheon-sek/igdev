@@ -1,0 +1,13 @@
+instance:    <INSTANCE_ID> (igdev-<SHORT_ID>)
+ports:       http <PORT_HTTP>, https <PORT_HTTPS>, debug <PORT_DEBUG>
+credentials: <ROOT>/repo/.igdev/local.toml (generated, user admin, never printed)
+consent:     accepted [ignition-eula]
+materialized:
+  dir  created   0755  <ROOT>/repo/.igdev/runtime
+  dir  created   0755  <ROOT>/repo/.igdev/modules
+  dir  created   0755  <ROOT>/repo/.igdev/restore
+  file created   0644  <ROOT>/repo/.igdev/runtime/compose.yaml
+  file created   0644  <ROOT>/repo/.igdev/runtime/compose.env
+  file created   0644  <ROOT>/repo/.igdev/runtime/Dockerfile
+  file created   0600  <ROOT>/repo/.igdev/local.toml
+  file created   0600  <ROOT>/repo/.igdev/setup.json

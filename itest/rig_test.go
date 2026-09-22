@@ -9,6 +9,36 @@ import (
 	"github.com/sheon-sek/igdev/internal/testrig"
 )
 
+// The scoped leak assertion is what keeps "setup writes only into .igdev/ and the
+// Consent record" checkable without giving up the no-litter rule: writes inside
+// the allowed roots are expected, anything else is still a leak.
+func TestRigScopedLeakAssertion(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.Write("repo/igdev.toml", "schema = 1\n")
+	base := env.Snapshot()
+
+	// Expected writes: the Checkout Setup inside the fixture, the Consent record
+	// under the scratch HOME.
+	env.Write("repo/.igdev/setup.json", "{}\n")
+	env.Write("home/.config/igdev/accepted.toml", "[ignition-eula]\n")
+	if changes := env.ChangesOutside(base, env.Path("repo"), env.Home); len(changes) != 0 {
+		t.Errorf("allowed roots were reported as leaks: %v", changes)
+	}
+
+	// A write anywhere else is still caught: here at the scratch root, next to the
+	// fixture, where neither root reaches.
+	env.Write("stray.txt", "leak\n")
+	env.Write("repo/.igdev/runtime/compose.yaml", "still inside the fixture\n")
+	outside := env.ChangesOutside(base, env.Path("repo"), env.Home)
+	if len(outside) != 1 || outside[0].Path != "stray.txt" {
+		t.Errorf("ChangesOutside = %v, want exactly the stray file", outside)
+	}
+	// A scratch-relative root is accepted too, so a test never has to absolutize.
+	if changes := env.ChangesOutside(base, "repo/.igdev", "home"); len(changes) != 1 {
+		t.Errorf("ChangesOutside with relative roots = %v, want exactly the stray file", changes)
+	}
+}
+
 // The leak assertion is only worth having if it sees more than new files: a run
 // that rewrote or deleted something in the checkout is exactly the damage the
 // no-litter rule is about.

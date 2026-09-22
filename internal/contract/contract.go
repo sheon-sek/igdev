@@ -29,7 +29,8 @@ const (
 	// ExitUsage means the invocation was wrong and cannot be attempted as given.
 	ExitUsage Exit = 2
 	// ExitHumanAction means a person must act (consent, destructive approval).
-	// No ticket before 03 emits it; the level is frozen so agents can rely on it.
+	// IGDEV_E_CONSENT_REQUIRED is the first code that emits it: an agent stops
+	// and hands off rather than paraphrasing the error.
 	ExitHumanAction Exit = 3
 )
 
@@ -58,8 +59,15 @@ const (
 	CodeSetupRequired Code = "IGDEV_E_SETUP_REQUIRED"
 	// CodeSetupStale covers a Checkout Setup that no longer matches its
 	// Project Contract (Contract Digest, schema, or CLI Contract Version).
-	// Re-materializing the checkout is `igdev setup`; ticket 09 owns it.
+	// Re-materializing the checkout is `igdev setup`.
 	CodeSetupStale Code = "IGDEV_E_SETUP_STALE"
+	// CodeConsentRequired covers a legal term this machine has not accepted.
+	// It is the human-required code: exit level 3, with the exact accept
+	// command in Remediation, because only a person may accept a term (ADR 0004).
+	CodeConsentRequired Code = "IGDEV_E_CONSENT_REQUIRED"
+	// CodePortAlloc covers a failed dynamic port allocation: the host refused
+	// three loopback binds, so the Instance has no ports to record (ADR 0003).
+	CodePortAlloc Code = "IGDEV_E_PORT_ALLOC"
 	// CodeContractSchemaUnsupported covers a Project Contract declaring a
 	// schema version this binary does not speak. It fails closed: the file is
 	// never partially parsed and never auto-downgraded.

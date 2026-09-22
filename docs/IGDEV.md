@@ -13,6 +13,9 @@ with the agent contract frozen by golden tests and the release path in CI.
 Ticket 02 (issue #8) delivered the Project Contract: `igdev init` writes and edits
 `igdev.toml`, every write prints a unified diff, and the Gate validates the contract
 schema and the Checkout Setup's Setup Stamp before any project command does work.
+Ticket 03 (issue #9) delivered the Checkout Setup: `igdev setup` mints the Instance
+identity, allocates the ports, renders the runtime files from the embedded templates,
+records the human-only Consent, and `igdev doctor` audits the host.
 
 ## Install
 
@@ -65,11 +68,18 @@ and `packaging/install.sh` for real against a loopback file server.
 | Path | What lives there |
 | --- | --- |
 | `cmd/igdev` | main; three lines that call `cli.Execute` |
-| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping, `init` |
+| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping, `init`, `setup`, `doctor` |
 | `internal/contract` | frozen envelope, `IGDEV_E_*` codes, exit levels, CLI Contract Version |
 | `internal/config` | five-tier resolver (flags > `IGDEV_*` > `.igdev/local.toml` > `igdev.toml` > defaults) |
 | `internal/project` | Project Root discovery, the `igdev.toml` schema v1 model: parse, validate, render, Contract Digest |
-| `internal/gate` | the Gate: contract schema, Setup Stamp, `[tool].min_version` — `Evaluate` / `Require` |
+| `internal/gate` | the Gate: contract schema, Setup Stamp (digest, schema, CLI Contract, Instance identity and ports), `[tool].min_version` — `Evaluate` / `Require` / `Decode` |
+| `internal/instance` | the Instance identity: UUID minting, validation, and the `igdev-<short-id>` namespace |
+| `internal/ports` | dynamic loopback port allocation by bind probe, and the free-port check a refresh uses |
+| `internal/consent` | the machine-global human-only Consent record: term table, load/accept, the exit-3 check |
+| `internal/runtimeassets` | the embedded Compose / Compose-env / Dockerfile templates and their deterministic render |
+| `internal/localconfig` | the checkout-local tier `.igdev/local.toml`: Gateway credentials, password generation, key-preserving writes |
+| `internal/doctor` | the host prerequisite probes and their report |
+| `internal/atomicfile` | the temp-file-plus-rename write every generated file goes through |
 | `internal/textdiff` | the unified diff every tracked write prints |
 | `internal/updater` | notice-only update check with a 24 h XDG cache |
 | `internal/semver` | version ordering used by the notice |
@@ -100,10 +110,12 @@ errors on stderr.
 Exit levels: `0` success, `1` command failure (the `code` says how), `2` usage
 error, `3` human action required. Codes are namespaced `IGDEV_E_*`; `igdev` emits
 `IGDEV_E_USAGE`, `IGDEV_E_MISSING_ARGUMENT`, `IGDEV_E_CONFIG_INVALID`,
-`IGDEV_E_INTERNAL` (ticket 01) and, from the Gate (ticket 02),
+`IGDEV_E_INTERNAL` (ticket 01), from the Gate (ticket 02)
 `IGDEV_E_NOT_INITIALIZED`, `IGDEV_E_SETUP_REQUIRED`, `IGDEV_E_SETUP_STALE`,
-`IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED`, `IGDEV_E_VERSION_UNSUPPORTED`. A typo in a
-`--config` flag is a usage error (the invocation was wrong); a value igdev read from
+`IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED`, `IGDEV_E_VERSION_UNSUPPORTED`, and from the
+Checkout Setup (ticket 03) `IGDEV_E_CONSENT_REQUIRED` (exit 3: a person must accept a
+legal term) and `IGDEV_E_PORT_ALLOC` (the host refused three loopback binds). A typo in
+a `--config` flag is a usage error (the invocation was wrong); a value igdev read from
 a tier is `IGDEV_E_CONFIG_INVALID` (machine or project state is wrong). `contract` is
 the CLI Contract Version and bumps only when the envelope, codes, or exit levels
 break — never alongside release semver.
@@ -125,8 +137,10 @@ state it.
 `ok: true` with `initialized: false`; inside one it reports the discovered root, the
 contract's declared schema version, whether this CLI supports that schema
 (`contract.schema_supported`), the Contract Digest, and the Checkout Setup's
-`setup.stamp_state` (`required` / `current` / `stale`) — plus every config key with
-the tier that won. status reports the Gate's verdict, it never enforces it.
+`setup.stamp_state` (`required` / `current` / `stale`) — plus the Instance the record
+names (`setup.instance_id`, `setup.namespace`, `setup.ports`), the machine Consent term
+by term (`consent`), and every config key with the tier that won. status reports the
+Gate's verdict, it never enforces it.
 
 ## The Project Contract and the Gate
 
@@ -147,16 +161,92 @@ merges: a flag overrides the value it names and everything else the file holds i
 preserved; an empty value (`--modules ""`) clears a field.
 
 The Contract Digest is `sha256:` over the contract bytes. `.igdev/setup.json` holds
-the Setup Stamp — the digest, the contract schema version, the CLI Contract Version —
-and the Gate compares it before any project command does work: no record is
+the Setup Stamp — the digest, the contract schema version, the CLI Contract Version,
+the Instance identity and its ports, and when the Instance was created — and the Gate
+compares its stamp fields before any project command does work: no record is
 `IGDEV_E_SETUP_REQUIRED`, a moved digest or stamp field is `IGDEV_E_SETUP_STALE`
-(both remediate with `igdev setup`, which materializes the checkout in ticket 09),
+(both remediate with `igdev setup`, which materializes the checkout),
 a schema above v1 is `IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED` (never partially parsed,
 never auto-downgraded), and a contract requiring a newer igdev than the running one
 is `IGDEV_E_VERSION_UNSUPPORTED`. `init` and `setup` are the repair paths and run
 whatever the contract says, so re-running `init` always brings a hand-edited,
 malformed, or future-schema contract back into a shape igdev speaks — with the diff
 as the review of what that cost.
+
+## The Checkout Setup
+
+`igdev setup` materializes the checkout. It is a Gate repair path: a missing or stale
+Setup Stamp is what it exists to clear, while everything else the Gate refuses — no
+contract, an unsupported schema, a contract this CLI is too old for — still stops it.
+A refused run writes nothing; the record is written last, so a run that dies part way
+leaves the old stamp and setup simply runs again.
+
+```
+.igdev/
+  setup.json            the Setup Stamp (0600): instance_id, digest, schema, CLI
+                        contract, ports, created_at
+  local.toml            checkout-local tier (0600): Gateway admin credentials
+  runtime/              the materialized build context
+    compose.yaml        the Instance's Compose file
+    compose.env         the environment docker compose reads with --env-file
+    Dockerfile          the Instance image, FROM the Ignition version in the contract
+  modules/              staged Private Modules, mounted into the Gateway
+  restore/              Baseline restore path, mounted read-only
+```
+
+**Instance identity.** `instance_id` is a random UUID v4 minted at first setup from
+`crypto/rand`. It is never derived from the checkout path and never regenerated, so
+moving a directory keeps the Instance and two worktrees of one repository are two
+Instances. The Docker namespace is `igdev-<first 8 hex of the UUID>`, which names the
+Compose project, the Gateway container, and the image.
+
+**Ports.** The triplet (HTTP, HTTPS, debug) is allocated by bind probe: igdev asks the
+kernel for three free loopback ports (`127.0.0.1:0`), holding each listener open until
+all three are chosen so they are distinct. Re-running setup keeps the recorded triplet
+when all three ports are still free, and re-allocates when any of them was taken — the
+record is never allowed to describe a collision. Ports live in the record and in
+`.igdev/local.toml`, never in the tracked contract, and nothing may assume 8088
+(ADR 0003). A hand-edited `local.toml` keeps every line igdev does not own: setup
+writes the two credential keys and preserves the rest, including any port pin.
+
+**Materialization.** The Compose file, the Compose environment, and the Dockerfile come
+from templates embedded in the binary (`internal/runtimeassets`), rendered into
+`.igdev/runtime/`. Rendering is a pure function of the Instance identity, the ports,
+and the contract: no timestamp, no random value, and no path outside that input reaches
+a rendered file, so identical inputs are byte-identical and a second setup on a current
+checkout re-materializes nothing. Every referenced host path is absolute, the build
+context is `.igdev/runtime/` itself, and staged modules and the Baseline restore
+directory are mounted — so the repository contributes no Docker input of its own and
+never needs a `.dockerignore`.
+
+**Credentials.** setup generates the Gateway admin password (24 characters from a
+printable, quote-safe alphabet, `crypto/rand`) or takes `IGDEV_GATEWAY_ADMIN_PASSWORD`
+(the `--admin-password` flag wins, then the environment, then what the checkout
+already holds). It is written to `.igdev/local.toml` mode 0600 and never printed: not
+in the JSON envelope, not on stdout, not on stderr. `igdev gateway credentials --json`
+(ticket 11) will be the only way to read it back out. The rendered runtime files carry
+no secret at all — the Compose environment only *references* the credential variables,
+which the igdev process supplies at `gateway up` time.
+
+**Consent.** The record is machine-global: `~/.config/igdev/accepted.toml`, keyed by
+term (`ignition-eula`, `module-license`, `module-cert`) and holding when each was
+accepted and by which CLI. Only a human-invoked command writes it — `igdev setup
+--accept-eula` today — and a missing term stops the run with `IGDEV_E_CONSENT_REQUIRED`
+at exit level 3, naming the exact command in Remediation. Consent is checked before
+anything is written, so a refused setup leaves the tree untouched. Re-accepting on a
+machine that already consented is a successful no-op: the first acceptance is the
+legal fact, so its timestamp does not move.
+
+## Host prerequisites
+
+`igdev doctor` audits the host read-only and never fails: the exit level stays 0 and
+the audit is the payload, so an agent reads the report rather than an error string.
+Each prerequisite is reported with the exact probe, whether it is required, and either
+the version line the tool printed or the reason there is none (`missing` when it is not
+on PATH, `failed` when it is but printed no version). docker and its Compose plugin
+(the Gateway) and a JVM (the Jython check) are required; Gradle is optional because a
+project only needs it when its contract declares a Gradle command. `data.ready` is
+false when a required prerequisite is not present.
 
 ## Update notice
 
@@ -189,7 +279,9 @@ S1 is the compiled binary's process boundary. Behaviour tests live in `itest/` a
 run the real `igdev` through `internal/testrig`; they never import `internal/cli`
 and call it in-process. The only in-process unit tests are for pure functions
 (`internal/config`, `internal/contract`, `internal/project`, `internal/gate`,
-`internal/semver`, `internal/textdiff`). Do not add a new seam: if a behaviour cannot
+`internal/semver`, `internal/textdiff`, `internal/instance`, `internal/ports`,
+`internal/consent`, `internal/localconfig`, `internal/runtimeassets`,
+`internal/doctor`). Do not add a new seam: if a behaviour cannot
 be observed from argv, exit level, stdout, stderr, the filesystem, or the shim's call
 log, it is not yet a testable requirement.
 
@@ -200,8 +292,8 @@ env := testrig.NewEnv(t)              // scratch root: HOME, TMPDIR, shim PATH; 
 root := env.Project("repo", contract) // writes repo/igdev.toml, returns the absolute dir
 env.LocalConfig(root, "…")            // .igdev/local.toml tier
 env.SetupRecord(root, "…")            // .igdev/setup.json record
-env.SetupStamp("repo", contractPath)  // a Setup Stamp current for that contract (ticket 09 owns the real writer)
-env.ShimDocker()                      // PATH shim; returns nothing, records to state/docker-calls.jsonl
+env.SetupStamp("repo", contractPath)  // a Setup Stamp current for that contract (the CLI writes the real one)
+env.ShimDocker()                      // PATH shim; returns the call-log path, records to state/docker-calls.jsonl
 res := env.RunIn(root, "status", "--json")
 res := env.Run(testrig.Run{Args: …, Dir: …, Env: []string{"K=V"}, SampleRSS: true, Stdin: "…"})
 env.MustRun("version")                // fails the test if the process could not launch
@@ -210,6 +302,8 @@ testrig.WantCode(t, testrig.Envelope(t, res.Stdout), contract.CodeUsage)
 testrig.Status(t, res.Stdout)         // decoded status data, with ResolvedSource(key)
 env.Golden(t, "name.json", res.Stdout)
 res.AssertNoLeaks(t)                  // tree unchanged since launch, TMPDIR empty, no .tmp debris
+res.AssertNoLeaksOutside(t, roots…)   // scoped form: writes inside roots are expected, anywhere else leaks
+env.ChangesOutside(base, roots…)      // the same scoping, for tests that assert the exact change set
 env.AssertNoDockerCalls(t)            // status/startup must stay off the engine
 env.AssertNoDockerOrphans(t)          // created objects were all removed
 server := testrig.ServeLatestRelease(t, "v9.9.9"); env.PointAt(server); server.Hits()
@@ -222,7 +316,11 @@ testrig.RunScriptIn(root, env, "packaging/package.sh", version)
 `Result` carries `Exit`, `Stdout`, `Stderr`, `Duration`, `PeakRSSKB`, `Samples`.
 `env.Snapshot()` fingerprints content and mode, so `AssertNoLeaks` sees additions,
 modifications (including a chmod), and removals; `env.Changes(base)` returns the
-typed diff. `env.DockerOrphans()` tallies by object identity (`--name`, or the
+typed diff. A command that is *expected* to write (setup writes the Checkout Setup and
+the Consent record) is held to `AssertNoLeaksOutside(base, roots…)`: anything outside
+the fixture and the scratch HOME still fails, TMPDIR still has to be empty, and the
+test asserts the exact added set separately.
+`env.DockerOrphans()` tallies by object identity (`--name`, or the
 container id the shim echoes), so creating one object and removing another still
 counts as a leak, and `run --rm` is not one. The
 base environment is deliberately minimal: `HOME`, `TMPDIR`, `PATH` (shim dir first,
@@ -263,8 +361,9 @@ fault: never call `os.Exit` and never write to stdout from a helper.
 
 A command that reads or mutates project state calls `gate.Require(a.gateInput(found))`
 first and returns the fault unchanged; `init` and `setup` are the repair paths and do
-not. Ticket 08 exercises `Require` in `internal/gate` and freezes its refusal
-envelopes in `itest/gate_test.go`; ticket 09 wires the first consumer.
+not. Ticket 09 wires no enforcing consumer yet: the pipeline commands (ticket 11) are
+the first that must pass the Gate, so ticket 08 still exercises `Require` and freezes
+its refusal envelopes in `itest/gate_test.go`.
 
 ### Adding a config key
 
@@ -273,19 +372,24 @@ and description. It is immediately resolvable from every tier, reported by
 `igdev status --json`, and settable by tests through `testrig.EnvFor(path)`.
 `internal/testrig` maps the same schema, so nothing has to be kept in sync by hand.
 
-## Deliberate limits of tickets 01-02
+## Deliberate limits of tickets 01-03
 
 Ticket 01: the walking skeleton — install, `status`, `version`, help, completion, the
 five-tier resolver, the Gate's discovery stage, and the resource/hygiene gates.
 Ticket 02: the Project Contract (`init` reads, validates, renders, and diffs
 `igdev.toml`; the Gate checks schema and Setup Stamp).
+Ticket 03: the Checkout Setup (`setup` mints the Instance identity, allocates the ports,
+materializes the runtime from the embedded templates, records the machine-global
+Consent, and writes the admin credential; `doctor` audits the host).
 
-No `setup` and no Checkout Setup materialization (ticket 09), no Consent (ticket 03),
-no ports, no Capacity Gate, no Docker, no gateway control (ticket 04), no Wizard
-prompts (ticket 10), no AGENTS.md managed block, no catalogs, and no gated verb yet:
-ticket 08 exercises the Gate's enforcement through `internal/gate` and freezes its
-refusal envelopes in `itest/gate_test.go`, because the first commands that must pass
-it arrive with those later tickets. The repository is not yet dogfooding its own
-`igdev.toml`; that arrives with the conversion in ticket 13. Until then the root
-`README.md` documents the legacy `devctl` foundation and `AGENTS.md` its command
-contract; this file is the igdev reference.
+No Capacity Gate yet (it attaches where a Gateway starts, ticket 10), no Docker
+lifecycle (`gateway up|down|wait|status|logs`, ticket 10), no `gateway credentials`
+(ticket 11), no Baseline commands (ticket 11), no module commands and therefore no
+module-license or module-certificate acceptance path (ticket 12), no Jython download
+(setup materializes state only), no Wizard prompts (ticket 16), no AGENTS.md managed
+block, no catalogs, and no gated verb yet: ticket 08 exercises the Gate's enforcement
+through `internal/gate` and freezes its refusal envelopes in `itest/gate_test.go`,
+because the first commands that must pass it arrive with the pipeline tickets. The
+repository is not yet dogfooding its own `igdev.toml`; that arrives with the conversion
+in ticket 13. Until then the root `README.md` documents the legacy `devctl` foundation
+and `AGENTS.md` its command contract; this file is the igdev reference.

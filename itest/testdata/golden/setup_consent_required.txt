@@ -1,0 +1,2 @@
+[igdev] ERROR IGDEV_E_CONSENT_REQUIRED: Ignition EULA has not been accepted on this machine (Consent record: <HOME>/.config/igdev/accepted.toml)
+[igdev]   fix: igdev setup --accept-eula  (a person must accept Ignition EULA once per machine: the Gateway image refuses to start without it (agents may never accept on a human's behalf, ADR 0004))

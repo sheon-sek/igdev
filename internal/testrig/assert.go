@@ -101,7 +101,23 @@ type StatusData struct {
 		Present    bool   `json:"present"`
 		Path       string `json:"path"`
 		StampState string `json:"stamp_state"`
+		InstanceID string `json:"instance_id"`
+		Namespace  string `json:"namespace"`
+		Ports      *struct {
+			HTTP  int `json:"http"`
+			HTTPS int `json:"https"`
+			Debug int `json:"debug"`
+		} `json:"ports"`
 	} `json:"setup"`
+	Consent struct {
+		Path  string `json:"path"`
+		Terms []struct {
+			ID         string `json:"id"`
+			Accepted   bool   `json:"accepted"`
+			AcceptedAt string `json:"accepted_at"`
+			CLIVersion string `json:"cli_version"`
+		} `json:"terms"`
+	} `json:"consent"`
 	Config struct {
 		TierFiles map[string]string `json:"tier_files"`
 		Resolved  []struct {

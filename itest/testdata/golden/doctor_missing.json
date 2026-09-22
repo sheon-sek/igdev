@@ -1,0 +1,44 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "ready": false,
+    "prerequisites": [
+      {
+        "name": "docker",
+        "command": "docker --version",
+        "required": true,
+        "state": "missing",
+        "version": "",
+        "error": "docker is not on PATH"
+      },
+      {
+        "name": "compose",
+        "command": "docker compose version",
+        "required": true,
+        "state": "missing",
+        "version": "",
+        "error": "docker is not on PATH"
+      },
+      {
+        "name": "java",
+        "command": "java --version",
+        "required": true,
+        "state": "missing",
+        "version": "",
+        "error": "java is not on PATH"
+      },
+      {
+        "name": "gradle",
+        "command": "gradle --version",
+        "required": false,
+        "state": "missing",
+        "version": "",
+        "error": "gradle is not on PATH"
+      }
+    ]
+  }
+}

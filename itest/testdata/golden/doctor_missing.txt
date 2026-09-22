@@ -1,0 +1,5 @@
+host:  not ready (a required prerequisite is missing)
+  docker   required missing  docker is not on PATH
+  compose  required missing  docker is not on PATH
+  java     required missing  java is not on PATH
+  gradle   optional missing  gradle is not on PATH

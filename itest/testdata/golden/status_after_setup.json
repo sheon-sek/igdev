@@ -7,30 +7,34 @@
   "data": {
     "initialized": true,
     "project_root": "<ROOT>/repo",
-    "working_dir": "<ROOT>/repo/src/main/python",
+    "working_dir": "<ROOT>/repo",
     "contract": {
       "path": "<ROOT>/repo/igdev.toml",
       "present": true,
       "schema_version": 1,
       "schema_supported": true,
-      "digest": "sha256:aa9852b3982900a01be7c90695b30b6eb4fd6673bd2975d5a417f0b0dbab55aa"
+      "digest": "sha256:a32217ae0353d26ea41813462a40a4811c8136a42ef0947c14b370c8214c719c"
     },
     "setup": {
-      "present": false,
+      "present": true,
       "path": "<ROOT>/repo/.igdev/setup.json",
-      "stamp_state": "required",
-      "instance_id": "",
-      "namespace": "",
-      "ports": null
+      "stamp_state": "current",
+      "instance_id": "<INSTANCE_ID>",
+      "namespace": "igdev-<SHORT_ID>",
+      "ports": {
+        "http": <PORT_HTTP>,
+        "https": <PORT_HTTPS>,
+        "debug": <PORT_DEBUG>
+      }
     },
     "consent": {
       "path": "<HOME>/.config/igdev/accepted.toml",
       "terms": [
         {
           "id": "ignition-eula",
-          "accepted": false,
-          "accepted_at": "",
-          "cli_version": ""
+          "accepted": true,
+          "accepted_at": "<ACCEPTED_AT:ignition-eula>",
+          "cli_version": "0.1.0"
         },
         {
           "id": "module-license",
@@ -48,12 +52,13 @@
     },
     "config": {
       "tier_files": {
-        "contract": "<ROOT>/repo/igdev.toml"
+        "contract": "<ROOT>/repo/igdev.toml",
+        "local": "<ROOT>/repo/.igdev/local.toml"
       },
       "resolved": [
         {
           "key": "ignition.version",
-          "value": "8.1.21",
+          "value": "8.3.8",
           "source": "contract"
         },
         {

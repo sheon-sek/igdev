@@ -1,0 +1,73 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "instance_id": "<INSTANCE_ID>",
+    "namespace": "igdev-<SHORT_ID>",
+    "ports": {
+      "http": <PORT_HTTP>,
+      "https": <PORT_HTTPS>,
+      "debug": <PORT_DEBUG>
+    },
+    "setup_path": "<ROOT>/repo/.igdev/setup.json",
+    "consent_accepted": [],
+    "credentials": {
+      "path": "<ROOT>/repo/.igdev/local.toml",
+      "source": "existing",
+      "username": "admin"
+    },
+    "files": [
+      {
+        "path": "<ROOT>/repo/.igdev/runtime",
+        "kind": "dir",
+        "action": "unchanged",
+        "mode": "0755"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/modules",
+        "kind": "dir",
+        "action": "unchanged",
+        "mode": "0755"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/restore",
+        "kind": "dir",
+        "action": "unchanged",
+        "mode": "0755"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/runtime/compose.yaml",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/runtime/compose.env",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/runtime/Dockerfile",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/local.toml",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0600"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/setup.json",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0600"
+      }
+    ]
+  }
+}

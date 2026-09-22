@@ -130,6 +130,20 @@ func (a *App) resolvedForInit(found project.Found) (*config.Resolution, error) {
 	return config.Resolve(in)
 }
 
+// resolvedForSetup resolves the config tiers for `igdev setup`. setup writes the
+// checkout-local tier, so a .igdev/local.toml that fails to parse is dropped for
+// this resolution and rewritten by the command itself; the contract tier still
+// fails, because setup does not own that file.
+func (a *App) resolvedForSetup(found project.Found) (*config.Resolution, error) {
+	in := a.configInput(found)
+	res, err := config.Resolve(in)
+	if err == nil || len(in.LocalTOML) == 0 {
+		return res, err
+	}
+	in.LocalTOML, in.LocalPath = nil, ""
+	return config.Resolve(in)
+}
+
 // gateInput assembles the Gate's input from what discovery already read, so a
 // command pays for reading the contract and the Checkout Setup record once.
 func (a *App) gateInput(found project.Found) gate.Input {

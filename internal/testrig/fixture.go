@@ -176,6 +176,52 @@ type Change struct {
 	Path string
 }
 
+// ChangesOutside lists the changes whose path is not under any of roots.
+//
+// It is how the no-litter rule stays meaningful for a run that is allowed to
+// write in known places — a Checkout Setup inside the fixture, a Consent record
+// inside the scratch HOME — while a write anywhere else still fails the test.
+// roots may be absolute or scratch-relative.
+func (e *Env) ChangesOutside(base Snapshot, roots ...string) []Change {
+	var out []Change
+	for _, change := range e.Changes(base) {
+		if !e.underAny(roots, change.Path) {
+			out = append(out, change)
+		}
+	}
+	return out
+}
+
+// AssertNoLeaksOutside fails when the run changed anything outside roots, or left
+// anything in TMPDIR. Everything else keeps the AssertNoLeaks guarantee.
+func (e *Env) AssertNoLeaksOutside(t *testing.T, base Snapshot, roots ...string) {
+	t.Helper()
+	if changes := e.ChangesOutside(base, roots...); len(changes) > 0 {
+		t.Errorf("run changed the scratch tree outside %v: %s", roots, formatChanges(changes))
+	}
+	e.AssertTempDirEmpty(t)
+}
+
+// underAny reports whether a snapshot path (relative to the scratch root) lies
+// inside one of the roots, which may be given as a scratch-relative or absolute
+// path.
+func (e *Env) underAny(roots []string, path string) bool {
+	for _, root := range roots {
+		want := root
+		if filepath.IsAbs(root) {
+			rel, err := filepath.Rel(e.Root, root)
+			if err != nil {
+				continue
+			}
+			want = rel
+		}
+		if path == want || strings.HasPrefix(path, want+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
 // Changes lists how the tree differs from base, sorted by path.
 func (e *Env) Changes(base Snapshot) []Change {
 	now := e.Snapshot()
@@ -242,6 +288,18 @@ func (r Result) AssertNoLeaks(t *testing.T) {
 	}
 	r.env.AssertNoLeaks(t, r.before)
 	r.env.AssertNoPartialWrites(t)
+}
+
+// AssertNoLeaksOutside is the scoped form of AssertNoLeaks: the run may have
+// written inside roots (a Checkout Setup inside the fixture, a Consent record
+// inside the scratch HOME), while anything else it changed is still a leak. TMPDIR
+// must be empty either way.
+func (r Result) AssertNoLeaksOutside(t *testing.T, roots ...string) {
+	t.Helper()
+	if r.env == nil {
+		t.Fatalf("Result was not produced by Env.Run")
+	}
+	r.env.AssertNoLeaksOutside(t, r.before, roots...)
 }
 
 // AssertNoLeaks fails when anything in the scratch tree differs from base, or

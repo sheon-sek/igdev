@@ -19,8 +19,10 @@ Usage:
 
 Available Commands:
   completion  Print the shell completion script for igdev
+  doctor      Audit the host prerequisites igdev's runtime work depends on
   help        Show help for a command
   init        Create or edit the Project Contract (igdev.toml)
+  setup       Materialize this checkout: Instance identity, ports, runtime files
   status      Report project, setup, and effective config state
   version     Print the CLI version and the CLI Contract Version
 

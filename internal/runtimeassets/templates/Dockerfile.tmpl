@@ -1,0 +1,10 @@
+# igdev Gateway image for Instance {{ .Namespace }} (generated; do not edit).
+#
+# The build context is {{ .RuntimeDir }} and holds nothing but this file: the
+# repository's own files never enter the image, so no .dockerignore is needed.
+# Staged private modules are mounted from {{ .ModulesDir }} at run time instead of
+# being baked into a layer, which is why this Dockerfile only pins the base image.
+ARG IGNITION_VERSION={{ .IgnitionVersion }}
+FROM inductiveautomation/ignition:${IGNITION_VERSION}
+
+USER root

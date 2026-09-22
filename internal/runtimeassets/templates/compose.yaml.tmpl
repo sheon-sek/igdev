@@ -1,0 +1,55 @@
+# igdev Compose file for Instance {{ .Namespace }} (generated; do not edit).
+#
+# Rendered by `igdev setup` from the templates embedded in the igdev binary, into
+# the disposable Checkout Setup: delete .igdev/ and run `igdev setup` again. Every
+# host path is absolute, so this file behaves the same from any working directory.
+#
+# The build context is the runtime directory next to this file
+# ({{ .RuntimeDir }}), which holds
+# nothing but the Dockerfile: the repository's own files never enter the image and
+# no .dockerignore is ever edited. Secrets are absent on purpose — the Gateway
+# admin credentials live in .igdev/local.toml (mode 0600) and reach Compose from
+# the igdev process environment, so this file holds nothing worth leaking.
+name: {{ .Namespace }}
+
+services:
+  gateway:
+    build:
+      context: {{ .RuntimeDir }}
+      dockerfile: {{ .DockerfileFileName }}
+      args:
+        IGNITION_VERSION: {{ quote .IgnitionVersion }}
+    image: {{ .Namespace }}:{{ .IgnitionVersion }}
+    ports:
+      - "{{ .BindAddress }}:{{ .Ports.HTTP }}:8088"
+      - "{{ .BindAddress }}:{{ .Ports.HTTPS }}:8043"
+      - "{{ .BindAddress }}:{{ .Ports.Debug }}:8000"
+    volumes:
+      - {{ .ModulesDir }}:/usr/local/bin/ignition/user-lib/modules
+      - {{ .RestoreDir }}:/restore:ro
+      - gateway-data:/usr/local/bin/ignition/data
+    environment:
+      ACCEPT_IGNITION_EULA: ${ACCEPT_IGNITION_EULA:-Y}
+      ACCEPT_MODULE_CERTS: ${ACCEPT_MODULE_CERTS:-}
+      ACCEPT_MODULE_LICENSES: ${ACCEPT_MODULE_LICENSES:-}
+      GATEWAY_ADMIN_USERNAME: ${GATEWAY_ADMIN_USERNAME}
+      GATEWAY_ADMIN_PASSWORD: ${GATEWAY_ADMIN_PASSWORD}
+      IGNITION_EDITION: {{ quote .Edition }}
+      GATEWAY_MODULES_ENABLED: {{ quote .ModuleList }}
+      TZ: {{ quote .Timezone }}
+    command: >-
+      -n {{ .Namespace }}
+      -m {{ .MemoryMB }}
+      -a localhost
+      -h 8088
+      -s 8043
+      --
+      -Dignition.allowunsignedmodules=${IGNITION_ALLOW_UNSIGNED_MODULES:-false}
+    restart: unless-stopped
+    logging:
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+volumes:
+  gateway-data:

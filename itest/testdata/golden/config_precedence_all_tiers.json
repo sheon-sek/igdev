@@ -18,7 +18,33 @@
     "setup": {
       "present": false,
       "path": "<ROOT>/repo/.igdev/setup.json",
-      "stamp_state": "required"
+      "stamp_state": "required",
+      "instance_id": "",
+      "namespace": "",
+      "ports": null
+    },
+    "consent": {
+      "path": "<HOME>/.config/igdev/accepted.toml",
+      "terms": [
+        {
+          "id": "ignition-eula",
+          "accepted": false,
+          "accepted_at": "",
+          "cli_version": ""
+        },
+        {
+          "id": "module-license",
+          "accepted": false,
+          "accepted_at": "",
+          "cli_version": ""
+        },
+        {
+          "id": "module-cert",
+          "accepted": false,
+          "accepted_at": "",
+          "cli_version": ""
+        }
+      ]
     },
     "config": {
       "tier_files": {
