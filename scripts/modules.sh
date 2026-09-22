@@ -121,12 +121,23 @@ cap_modules(){
 	[[ "$c" == com.* ]]&&{ printf '%s\n' "$c"; return; }
 	r="$(rest_module "$c" 2>/dev/null)"&&{ printf '%s\n' "$r"; return; }
 
-	# Built-in system.* calls must exist in the exact Ignition 8.3 Gateway-scope catalog.
-	# The catalog also owns their module dependency classification, so an unrecognized
-	# function can never be mistaken for a platform function or silently ignored.
+	# system.* calls are validated against the exact Ignition 8.3 Gateway catalog.
 	if [[ "$c" == system.* ]]; then
 		rec="$(native_function_record "$c")"; [[ -n "$rec" ]] || return 1
-		IFS=
+		IFS=$'\t' read -r fn cls mods note <<< "$rec"
+		[[ "$mods" == "-" ]] && return 0
+		printf '%s\n' "$mods"
+		return 0
+	fi
+
+	# Project-specific non-system aliases remain data-driven.
+	while IFS=$'\t' read -r kind pat mods desc; do
+		[[ -n "$kind" && "$kind" != \#* ]]||continue
+		[[ "$kind" == exact && "$c" == "$pat" ]]&&{ printf '%s\n' "$mods"; return; }
+		[[ "$kind" == prefix && "$c" == "$pat"* ]]&&{ printf '%s\n' "$mods"; return; }
+	done < "$(capability_catalog_file)"
+	return 1
+}
 module_ready(){
 	local id="$1"
 	enabled "$id" || { printf 'not enabled by GATEWAY_MODULES_ENABLED'; return 1; }
@@ -217,220 +228,7 @@ scan_paths(){
 		count=$((count+1)); require_one "$c"||fail=1
 	done < "$t"
 	rm -f "$t"
-	((count))&&log "Checked $count module-dependent capability reference(s)"
-	return "$fail"
-}
-
-cmd_module(){
-	local a="${1:-}"; shift||true
-	case "$a" in
-	add)
-		(($#==1))||die 'Usage: ./devctl module add <file.modl>'; need jar
-		local info id name ver; info="$(modl_info "$1")"||die "Could not read module.xml from $1"
-		IFS=$'\t' read -r id name ver <<< "$info"; mkdir -p "$PRIVATE_MODULE_DIR"; cp -f "$1" "$PRIVATE_MODULE_DIR/"; stage_modules
-		log "Added $name $ver ($id) from $(basename "$1")" ;;
-	list)
-		[[ $# -le 1 ]]||die 'Usage: ./devctl module list [--private|--built-in]'
-		case "${1:-}" in
-		'') echo 'Built-in modules effective for this environment:'; print_enabled_builtin; echo; echo 'Private / third-party modules:'; print_private ;;
-		--built-in) echo 'Built-in modules effective for this environment:'; print_enabled_builtin ;;
-		--private) echo 'Private / third-party modules:'; print_private ;;
-		*) die "Unknown module list option: $1" ;; esac ;;
-	catalog) print_builtin_catalog ;;
-	require) (($#))||die 'Usage: ./devctl module require <capability> [...]'; local c rc=0; for c in "$@"; do require_one "$c"||rc=1; done; return "$rc" ;;
-	scan) scan_paths "$@" ;;
-	validate) validate_modules ;;
-	enable) enable_ids "$@" ;;
-	cache-path) module_cache_path ;;
-	clear) mkdir -p "$PRIVATE_MODULE_DIR"; find "$PRIVATE_MODULE_DIR" -maxdepth 1 -type f -name '*.modl' -delete; stage_modules; log 'Cleared checkout-local modules' ;;
-	*) die "Unknown module action: ${a:-<none>}" ;;
-	esac
-}
-\t' read -r fn cls mods note <<< "$rec"
-		[[ "$mods" == "-" ]] && return 0
-		printf '%s\n' "$mods"
-		return 0
-	fi
-
-	# Non-system aliases can still be extended without changing the command engine.
-	while IFS=
-module_ready(){
-	local id="$1"
-	enabled "$id" || { printf 'not enabled by GATEWAY_MODULES_ENABLED'; return 1; }
-	is_builtin "$id"&&return 0
-	private_has "$id"||{ printf 'no matching .modl artifact found'; return 1; }
-}
-require_one(){
-	local c="$1" mods id why fail=0 old="$IFS"
-	mods="$(cap_modules "$c")"||{ echo "[module-preflight] UNKNOWN: no mapping for $c" >&2; return 2; }
-	IFS=',' read -r -a ids <<< "$mods"; IFS="$old"
-	for id in "${ids[@]}"; do
-		id="$(trim "$id")"
-		if why="$(module_ready "$id")"; then echo "[module-preflight] OK: $c -> $id"
-		else echo "[module-preflight] ERROR: $c requires $id ($why)" >&2; fail=1; fi
-	done
-	if ((fail)); then
-		echo "[module-preflight] Fix: ./devctl module enable ${mods//,/ }" >&2
-		for id in "${ids[@]}"; do id="$(trim "$id")"; is_builtin "$id"||private_has "$id"||echo "[module-preflight] Add artifact: ./devctl module add /path/to/module.modl" >&2; done
-		return 1
-	fi
-}
-enable_ids(){
-	(($#))||die 'Usage: ./devctl module enable <module-id> [...]'
-	[[ -f "$ROOT_DIR/.env" ]]||cp "$ROOT_DIR/.env.example" "$ROOT_DIR/.env"
-	load_config; local cur="$GATEWAY_MODULES_ENABLED" id changed=0
-	[[ -z "$cur" ]]&&{ log 'Module whitelist is empty; modules are already unrestricted.'; return; }
-	for id in "$@"; do csv_has "$cur" "$id"&&continue; cur="$cur,$id"; changed=1; done
-	((changed))||{ log 'Requested modules are already enabled.'; return; }
-	sed -i.bak "s#^GATEWAY_MODULES_ENABLED=.*#GATEWAY_MODULES_ENABLED=$cur#" "$ROOT_DIR/.env"; rm -f "$ROOT_DIR/.env.bak"
-	log 'Updated .env; use ./devctl gateway reset before runtime verification.'
-}
-validate_modules(){
-	load_config; local fail=0 id old="$IFS"
-	if [[ -n "$GATEWAY_MODULES_ENABLED" ]]; then
-		IFS=',' read -r -a ids <<< "$GATEWAY_MODULES_ENABLED"; IFS="$old"
-		for id in "${ids[@]}"; do
-			id="$(trim "$id")"
-			if ! is_builtin "$id" && ! private_has "$id"; then echo "[module-preflight] ERROR: $id is enabled but its .modl is missing." >&2; fail=1; fi
-			if [[ "$id" == com.inductiveautomation.opcua.drivers.* ]]&&!csv_has "$GATEWAY_MODULES_ENABLED" com.inductiveautomation.opcua; then
-				echo "[module-preflight] ERROR: $id requires com.inductiveautomation.opcua." >&2; fail=1
-			fi
-		done
-	fi
-	((fail==0))&&log 'Module configuration preflight passed'
-	return "$fail"
-}
-scan_file_capabilities(){
-	local f="$1" out="$2"
-	grep -Eo 'system\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*' "$f" 2>/dev/null >>"$out"||true
-	grep -Eo '/data/api/v1/resources(/[A-Za-z0-9._~%:-]+)+' "$f" 2>/dev/null >>"$out"||true
-}
-scan_paths(){
-	(($#))||die 'Usage: ./devctl module scan <file|dir> [...]'
-	local t="$(mktemp)" p f c mods fail=0 count=0
-	for p in "$@"; do
-		[[ -e "$p" ]]||{ warn "Module scan path missing: $p"; continue; }
-		if [[ -f "$p" ]]; then
-			scan_file_capabilities "$p" "$t"
-		else
-			while IFS= read -r -d '' f; do
-				scan_file_capabilities "$f" "$t"
-			done < <(find "$p" -type f \( -name '*.py' -o -name '*.json' -o -name '*.js' -o -name '*.ts' -o -name '*.tsx' -o -name '*.java' -o -name '*.kt' -o -name '*.sh' \) -print0)
-		fi
-	done
-	sort -u "$t" -o "$t"
-	while IFS= read -r c; do
-		mods="$(cap_modules "$c" 2>/dev/null)"||continue
-		count=$((count+1)); require_one "$c"||fail=1
-	done < "$t"
-	rm -f "$t"
-	((count))&&log "Checked $count module-dependent capability reference(s)"
-	return "$fail"
-}
-
-cmd_module(){
-	local a="${1:-}"; shift||true
-	case "$a" in
-	add)
-		(($#==1))||die 'Usage: ./devctl module add <file.modl>'; need jar
-		local info id name ver; info="$(modl_info "$1")"||die "Could not read module.xml from $1"
-		IFS=$'\t' read -r id name ver <<< "$info"; mkdir -p "$PRIVATE_MODULE_DIR"; cp -f "$1" "$PRIVATE_MODULE_DIR/"; stage_modules
-		log "Added $name $ver ($id) from $(basename "$1")" ;;
-	list)
-		[[ $# -le 1 ]]||die 'Usage: ./devctl module list [--private|--built-in]'
-		case "${1:-}" in
-		'') echo 'Built-in modules effective for this environment:'; print_enabled_builtin; echo; echo 'Private / third-party modules:'; print_private ;;
-		--built-in) echo 'Built-in modules effective for this environment:'; print_enabled_builtin ;;
-		--private) echo 'Private / third-party modules:'; print_private ;;
-		*) die "Unknown module list option: $1" ;; esac ;;
-	catalog) print_builtin_catalog ;;
-	require) (($#))||die 'Usage: ./devctl module require <capability> [...]'; local c rc=0; for c in "$@"; do require_one "$c"||rc=1; done; return "$rc" ;;
-	scan) scan_paths "$@" ;;
-	validate) validate_modules ;;
-	enable) enable_ids "$@" ;;
-	cache-path) module_cache_path ;;
-	clear) mkdir -p "$PRIVATE_MODULE_DIR"; find "$PRIVATE_MODULE_DIR" -maxdepth 1 -type f -name '*.modl' -delete; stage_modules; log 'Cleared checkout-local modules' ;;
-	*) die "Unknown module action: ${a:-<none>}" ;;
-	esac
-}
-\t' read -r kind pat mods desc; do
-		[[ -n "$kind" && "$kind" != \#* ]]||continue
-		[[ "$kind" == exact && "$c" == "$pat" ]]&&{ printf '%s\n' "$mods"; return; }
-		[[ "$kind" == prefix && "$c" == "$pat"* ]]&&{ printf '%s\n' "$mods"; return; }
-	done < "$(capability_catalog_file)"
-	return 1
-}
-module_ready(){
-	local id="$1"
-	enabled "$id" || { printf 'not enabled by GATEWAY_MODULES_ENABLED'; return 1; }
-	is_builtin "$id"&&return 0
-	private_has "$id"||{ printf 'no matching .modl artifact found'; return 1; }
-}
-require_one(){
-	local c="$1" mods id why fail=0 old="$IFS"
-	mods="$(cap_modules "$c")"||{ echo "[module-preflight] UNKNOWN: no mapping for $c" >&2; return 2; }
-	IFS=',' read -r -a ids <<< "$mods"; IFS="$old"
-	for id in "${ids[@]}"; do
-		id="$(trim "$id")"
-		if why="$(module_ready "$id")"; then echo "[module-preflight] OK: $c -> $id"
-		else echo "[module-preflight] ERROR: $c requires $id ($why)" >&2; fail=1; fi
-	done
-	if ((fail)); then
-		echo "[module-preflight] Fix: ./devctl module enable ${mods//,/ }" >&2
-		for id in "${ids[@]}"; do id="$(trim "$id")"; is_builtin "$id"||private_has "$id"||echo "[module-preflight] Add artifact: ./devctl module add /path/to/module.modl" >&2; done
-		return 1
-	fi
-}
-enable_ids(){
-	(($#))||die 'Usage: ./devctl module enable <module-id> [...]'
-	[[ -f "$ROOT_DIR/.env" ]]||cp "$ROOT_DIR/.env.example" "$ROOT_DIR/.env"
-	load_config; local cur="$GATEWAY_MODULES_ENABLED" id changed=0
-	[[ -z "$cur" ]]&&{ log 'Module whitelist is empty; modules are already unrestricted.'; return; }
-	for id in "$@"; do csv_has "$cur" "$id"&&continue; cur="$cur,$id"; changed=1; done
-	((changed))||{ log 'Requested modules are already enabled.'; return; }
-	sed -i.bak "s#^GATEWAY_MODULES_ENABLED=.*#GATEWAY_MODULES_ENABLED=$cur#" "$ROOT_DIR/.env"; rm -f "$ROOT_DIR/.env.bak"
-	log 'Updated .env; use ./devctl gateway reset before runtime verification.'
-}
-validate_modules(){
-	load_config; local fail=0 id old="$IFS"
-	if [[ -n "$GATEWAY_MODULES_ENABLED" ]]; then
-		IFS=',' read -r -a ids <<< "$GATEWAY_MODULES_ENABLED"; IFS="$old"
-		for id in "${ids[@]}"; do
-			id="$(trim "$id")"
-			if ! is_builtin "$id" && ! private_has "$id"; then echo "[module-preflight] ERROR: $id is enabled but its .modl is missing." >&2; fail=1; fi
-			if [[ "$id" == com.inductiveautomation.opcua.drivers.* ]]&&!csv_has "$GATEWAY_MODULES_ENABLED" com.inductiveautomation.opcua; then
-				echo "[module-preflight] ERROR: $id requires com.inductiveautomation.opcua." >&2; fail=1
-			fi
-		done
-	fi
-	((fail==0))&&log 'Module configuration preflight passed'
-	return "$fail"
-}
-scan_file_capabilities(){
-	local f="$1" out="$2"
-	grep -Eo 'system\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*' "$f" 2>/dev/null >>"$out"||true
-	grep -Eo '/data/api/v1/resources(/[A-Za-z0-9._~%:-]+)+' "$f" 2>/dev/null >>"$out"||true
-}
-scan_paths(){
-	(($#))||die 'Usage: ./devctl module scan <file|dir> [...]'
-	local t="$(mktemp)" p f c mods fail=0 count=0
-	for p in "$@"; do
-		[[ -e "$p" ]]||{ warn "Module scan path missing: $p"; continue; }
-		if [[ -f "$p" ]]; then
-			scan_file_capabilities "$p" "$t"
-		else
-			while IFS= read -r -d '' f; do
-				scan_file_capabilities "$f" "$t"
-			done < <(find "$p" -type f \( -name '*.py' -o -name '*.json' -o -name '*.js' -o -name '*.ts' -o -name '*.tsx' -o -name '*.java' -o -name '*.kt' -o -name '*.sh' \) -print0)
-		fi
-	done
-	sort -u "$t" -o "$t"
-	while IFS= read -r c; do
-		mods="$(cap_modules "$c" 2>/dev/null)"||continue
-		count=$((count+1)); require_one "$c"||fail=1
-	done < "$t"
-	rm -f "$t"
-	((count))&&log "Checked $count module-dependent capability reference(s)"
+	((count))&&log "Checked $count native/module-dependent capability reference(s)"
 	return "$fail"
 }
 
