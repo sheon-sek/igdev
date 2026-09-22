@@ -37,7 +37,7 @@ jobs:
     env:
       IGNITION_VERSION: ${{ github.event.inputs.ignition_version || '8.3.8' }}
       WAIT_TIMEOUT: ${{ github.event.inputs.wait_timeout || '420' }}
-      CHECKOUT: ${{ runner.temp }}/e2e-checkout
+      CHECKOUT: ${{ github.workspace }}/e2e-checkout
     steps:
       - uses: actions/checkout@v4
 
