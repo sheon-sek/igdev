@@ -67,6 +67,11 @@ cmd_versions() {
 cmd_self_test() {
   bash -n "$ROOT_DIR/devctl" "$ROOT_DIR/scripts/lib.sh" "$ROOT_DIR/scripts/modules.sh" "$ROOT_DIR/scripts/commands.sh" "$ROOT_DIR/hooks/check.sh" "$ROOT_DIR/hooks/test.sh" "$ROOT_DIR/hooks/gateway-smoke.sh"
   log 'Bash syntax OK'
+  [[ "$MODULE_STAGE_DIR" == "$RUNTIME_DIR/docker/modules" ]] || die 'Docker module staging must live under .runtime/docker/modules'
+  grep -Fq 'context: .' "$ROOT_DIR/docker-compose.yml" || die 'Docker build context must be repository root'
+  grep -Fq 'dockerfile: docker/ignition/Dockerfile' "$ROOT_DIR/docker-compose.yml" || die 'Compose Dockerfile path is invalid'
+  grep -Fq 'COPY .runtime/docker/modules/' "$ROOT_DIR/docker/ignition/Dockerfile" || die 'Dockerfile is not consuming runtime module staging'
+  log 'Docker module staging boundary OK'
   local catalog
   catalog="$(builtin_catalog_file)"
   [[ -s "$catalog" ]] || die "Built-in module catalog is missing or empty: $catalog"

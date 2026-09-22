@@ -16,9 +16,10 @@ The same `devctl` command contract is intended to be used by Claude Code, Codex 
 ## State boundaries
 
 - `.env`: local configuration and secrets; never committed.
-- `.runtime/`: downloaded Jython checker, generated Compose environment, optional staged baseline backup.
-- `modules/private/`: local/private `.modl` inputs; never committed.
-- `docker/ignition/modules/`: generated Docker build context; never commit `.modl` files.
+- `.runtime/`: all disposable/generated state: downloaded Jython checker, Compose environment, optional staged baseline backup, and Docker module staging under `.runtime/docker/modules/`.
+- `modules/private/`: checkout-local/private `.modl` source inputs; never committed.
+- `.runtime/docker/modules/`: generated Docker build staging assembled from the global cache, `modules/private/`, and `PROJECT_MODULE_GLOB`; disposable and never committed.
+- `docker/ignition/`: Docker build definitions only; no generated module copies.
 - Docker named volume: warm Gateway state.
 
 A clean runtime is obtained with `./devctl gateway reset`, which removes the worktree-specific Docker volume and recreates it. If a baseline `.gwbk` is configured, it is restored only on that fresh launch.

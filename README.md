@@ -140,7 +140,7 @@ Review Inductive Automation's license, then run:
 ./devctl bootstrap --accept-eula
 ```
 
-This creates the git-ignored `.env`, downloads the configured Jython checker once, creates the runtime directories, and stages any private modules from the version-scoped cache.
+This creates the git-ignored `.env`, downloads the configured Jython checker once, creates the runtime directories, and stages private modules into the generated `.runtime/docker/modules/` Docker build input. `modules/private/` remains the checkout-local source of truth; `.runtime/` is disposable generated state.
 
 If you do not want the command to record EULA acceptance, use:
 
@@ -150,6 +150,20 @@ cp .env.example .env
 ./devctl bootstrap
 ```
 
+### Private module source vs Docker staging
+
+Private modules intentionally have a single user-facing checkout location:
+
+```text
+modules/private/                 # user-provided checkout-local source
+~/.cache/ignition-devenv/modules/<version>/   # optional reusable global source
+        ↓ ./devctl bootstrap / gateway up
+.runtime/docker/modules/         # generated disposable Docker build staging
+        ↓ docker build
+/usr/local/bin/ignition/user-lib/modules/
+```
+
+`docker/ignition/` contains only Docker build definitions. It no longer stores generated `.modl` copies. The root Docker build context is tightly constrained by `.dockerignore`, so only the Dockerfile and generated `.runtime/docker/modules/` staging are sent to the build.
 ### 3. Add the MCP EA module (when needed)
 
 The MCP `.modl` is intentionally not stored in Git. Add your local file:

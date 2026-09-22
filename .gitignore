@@ -7,7 +7,6 @@
 
 # Private / licensed Ignition modules
 modules/private/*.modl
-docker/ignition/modules/*.modl
 
 # Gateway backups
 *.gwbk
