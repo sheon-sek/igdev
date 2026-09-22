@@ -256,76 +256,57 @@ A standalone Jython pass does **not** prove that `system.tag.*`, `system.opc.*`,
 
 ## Module capability preflight
 
-A large class of Ignition failures can be rejected **before starting a Gateway**. Native scripting checks are now exact rather than namespace-only:
+A large class of Ignition failures can be rejected **before starting a Gateway**. The preflight has two independent sources of truth:
 
-- [`config/native-system-functions.tsv`](config/native-system-functions.tsv) is the Ignition **8.3 Gateway-scope** source of truth used by `devctl`. It contains 392 exact native functions across all 37 documented `system.*` namespaces, expanded from the official Ignition 8.3 System Functions reference.
-- Every catalog entry is classified as `platform`, `module`, or `conditional`, with required module IDs recorded when applicable.
-- A detected `system.*` call that is not in the Gateway catalog is an error. It is **not silently ignored**; this catches misspellings, non-Gateway functions, and version mismatches early.
-- `/data/api/v1/resources/...` paths still resolve module IDs dynamically from the `com.*` segment.
-- [`config/capability-modules.tsv`](config/capability-modules.tsv) is reserved for optional project-specific, non-`system.*` aliases so native dependencies cannot drift between two catalogs.
+- `config/native-system-functions.tsv` contains the exact Ignition **8.3 Gateway-scope** native Jython inventory: **392 functions across all 37 documented `system.*` namespaces**. Each entry is classified as `platform`, `module`, or `conditional`.
+- Versioned REST catalogs such as `config/rest-endpoints-8.3.8.tsv` are generated from a real Gateway `/openapi.json`. The checked-in 8.3.8 snapshot contains **593 path templates / 694 public HTTP operations** and records platform vs module/private-module ownership.
 
-Manual checks:
+Unknown native functions, unknown REST paths, and invalid REST METHOD/path combinations fail closed instead of being silently ignored.
 
 ```bash
-# Platform function: valid Gateway API, no optional module required
 ./devctl module require system.tag.readBlocking
-
-# Module-owned functions
 ./devctl module require system.report.executeReport
 ./devctl module require system.security.validateUser
 ./devctl module require system.roster.getRosters
-
-# Conditional device API: OPC UA base is checked; the concrete device type may
-# additionally require its driver module, which cannot be inferred from the call name
 ./devctl module require system.device.addDevice
-
-# Ignition resource API path: module ID is embedded in the path
 ./devctl module require '/data/api/v1/resources/names/com.inductiveautomation.opcua/device'
-
-# Explicit module ID escape hatch for a project-specific requirement
+./devctl module require 'GET /data/reporting/api/v1/reports/current'
+./devctl module require 'GET /data/api/v1/gateway-info'
 ./devctl module require module:com.inductiveautomation.reporting
 ```
 
-A typo or non-Gateway function now fails explicitly:
+For native Jython, platform functions are accepted without an optional module. Module-owned functions continue through `GATEWAY_MODULES_ENABLED` and, for private/third-party modules, local `.modl` artifact validation. Conditional functions such as `system.device.*` validate the statically knowable base requirement while warning that concrete runtime configuration can require additional driver modules.
 
-```text
-[module-preflight] ERROR: unknown or non-Gateway Ignition 8.3 native function: system.tag.readBlokcing
-[module-preflight] Check the function name, Gateway scope, and target Ignition version.
-```
-
-When a required module is missing from `GATEWAY_MODULES_ENABLED`, the check fails with a remediation command:
-
-```text
-[module-preflight] ERROR: system.report.executeReport requires com.inductiveautomation.reporting (not enabled by GATEWAY_MODULES_ENABLED)
-[module-preflight] Fix: ./devctl module enable com.inductiveautomation.reporting
-```
-
-For private/optional modules that are not part of the built-in Docker image catalog, preflight also requires a matching `.modl` artifact. This applies to cataloged APIs such as OPC HDA (`com.inductiveautomation.opccom`), Twilio (`com.inductiveautomation.twilio`), and SECS/GEM (`com.inductiveautomation.secsgem`). The artifact ID is read from the root `module.xml`.
-
-Validate the whole module configuration:
+For REST, concrete paths are matched against OpenAPI path templates. Platform endpoints are accepted without an extra module. Module-owned endpoints validate their required module IDs. The catalog covers Resource API routes and direct module roots including `/data/eam/...`, `/data/opc-ua/...`, `/data/perspective/...`, `/data/reporting/...`, `/data/sfc/...`, `/data/vision/...`, `/data/event-stream/...`, `/data/fsql/...`, and `/data/alarm-notification/...`. Resource namespace aliases are supported where the OpenAPI namespace differs from the Docker module ID, for example `com.inductiveautomation.sip-notification -> com.inductiveautomation.phone-notification`.
 
 ```bash
 ./devctl module validate
-```
-
-Scan source trees for native `system.*` calls and `/data/api/v1/resources/...` references:
-
-```bash
 ./devctl module scan src/ignition src/fastmcp
 ```
 
-The scanner recognizes nested native functions such as `system.historian.types.dataPoint`, validates every detected native call against the exact Gateway catalog, and then checks its module requirements.
-
-To make this automatic, configure colon-separated paths in `.env`:
+The scanner recognizes nested native APIs such as `system.historian.types.dataPoint` and all literal `/data/...` paths. A literal `METHOD /data/...` reference is checked as an exact operation; a path without a method is checked against all operations registered for that path.
 
 ```dotenv
 MODULE_REQUIREMENT_PATHS=src/ignition:src/fastmcp
 JYTHON_SOURCE_PATHS=scripts/mcp
 ```
 
-`./devctl check` runs `module validate`, then scans `MODULE_REQUIREMENT_PATHS` plus `JYTHON_SOURCE_PATHS`, and only then enters project checks/Jython compilation. The native catalog itself is also verified by `./devctl self-test` for expected function count, all 37 namespaces, duplicate entries, classification validity, representative module mappings, nested-call scanning, and unknown-function rejection.
+`./devctl check` runs module/catalog validation and capability scanning before project checks and Jython compilation.
 
-This remains a **static pre-Gateway check**. It validates the target Ignition 8.3 Gateway API inventory and configured module/artifact requirements; it does not prove that a running Gateway successfully loaded the module or that a call will succeed with a particular runtime argument. Runtime verification remains `./devctl gateway smoke` and project-specific Gateway/OpenAPI assertions.
+### Regenerating a REST catalog
+
+REST catalogs are version-specific. Generate one from the exact target Gateway OpenAPI snapshot:
+
+```bash
+python3 scripts/generate-rest-catalog.py \
+  /path/to/openapi.json \
+  --ignition-version 8.3.8 \
+  --output config/rest-endpoints-8.3.8.tsv
+```
+
+The generated catalog records the source OpenAPI SHA-256. `devctl` normally selects `config/rest-endpoints-${IGNITION_VERSION}.tsv`; `REST_ENDPOINT_CATALOG` can override that path. If the selected Ignition version has no REST catalog, REST references fail closed when scanned rather than being checked against the wrong version.
+
+These checks remain **static pre-Gateway validation**. They do not prove module runtime loading, authentication, argument validity, or behavior. Those still belong to `./devctl gateway smoke` and project-specific Gateway assertions.
 
 ## Using a deterministic Gateway baseline
 
