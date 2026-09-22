@@ -1,0 +1,11 @@
+project:   initialized
+root:      <ROOT>/repo
+contract:  <ROOT>/repo/igdev.toml (schema 1)
+setup:     missing (<ROOT>/repo/.igdev/setup.json)
+config:
+  output.format             text                                                          [default]
+  project.ignition_version  8.3.8                                                         [default]
+  updater.cache_ttl_hours   24                                                            [default]
+  updater.enabled           true                                                          [default]
+  updater.releases_api_url  https://api.github.com/repos/sheon-sek/igdev/releases/latest  [default]
+  updater.timeout_seconds   2                                                             [default]

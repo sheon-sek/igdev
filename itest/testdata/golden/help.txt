@@ -1,0 +1,30 @@
+igdev is the Ignition local-development toolchain: one global binary that
+owns the engine and the Ignition domain knowledge, while each repository keeps only a
+thin tracked Project Contract (igdev.toml) plus disposable local state in .igdev/.
+
+Lifecycle verbs: init creates the Project Contract, setup materializes this checkout.
+Every project command first passes the Gate: discover Project Root, validate contract
+schema, validate Setup Stamp, check command prerequisites.
+
+Agent usage: pass --json for the machine contract. stdout is then a single JSON
+envelope {ok, contract, code, message, remediation, data}; progress and notices go to
+stderr. Exit levels are 0 success, 1 command failure, 2 usage error, 3 human action
+required. With every argument supplied igdev runs in Silent Mode: it never prompts.
+
+Contract: 1
+
+Usage:
+  igdev [flags]
+  igdev [command]
+
+Available Commands:
+  completion  Print the shell completion script for igdev
+  help        Show help for a command
+  status      Report project, setup, and effective config state
+  version     Print the CLI version and the CLI Contract Version
+
+Flags:
+      --config stringArray   override one config key for this run, key=value (highest precedence)
+      --json                 emit the JSON envelope on stdout (machine mode)
+
+Use "igdev [command] --help" for more information about a command.

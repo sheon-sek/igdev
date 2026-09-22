@@ -1,0 +1,62 @@
+name: igdev-release
+
+# Publishing path for the CLI: a version tag builds the checksummed tarballs and
+# attaches them, together with the installer, to a GitHub Release. Distribution is
+# Releases-only and igdev never updates itself (ADR 0002).
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: package and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: false
+
+      - name: Verify the contract before publishing
+        run: go test ./... -count=1
+
+      - name: Package
+        id: package
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          packaging/package.sh "$version"
+          {
+            echo "dist=dist/$version"
+            echo "version=$version"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Checksums must verify their own artifacts
+        run: (cd "${{ steps.package.outputs.dist }}" && sha256sum --check --status checksums.txt)
+
+      - name: Smoke the packaged binary
+        run: |
+          dist="${{ steps.package.outputs.dist }}"
+          artifact="$dist/igdev-${{ steps.package.outputs.version }}-linux-amd64.tar.gz"
+          tar -xzf "$artifact" -C /tmp
+          /tmp/igdev-"${{ steps.package.outputs.version }}"-linux-amd64/igdev version --json
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: igdev ${{ steps.package.outputs.version }}
+          files: |
+            ${{ steps.package.outputs.dist }}/*.tar.gz
+            ${{ steps.package.outputs.dist }}/checksums.txt
+            packaging/install.sh

@@ -1,0 +1,2 @@
+[igdev] ERROR IGDEV_E_USAGE: igdev status: unknown flag: --nope
+[igdev]   fix: igdev help status  (show the flags this command accepts)

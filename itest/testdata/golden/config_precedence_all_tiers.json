@@ -1,0 +1,59 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "initialized": true,
+    "project_root": "<ROOT>/repo",
+    "working_dir": "<ROOT>/repo",
+    "contract": {
+      "path": "<ROOT>/repo/igdev.toml",
+      "present": true,
+      "schema_version": 1
+    },
+    "setup": {
+      "present": false,
+      "path": "<ROOT>/repo/.igdev/setup.json"
+    },
+    "config": {
+      "tier_files": {
+        "contract": "<ROOT>/repo/igdev.toml",
+        "local": "<ROOT>/repo/.igdev/local.toml"
+      },
+      "resolved": [
+        {
+          "key": "output.format",
+          "value": "json",
+          "source": "flag"
+        },
+        {
+          "key": "project.ignition_version",
+          "value": "9.9.9",
+          "source": "flag"
+        },
+        {
+          "key": "updater.cache_ttl_hours",
+          "value": 24,
+          "source": "default"
+        },
+        {
+          "key": "updater.enabled",
+          "value": true,
+          "source": "default"
+        },
+        {
+          "key": "updater.releases_api_url",
+          "value": "https://api.github.com/repos/sheon-sek/igdev/releases/latest",
+          "source": "default"
+        },
+        {
+          "key": "updater.timeout_seconds",
+          "value": 2,
+          "source": "default"
+        }
+      ]
+    }
+  }
+}

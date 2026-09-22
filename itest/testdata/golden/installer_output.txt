@@ -1,0 +1,3 @@
+igdev-install: reading checksums from <SERVER>
+igdev-install: verifying igdev-0.0.0-package-test-linux-amd64.tar.gz
+igdev-install: installed igdev 0.0.0-package-test to <HOME>/.local/bin/igdev

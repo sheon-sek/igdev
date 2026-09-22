@@ -1,0 +1,17 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_USAGE",
+  "message": "unknown command \"stat\" for \"igdev\"",
+  "remediation": [
+    {
+      "command": "igdev --help",
+      "why": "list the available commands"
+    },
+    {
+      "command": "igdev status --json",
+      "why": "safe first call: report project state as JSON"
+    }
+  ],
+  "data": {}
+}

@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "version": "0.1.0",
+    "commit": "unset",
+    "contract": "1"
+  }
+}

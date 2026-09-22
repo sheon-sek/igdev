@@ -1,0 +1,3 @@
+[igdev] ERROR IGDEV_E_USAGE: unknown command "stat" for "igdev"
+[igdev]   fix: igdev --help  (list the available commands)
+[igdev]   fix: igdev status --json  (safe first call: report project state as JSON)

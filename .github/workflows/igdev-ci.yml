@@ -1,0 +1,66 @@
+name: igdev-ci
+
+# The Go toolchain's own gate: the frozen agent contract (goldens) plus the
+# resource and hygiene gates run on every change. The legacy foundation-ci and
+# gateway-smoke workflows are untouched until ticket 13 retires the bash side.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "README.zh-CN.md"
+      - "docs/**"
+  pull_request:
+    paths-ignore:
+      - "README.zh-CN.md"
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: igdev-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: build, vet, goldens, resource gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The version in go.mod is the toolchain the project is developed with;
+      # never let a build quietly download another one.
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: false
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "these files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build -trimpath -ldflags "-s -w" -o bin/igdev ./cmd/igdev
+
+      # go test ./... includes itest: the golden suite and the startup P95,
+      # peak RSS, binary size, temp-file leak, and docker orphan gates.
+      - name: Test suite
+        run: go test ./... -count=1
+
+      - name: Report gate measurements
+        if: always()
+        run: go test ./itest/ -run 'TestGate' -v -count=1

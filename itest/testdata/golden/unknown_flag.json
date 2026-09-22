@@ -1,0 +1,13 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_USAGE",
+  "message": "igdev status: unknown flag: --nope",
+  "remediation": [
+    {
+      "command": "igdev help status",
+      "why": "show the flags this command accepts"
+    }
+  ],
+  "data": {}
+}

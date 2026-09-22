@@ -1,0 +1,13 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_USAGE",
+  "message": "unknown config key \"outpup.format\" passed with --config",
+  "remediation": [
+    {
+      "command": "igdev status --json",
+      "why": "list the config keys igdev resolves"
+    }
+  ],
+  "data": {}
+}

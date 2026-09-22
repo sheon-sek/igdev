@@ -1,0 +1,56 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "initialized": false,
+    "project_root": "",
+    "working_dir": "<ROOT>/plain",
+    "contract": {
+      "path": "",
+      "present": false,
+      "schema_version": 0
+    },
+    "setup": {
+      "present": false,
+      "path": ".igdev/setup.json"
+    },
+    "config": {
+      "tier_files": {},
+      "resolved": [
+        {
+          "key": "output.format",
+          "value": "json",
+          "source": "flag"
+        },
+        {
+          "key": "project.ignition_version",
+          "value": "8.3.8",
+          "source": "default"
+        },
+        {
+          "key": "updater.cache_ttl_hours",
+          "value": 24,
+          "source": "default"
+        },
+        {
+          "key": "updater.enabled",
+          "value": true,
+          "source": "default"
+        },
+        {
+          "key": "updater.releases_api_url",
+          "value": "https://api.github.com/repos/sheon-sek/igdev/releases/latest",
+          "source": "default"
+        },
+        {
+          "key": "updater.timeout_seconds",
+          "value": 2,
+          "source": "default"
+        }
+      ]
+    }
+  }
+}

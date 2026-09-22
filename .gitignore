@@ -18,3 +18,7 @@ modules/private/*.modl
 .DS_Store
 .vscode/
 .idea/
+
+# igdev Go toolchain build output (ticket 01)
+/bin/
+/dist/
