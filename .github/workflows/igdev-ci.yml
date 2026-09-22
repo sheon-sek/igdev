@@ -86,8 +86,8 @@ jobs:
     env:
       GOTOOLCHAIN: local
       DOGFOOD_VERSION: 0.0.0-ci
-      DOGFOOD_PREFIX: ${{ runner.temp }}/igdev-prefix
-      DOGFOOD_CHECKOUT: ${{ runner.temp }}/dogfood
+      DOGFOOD_PREFIX: ${{ github.workspace }}/igdev-prefix
+      DOGFOOD_CHECKOUT: ${{ github.workspace }}/dogfood
     steps:
       - uses: actions/checkout@v4
 
