@@ -25,8 +25,8 @@ func TestInitCreatesContractAndGitignore(t *testing.T) {
 	env.Golden(t, "init_created.json", res.Stdout)
 	env.AssertNoDockerCalls(t)
 
-	if changes := env.Changes(base); len(changes) != 2 {
-		t.Errorf("init changed %v, want exactly igdev.toml and .gitignore", changes)
+	if changes := env.Changes(base); len(changes) != 3 {
+		t.Errorf("init changed %v, want exactly igdev.toml, .gitignore, and AGENTS.md", changes)
 	}
 	contractRaw, err := os.ReadFile(filepath.Join(dir, "igdev.toml"))
 	if err != nil {
@@ -240,6 +240,124 @@ func TestInitGitignoreEntryIsManagedOnce(t *testing.T) {
 	})
 }
 
+// init maintains a minimal, version-free managed block in AGENTS.md: created
+// when the file has none, replaced in place when it does, preserved across
+// re-runs, and never duplicated. The block is the only part igdev owns; text
+// outside the markers survives.
+func TestInitManagesAgentsBlock(t *testing.T) {
+	const (
+		startMark = "<!-- igdev:start -->"
+		endMark   = "<!-- igdev:end -->"
+	)
+
+	t.Run("creates the block when AGENTS.md is absent", func(t *testing.T) {
+		env := testrig.NewEnv(t)
+		dir := env.Mkdir("repo")
+
+		res := env.RunIn(dir, "init", "--json")
+		testrig.WantExit(t, res, contract.ExitOK)
+
+		raw, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+		if err != nil {
+			t.Fatalf("read AGENTS.md: %v", err)
+		}
+		body := string(raw)
+		if !strings.Contains(body, startMark) || !strings.Contains(body, endMark) {
+			t.Errorf("the managed block is missing its markers:\n%s", body)
+		}
+		if strings.Count(body, startMark) != 1 {
+			t.Errorf("the block appears more than once:\n%s", body)
+		}
+		// Five lines, the markers inclusive, and version-free.
+		if n := strings.Count(strings.TrimRight(body, "\n"), "\n") + 1; n != 5 {
+			t.Errorf("the managed block is %d lines, want 5:\n%s", n, body)
+		}
+		if strings.Contains(body, "0.1.0") || strings.Contains(body, "contract") {
+			t.Errorf("the managed block carries a version:\n%s", body)
+		}
+
+		var data struct {
+			Agents struct {
+				Action string `json:"action"`
+			} `json:"agents"`
+		}
+		testrig.DataOf(t, res.Stdout, &data)
+		if data.Agents.Action != "created" {
+			t.Errorf("agents action = %q, want created", data.Agents.Action)
+		}
+	})
+
+	t.Run("appends to existing AGENTS.md content", func(t *testing.T) {
+		env := testrig.NewEnv(t)
+		dir := env.Mkdir("repo")
+		env.Write("repo/AGENTS.md", "# House rules\n\nBe kind.\n")
+
+		for range 2 {
+			testrig.WantExit(t, env.RunIn(dir, "init"), contract.ExitOK)
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+		if err != nil {
+			t.Fatalf("read AGENTS.md: %v", err)
+		}
+		body := string(raw)
+		if !strings.HasPrefix(body, "# House rules\n\nBe kind.\n") {
+			t.Errorf("existing content was not preserved:\n%s", body)
+		}
+		if strings.Count(body, startMark) != 1 {
+			t.Errorf("running init twice duplicated the block:\n%s", body)
+		}
+	})
+
+	t.Run("replaces the block in place", func(t *testing.T) {
+		env := testrig.NewEnv(t)
+		dir := env.Mkdir("repo")
+		env.Write("repo/AGENTS.md", startMark+"\nstale block body\n"+endMark+"\n# after\n")
+
+		res := env.RunIn(dir, "init", "--json")
+		testrig.WantExit(t, res, contract.ExitOK)
+		var data struct {
+			Agents struct {
+				Action string `json:"action"`
+				Diff   string `json:"diff"`
+			} `json:"agents"`
+		}
+		testrig.DataOf(t, res.Stdout, &data)
+		if data.Agents.Action != "updated" {
+			t.Errorf("agents action = %q, want updated", data.Agents.Action)
+		}
+		if !strings.Contains(data.Agents.Diff, "-stale block body") {
+			t.Errorf("the printed diff does not show the replaced block:\n%s", data.Agents.Diff)
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+		if err != nil {
+			t.Fatalf("read AGENTS.md: %v", err)
+		}
+		body := string(raw)
+		if strings.Contains(body, "stale block body") {
+			t.Errorf("the stale block body survived:\n%s", body)
+		}
+		if !strings.HasSuffix(body, "# after\n") {
+			t.Errorf("content after the block was not preserved:\n%s", body)
+		}
+		if strings.Count(body, startMark) != 1 {
+			t.Errorf("the block was duplicated:\n%s", body)
+		}
+	})
+
+	t.Run("re-run leaves an up-to-date block alone", func(t *testing.T) {
+		env := testrig.NewEnv(t)
+		dir := env.Mkdir("repo")
+		testrig.WantExit(t, env.RunIn(dir, "init"), contract.ExitOK)
+		base := env.Snapshot()
+
+		res := env.RunIn(dir, "init", "--json")
+		testrig.WantExit(t, res, contract.ExitOK)
+		if changes := env.Changes(base); len(changes) != 0 {
+			t.Errorf("a second init changed the tree: %v", changes)
+		}
+	})
+}
+
 // A value the contract schema cannot hold is the invocation's fault, and nothing
 // is written: a bad flag must not leave a half-formed contract behind.
 func TestInitRejectsBadFlagValues(t *testing.T) {
@@ -305,7 +423,7 @@ func TestInitWritesAtomicallyAndKeepsMode(t *testing.T) {
 	}
 	for _, entry := range entries {
 		switch {
-		case entry.Name() == "igdev.toml", entry.Name() == ".gitignore":
+		case entry.Name() == "igdev.toml", entry.Name() == ".gitignore", entry.Name() == "AGENTS.md":
 		default:
 			t.Errorf("init left %s behind in the repository", entry.Name())
 		}

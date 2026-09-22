@@ -15,6 +15,11 @@
       "path": "<ROOT>/repo/.gitignore",
       "action": "created",
       "diff": "--- /dev/null\n+++ b/.gitignore\n@@ -0,0 +1,2 @@\n+# igdev: disposable checkout state (managed entry, do not edit)\n+.igdev/\n"
+    },
+    "agents": {
+      "path": "<ROOT>/repo/AGENTS.md",
+      "action": "created",
+      "diff": "--- /dev/null\n+++ b/AGENTS.md\n@@ -0,0 +1,5 @@\n+<!-- igdev:start -->\n+<!-- managed by igdev; edit outside these markers only -->\n+## igdev\n+`igdev.toml` declares this repository's Ignition toolchain; run `igdev status` first.\n+<!-- igdev:end -->\n"
     }
   }
 }

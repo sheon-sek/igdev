@@ -15,6 +15,11 @@
       "path": "<ROOT>/repo/.gitignore",
       "action": "unchanged",
       "diff": ""
+    },
+    "agents": {
+      "path": "<ROOT>/repo/AGENTS.md",
+      "action": "unchanged",
+      "diff": ""
     }
   }
 }

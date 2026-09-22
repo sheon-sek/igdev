@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "scope": "global",
+    "path": "<HOME>/.agents/skills/igdev/SKILL.md",
+    "action": "created",
+    "version": "1"
+  }
+}

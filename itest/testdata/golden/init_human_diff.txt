@@ -29,3 +29,11 @@
 @@ -0,0 +1,2 @@
 +# igdev: disposable checkout state (managed entry, do not edit)
 +.igdev/
+--- /dev/null
++++ b/AGENTS.md
+@@ -0,0 +1,5 @@
++<!-- igdev:start -->
++<!-- managed by igdev; edit outside these markers only -->
++## igdev
++`igdev.toml` declares this repository's Ignition toolchain; run `igdev status` first.
++<!-- igdev:end -->

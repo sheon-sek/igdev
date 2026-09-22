@@ -27,6 +27,24 @@ const (
 	gitignoreEntry = ".igdev/"
 )
 
+// The AGENTS.md managed block. init maintains exactly the span between the
+// markers: it creates the block when the file has none, replaces it in place
+// when it does, and never adds a second one. The content is deliberately minimal
+// and version-free, so it survives an igdev upgrade without a diff.
+const (
+	agentsFile      = "AGENTS.md"
+	agentsMarkStart = "<!-- igdev:start -->"
+	agentsMarkEnd   = "<!-- igdev:end -->"
+)
+
+// agentsBlock is the managed block's exact bytes: five lines, the two markers
+// inclusive, carrying no version-like text.
+var agentsBlock = agentsMarkStart + "\n" +
+	"<!-- managed by igdev; edit outside these markers only -->\n" +
+	"## igdev\n" +
+	"`igdev.toml` declares this repository's Ignition toolchain; run `igdev status` first.\n" +
+	agentsMarkEnd + "\n"
+
 // initFile is what one tracked write did: which file, whether it was created,
 // updated, or already correct, and the diff that shows the change.
 type initFile struct {
@@ -42,6 +60,7 @@ type initFile struct {
 type initData struct {
 	Contract  initFile `json:"contract"`
 	Gitignore initFile `json:"gitignore"`
+	Agents    initFile `json:"agents"`
 }
 
 func (a *App) newInitCmd() *cobra.Command {
@@ -73,9 +92,10 @@ stay reviewable.
 
 The first run in a repository writes igdev.toml with the schema v1 defaults:
 Ignition ` + project.DefaultDoc().Ignition.Version + `, Jython ` + project.DefaultJythonVersion + `, edition ` + project.DefaultEdition + `, ` + fmt.Sprint(project.DefaultGatewayMemoryMB) + ` MiB of Gateway heap, timezone ` + project.DefaultTimezone + `,
-sample scan paths. It also adds the managed ` + gitignoreEntry + ` entry to .gitignore. A later run
-is an edit: a flag overrides the value it names, everything else the contract already
-holds is preserved, and a run that changes nothing writes nothing and prints nothing.
+sample scan paths. It also adds the managed ` + gitignoreEntry + ` entry to .gitignore and
+maintains a minimal, version-free managed block in ` + agentsFile + `. A later run is an edit: a
+flag overrides the value it names, everything else the contract already holds is
+preserved, and a run that changes nothing writes nothing and prints nothing.
 Pass an empty value (--modules "" or --command-check "") to clear a field.
 
 Without --json or --yes, init never prompts an invocation that already has a contract
@@ -170,7 +190,12 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 				return err
 			}
 
-			data := initData{Contract: contractFile, Gitignore: gitignoreFile}
+			agentsFileResult, err := writeAgents(root)
+			if err != nil {
+				return err
+			}
+
+			data := initData{Contract: contractFile, Gitignore: gitignoreFile, Agents: agentsFileResult}
 			a.emit(res, data, func() { a.printInit(data) })
 			return nil
 		},
@@ -340,14 +365,85 @@ func withIgnoreEntry(existing []byte) []byte {
 	return out
 }
 
+// writeAgents maintains the managed block in the repository's AGENTS.md,
+// creating the file when it has none. Only the marked span is igdev's: text
+// outside the markers is preserved verbatim, and a run whose block is already
+// current writes nothing.
+func writeAgents(root string) (initFile, error) {
+	path := filepath.Join(root, agentsFile)
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return initFile{}, writeFault(path, err)
+	}
+	if os.IsNotExist(err) {
+		existing = nil
+	}
+	updated := upsertAgentsBlock(existing)
+	if bytes.Equal(existing, updated) {
+		return initFile{Path: path, Action: "unchanged"}, nil
+	}
+	return writeTracked(path, agentsFile, existing, updated, 0o644)
+}
+
+// upsertAgentsBlock returns the AGENTS.md bytes with the managed block created,
+// replaced in place, or appended. The markers delimit the block exactly: text
+// before the start marker and after the end marker is untouched, so a second
+// block is never written and a hand-edit inside the block is the only thing a
+// re-run discards.
+func upsertAgentsBlock(existing []byte) []byte {
+	lines := strings.SplitAfter(string(existing), "\n")
+	start, end := -1, -1
+	for i, line := range lines {
+		if start < 0 {
+			if strings.Contains(line, agentsMarkStart) {
+				start = i
+			}
+			continue
+		}
+		if strings.Contains(line, agentsMarkEnd) {
+			end = i
+			break
+		}
+	}
+	if start < 0 {
+		return appendAgentsBlock(existing)
+	}
+
+	var out strings.Builder
+	out.WriteString(strings.Join(lines[:start], ""))
+	out.WriteString(string(agentsBlock))
+	if end >= 0 {
+		out.WriteString(strings.Join(lines[end+1:], ""))
+	}
+	// A block with no end marker ran to the end of the file: the remainder was
+	// that truncated block, so it is rebuilt rather than preserved.
+	return []byte(out.String())
+}
+
+// appendAgentsBlock adds the managed block after existing content, separating it
+// with a blank line and keeping the file's own last line intact.
+func appendAgentsBlock(existing []byte) []byte {
+	out := append([]byte(nil), existing...)
+	if len(out) > 0 {
+		if !bytes.HasSuffix(out, []byte("\n")) {
+			out = append(out, '\n')
+		}
+		if !bytes.HasSuffix(out, []byte("\n\n")) {
+			out = append(out, '\n')
+		}
+	}
+	return append(out, agentsBlock...)
+}
+
 // printInit shows a human what changed: the diffs on stderr, so a pipe never
 // receives prose, and a one-line summary per file on stdout.
 func (a *App) printInit(data initData) {
-	for _, file := range []initFile{data.Contract, data.Gitignore} {
+	for _, file := range []initFile{data.Contract, data.Gitignore, data.Agents} {
 		if file.Diff != "" {
 			fmt.Fprint(a.Stderr, file.Diff)
 		}
 	}
 	fmt.Fprintf(a.Stdout, "contract:   %s (%s, digest %s)\n", data.Contract.Path, data.Contract.Action, data.Contract.Digest)
 	fmt.Fprintf(a.Stdout, "gitignore:  %s (%s)\n", data.Gitignore.Path, data.Gitignore.Action)
+	fmt.Fprintf(a.Stdout, "agents:     %s (%s)\n", data.Agents.Path, data.Agents.Action)
 }

@@ -18,6 +18,7 @@ Usage:
   igdev [command]
 
 Available Commands:
+  agent       Agent-facing surface: one-call orientation and skill installation
   baseline    Stage and report the Gateway backup this checkout restores from
   build       Run the project's declared build stage, then re-stage the modules
   catalog     Inspect the capability knowledge the CLI resolves against

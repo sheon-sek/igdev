@@ -301,7 +301,7 @@ func TestSetupMaterializesCheckoutState(t *testing.T) {
 	}
 	// The repository holds no tool infrastructure: everything igdev generated
 	// lives in the gitignored .igdev/.
-	if got := strings.Join(repoEntries(t, dir), ","); got != ".gitignore,.igdev,igdev.toml" {
+	if got := strings.Join(repoEntries(t, dir), ","); got != ".gitignore,.igdev,AGENTS.md,igdev.toml" {
 		t.Errorf("repository holds %s, want only the contract, .gitignore, and .igdev/", got)
 	}
 	// The password is private, and so is the record.
@@ -714,7 +714,7 @@ func TestSetupRendersRuntimeFilesTheDockerShimAccepts(t *testing.T) {
 
 	// No tool infrastructure in the repository: nothing to .dockerignore, no
 	// Dockerfile, no compose file of its own.
-	if got := strings.Join(repoEntries(t, dir), ","); got != ".gitignore,.igdev,igdev.toml" {
+	if got := strings.Join(repoEntries(t, dir), ","); got != ".gitignore,.igdev,AGENTS.md,igdev.toml" {
 		t.Errorf("repository holds %s, want only the contract, .gitignore, and .igdev/", got)
 	}
 }

@@ -1,0 +1,65 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "project_root": "<ROOT>/repo",
+    "lifecycle": {
+      "initialized": true,
+      "setup_state": "current",
+      "consent": {
+        "ignition_eula": true,
+        "module_license": false,
+        "module_certificate": false
+      }
+    },
+    "versions": {
+      "cli": "0.1.0",
+      "cli_contract": "1",
+      "ignition": "8.3.8",
+      "jython": "2.7.4"
+    },
+    "instance": {
+      "id": "<INSTANCE_ID>",
+      "namespace": "igdev-<SHORT_ID>",
+      "ports": {
+        "http": <PORT_HTTP>,
+        "https": <PORT_HTTPS>,
+        "debug": <PORT_DEBUG>
+      }
+    },
+    "gateway": {
+      "running": false,
+      "url": "http://127.0.0.1:<PORT_HTTP>"
+    },
+    "modules": {
+      "count": 0,
+      "staged": []
+    },
+    "catalog": {
+      "core_digest": "sha256:32f9ea556ff8bd14075ced23160e4c3b83131eec5f73713769c6c5254cf6ab0d",
+      "overlay": {
+        "present": false,
+        "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "paths": []
+      }
+    },
+    "capabilities": {
+      "native_functions": 392,
+      "rest_operations": 694,
+      "overlay_rows": 0
+    },
+    "commands": {
+      "check": false,
+      "test": false,
+      "build": false,
+      "verify": true,
+      "gateway": true,
+      "module": true,
+      "baseline": true,
+      "ci_local": true
+    }
+  }
+}

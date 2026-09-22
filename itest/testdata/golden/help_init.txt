@@ -5,9 +5,10 @@ stay reviewable.
 
 The first run in a repository writes igdev.toml with the schema v1 defaults:
 Ignition 8.3.8, Jython 2.7.4, edition standard, 2048 MiB of Gateway heap, timezone UTC,
-sample scan paths. It also adds the managed .igdev/ entry to .gitignore. A later run
-is an edit: a flag overrides the value it names, everything else the contract already
-holds is preserved, and a run that changes nothing writes nothing and prints nothing.
+sample scan paths. It also adds the managed .igdev/ entry to .gitignore and
+maintains a minimal, version-free managed block in AGENTS.md. A later run is an edit: a
+flag overrides the value it names, everything else the contract already holds is
+preserved, and a run that changes nothing writes nothing and prints nothing.
 Pass an empty value (--modules "" or --command-check "") to clear a field.
 
 Without --json or --yes, init never prompts an invocation that already has a contract

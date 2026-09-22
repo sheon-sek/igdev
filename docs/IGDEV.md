@@ -891,7 +891,7 @@ and description. It is immediately resolvable from every tier, reported by
 `igdev status --json`, and settable by tests through `testrig.EnvFor(path)`.
 `internal/testrig` maps the same schema, so nothing has to be kept in sync by hand.
 
-## Deliberate limits of tickets 01-05, 12, 13, 14, 15, 16, and 20
+## Deliberate limits of tickets 01-05, 12, 13, 14, 15, 16, 17, and 20
 
 Ticket 01: the walking skeleton — install, `status`, `version`, help, completion, the
 five-tier resolver, the Gate's discovery stage, and the resource/hygiene gates.
@@ -938,11 +938,11 @@ The verb is not part of the check pipeline and has no e2e tier of its own.
 pipeline's first stage (`module-validate`), and the oracle's REST-catalog structural
 validation is covered instead by the embedded Core Catalog's digest tests. No command
 demands the module-license or module-certificate terms yet (the Consent terms exist and
-`setup` records them), so the module surface is otherwise read-only. There is still no
-AGENTS.md managed block, and the repository is not yet dogfooding its own `igdev.toml`;
-that arrives with the conversion ticket. Until then the root `README.md` documents the
-legacy `devctl` foundation and `AGENTS.md` its command contract; this file is the igdev
-reference.
+`setup` records them), so the module surface is otherwise read-only. The AGENTS.md
+managed block exists as of ticket 17, but this repository is not yet dogfooding its own
+`igdev.toml`; that arrives with the conversion ticket. Until then the root `README.md`
+documents the legacy `devctl` foundation and `AGENTS.md` its command contract; this
+file is the igdev reference.
 
 Ticket 16 adds the Wizards: `init` (6 steps), `setup` (7 steps), and `module add` (4
 steps). A Wizard prompts only when a required value is missing, stdin is a terminal,
@@ -954,3 +954,18 @@ byte-identical files. Setup's Consent step shows `igdev setup --accept-eula` and
 at exit level 3 until the machine record itself says the term is accepted; a prompt
 answer is never an acceptance. The Wizards are the only verbs that touch a terminal,
 and the tests drive them through a pseudo-terminal.
+
+Ticket 17 adds the agent surface. `agent context --json` returns one call's orientation
+— lifecycle (initialized, the Setup Stamp state, and the machine Consent terms),
+versions (CLI, CLI Contract, Ignition, Jython), the recorded Instance and its ports, the
+Gateway's running state and URL, the staged modules, the Core Catalog and Project
+Overlay digests, the Effective Catalog's row counts, and which project verbs are
+available — as a frozen envelope that works before `init` and `setup`. Its field list is
+frozen by `itest/testdata/golden/agent_context_*.json`; #18 documents it. `agent
+skill-install` writes the embedded Agent Skill (`internal/agentskill/SKILL.md`,
+frontmatter carrying the CLI Contract Version) globally at `~/.agents/skills/igdev/` by
+default, or into the repository's `.agents/skills/igdev/` with `--scope repo`; it is
+idempotent and updates an install left by an older binary in place. `init` now also
+maintains a minimal, version-free managed block in `AGENTS.md`: created when absent,
+replaced in place when present, never duplicated, and reported with the same diff as its
+other tracked writes. Neither agent verb ever prompts.

@@ -1,2 +1,3 @@
 contract:   <ROOT>/repo/igdev.toml (created, digest sha256:a32217ae0353d26ea41813462a40a4811c8136a42ef0947c14b370c8214c719c)
 gitignore:  <ROOT>/repo/.gitignore (created)
+agents:     <ROOT>/repo/AGENTS.md (created)
