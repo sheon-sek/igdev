@@ -1,0 +1,37 @@
+ignition:  8.3.8
+whitelist: none (every module loads)
+
+Built-in modules effective for this environment:
+  com.inductiveautomation.alarm-notification                     Alarm Notification-module.modl
+  com.inductiveautomation.opcua.drivers.ablegacy                 Allen-Bradley Drivers-module.modl
+  com.inductiveautomation.opcua.drivers.bacnet                   BACnet Driver-module.modl
+  com.inductiveautomation.opcua.drivers.dnp3                     DNP3-Driver.modl
+  com.inductiveautomation.opcua.drivers.dnp3v2                   DNP3-Driver-v2.modl
+  com.inductiveautomation.eam                                    Enterprise Administration-module.modl
+  com.inductiveautomation.eventstream                            EventStream-module.modl
+  com.inductiveautomation.historian                              Historian-module.modl
+  com.inductiveautomation.opcua.drivers.iec61850                 IEC 61850 Driver-module.modl
+  com.inductiveautomation.connectors.kafka                       Kafka Connector-module.modl
+  com.inductiveautomation.opcua.drivers.logix                    Logix Driver-module.modl
+  com.inductiveautomation.opcua.drivers.micro800                 Micro800 Driver-module.modl
+  com.inductiveautomation.opcua.drivers.mitsubishi               Mitsubishi-Driver.modl
+  com.inductiveautomation.opcua.drivers.modbus                   Modbus Driver v2-module.modl
+  com.inductiveautomation.connectors.mongodb                     MongoDB Connector-module.modl
+  com.inductiveautomation.opcua.drivers.omron                    Omron-Driver.modl
+  com.inductiveautomation.opcua                                  OPC-UA-module.modl
+  com.inductiveautomation.perspective                            Perspective-module.modl
+  com.inductiveautomation.reporting                              Reporting-module.modl
+  com.inductiveautomation.sfc                                    SFC-module.modl
+  com.inductiveautomation.opcua.drivers.siemens                  Siemens Drivers-module.modl
+  com.inductiveautomation.opcua.drivers.siemens-symbolic         Siemens Enhanced Driver-module.modl
+  com.inductiveautomation.sms-notification                       SMS Notification-module.modl
+  com.inductiveautomation.sqlbridge                              SQL Bridge-module.modl
+  com.inductiveautomation.historian.sql                          SQL Historian-module.modl
+  com.inductiveautomation.symbol-factory                         Symbol Factory-module.modl
+  com.inductiveautomation.opcua.drivers.tcpudp                   UDP and TCP Drivers-module.modl
+  com.inductiveautomation.vision                                 Vision-module.modl
+  com.inductiveautomation.phone-notification                     Voice Notification-module.modl
+  com.inductiveautomation.webdev                                 Web Developer Module.modl
+  com.inductiveautomation.jdbc.postgresql                        PostgreSQL JDBC Driver Module.modl
+  com.inductiveautomation.jdbc.mariadb                           MariaDB JDBC Driver Module.modl
+  com.inductiveautomation.jdbc.mssql                             MSSQL JDBC Driver Module.modl

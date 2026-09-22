@@ -16,6 +16,7 @@ func TestRenderRoundTrips(t *testing.T) {
 	doc.Tool.MinVersion = "0.1.0"
 	doc.Modules.Enabled = []string{"com.inductiveautomation.perspective", "com.inductiveautomation.opcua"}
 	doc.Scan.Jython = []string{"src/main/python", "ignition/script-python"}
+	doc.Catalog.OverlayPaths = []string{"catalog/overlay.tsv", "catalog/acme.tsv"}
 	doc.Commands.Check = "./gradlew check"
 	doc.Commands.Smoke = "curl -fsS http://localhost/"
 	doc.Gateway.MemoryMB = 4096
@@ -67,6 +68,9 @@ func TestValidateRejectsBadValues(t *testing.T) {
 		{"module id", func(d *Doc) { d.Modules.Enabled = []string{"has space"} }, "modules.enabled"},
 		{"empty scan path", func(d *Doc) { d.Scan.Jython = []string{" "} }, "scan.jython"},
 		{"gateway heap", func(d *Doc) { d.Gateway.MemoryMB = -1 }, "gateway.memory_mb"},
+		{"empty overlay path", func(d *Doc) { d.Catalog.OverlayPaths = []string{" "} }, "catalog.overlay_paths"},
+		{"absolute overlay path", func(d *Doc) { d.Catalog.OverlayPaths = []string{"/etc/catalog.tsv"} }, "catalog.overlay_paths"},
+		{"traversing overlay path", func(d *Doc) { d.Catalog.OverlayPaths = []string{"../catalog.tsv"} }, "catalog.overlay_paths"},
 		{"timezone", func(d *Doc) { d.Gateway.Timezone = "Mars Olympus" }, "gateway.timezone"},
 	}
 	for _, tc := range cases {
@@ -155,4 +159,36 @@ func TestDecodeEmptyLists(t *testing.T) {
 
 func equalDocs(a, b Doc) bool {
 	return string(a.Render()) == string(b.Render())
+}
+
+// A contract that does not state the catalog section declares no overlay and
+// behaves exactly as before: the key is additive to schema v1, so existing files
+// keep parsing untouched.
+func TestCatalogSectionIsAdditive(t *testing.T) {
+	doc, err := DecodeDoc([]byte("schema = 1\n\n[project]\nname = \"fixture\"\n"))
+	if err != nil {
+		t.Fatalf("DecodeDoc: %v", err)
+	}
+	if !doc.Catalog.Empty() {
+		t.Errorf("catalog = %+v, want an empty section when the key is absent", doc.Catalog)
+	}
+	if strings.Contains(string(doc.Render()), "[catalog]") {
+		t.Errorf("render emitted an empty [catalog] section:\n%s", doc.Render())
+	}
+
+	withOverlay, err := ParseDoc([]byte("schema = 1\n\n[catalog]\noverlay_paths = [\"catalog/overlay.tsv\"]\n"), "igdev.toml")
+	if err != nil {
+		t.Fatalf("ParseDoc: %v", err)
+	}
+	if got := strings.Join(withOverlay.Catalog.OverlayPaths, ","); got != "catalog/overlay.tsv" {
+		t.Errorf("overlay_paths = %q, want the declared path", got)
+	}
+	if !strings.Contains(string(withOverlay.Render()), "[catalog]") {
+		t.Errorf("render dropped the declared overlay:\n%s", withOverlay.Render())
+	}
+	// Filling a document that omits the key must not invent one.
+	filled := withOverlay.Filled(DefaultDoc())
+	if got := strings.Join(filled.Catalog.OverlayPaths, ","); got != "catalog/overlay.tsv" {
+		t.Errorf("Filled changed overlay_paths to %q", got)
+	}
 }

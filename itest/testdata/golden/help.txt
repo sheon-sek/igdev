@@ -19,11 +19,13 @@ Usage:
 
 Available Commands:
   baseline    Stage and report the Gateway backup this checkout restores from
+  catalog     Inspect the capability knowledge the CLI resolves against
   completion  Print the shell completion script for igdev
   doctor      Audit the host prerequisites igdev's runtime work depends on
   gateway     Control this Instance's Ignition Gateway
   help        Show help for a command
   init        Create or edit the Project Contract (igdev.toml)
+  module      List modules and check what project code requires
   setup       Materialize this checkout: Instance identity, ports, runtime files
   status      Report project, setup, and effective config state
   version     Print the CLI version and the CLI Contract Version

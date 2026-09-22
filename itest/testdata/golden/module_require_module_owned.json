@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "capabilities": [
+      {
+        "capability": "system.report.executeReport",
+        "kind": "native-function",
+        "platform": false,
+        "modules": [
+          "com.inductiveautomation.reporting"
+        ],
+        "layer": "core",
+        "class": "module"
+      }
+    ]
+  }
+}

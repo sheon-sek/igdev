@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "capabilities": [
+      {
+        "capability": "GET /data/acme/api/v1/widgets",
+        "kind": "rest",
+        "platform": false,
+        "modules": [
+          "com.acme.widgets"
+        ],
+        "layer": "overlay",
+        "method": "GET",
+        "template": "/data/acme/api/v1/widgets"
+      }
+    ]
+  }
+}

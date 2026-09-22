@@ -1,0 +1,5 @@
+ignition:  8.3.8
+whitelist: none (every module loads)
+
+Private / third-party modules:
+  none staged (stage one with: igdev module add <file.modl>)

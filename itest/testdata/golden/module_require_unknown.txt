@@ -1,0 +1,1 @@
+[igdev] ERROR IGDEV_E_UNKNOWN_CAPABILITY: unknown or non-Gateway Ignition 8.3 native function: system.tag.readBlokcing. Check the function name, Gateway scope, and target Ignition version.

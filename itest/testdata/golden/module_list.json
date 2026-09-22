@@ -1,0 +1,179 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "ignition_version": "8.3.8",
+    "enabled_all": true,
+    "whitelist": [],
+    "built_in": [
+      {
+        "id": "com.inductiveautomation.alarm-notification",
+        "artifact": "Alarm Notification-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua.drivers.ablegacy",
+        "artifact": "Allen-Bradley Drivers-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua.drivers.bacnet",
+        "artifact": "BACnet Driver-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua.drivers.dnp3",
+        "artifact": "DNP3-Driver.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua.drivers.dnp3v2",
+        "artifact": "DNP3-Driver-v2.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.eam",
+        "artifact": "Enterprise Administration-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.eventstream",
+        "artifact": "EventStream-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.historian",
+        "artifact": "Historian-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua.drivers.iec61850",
+        "artifact": "IEC 61850 Driver-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.connectors.kafka",
+        "artifact": "Kafka Connector-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua.drivers.logix",
+        "artifact": "Logix Driver-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua.drivers.micro800",
+        "artifact": "Micro800 Driver-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua.drivers.mitsubishi",
+        "artifact": "Mitsubishi-Driver.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua.drivers.modbus",
+        "artifact": "Modbus Driver v2-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.connectors.mongodb",
+        "artifact": "MongoDB Connector-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua.drivers.omron",
+        "artifact": "Omron-Driver.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua",
+        "artifact": "OPC-UA-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.perspective",
+        "artifact": "Perspective-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.reporting",
+        "artifact": "Reporting-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.sfc",
+        "artifact": "SFC-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua.drivers.siemens",
+        "artifact": "Siemens Drivers-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua.drivers.siemens-symbolic",
+        "artifact": "Siemens Enhanced Driver-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.sms-notification",
+        "artifact": "SMS Notification-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.sqlbridge",
+        "artifact": "SQL Bridge-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.historian.sql",
+        "artifact": "SQL Historian-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.symbol-factory",
+        "artifact": "Symbol Factory-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.opcua.drivers.tcpudp",
+        "artifact": "UDP and TCP Drivers-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.vision",
+        "artifact": "Vision-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.phone-notification",
+        "artifact": "Voice Notification-module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.webdev",
+        "artifact": "Web Developer Module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.jdbc.postgresql",
+        "artifact": "PostgreSQL JDBC Driver Module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.jdbc.mariadb",
+        "artifact": "MariaDB JDBC Driver Module.modl",
+        "enabled": true
+      },
+      {
+        "id": "com.inductiveautomation.jdbc.mssql",
+        "artifact": "MSSQL JDBC Driver Module.modl",
+        "enabled": true
+      }
+    ]
+  }
+}

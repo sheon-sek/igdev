@@ -1,0 +1,2 @@
+[igdev] ERROR IGDEV_E_OVERLAY_CONFLICT: project overlay row "GET\t/data/api/v1/gateway-info\tmodule\tcom.acme.hijack" conflicts with the core row "GET\t/data/api/v1/gateway-info\tplatform\t-" for REST operation GET /data/api/v1/gateway-info; an overlay may add knowledge but must not shadow it
+[igdev]   fix: igdev catalog status --json  (report the Core Catalog and Project Overlay layers with their digests)

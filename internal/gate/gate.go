@@ -142,9 +142,29 @@ type State struct {
 // not proceed, the fault to report. Checks run in the frozen order: schema,
 // contract contents, Setup Stamp, then command prerequisites.
 func Evaluate(in Input) (State, *contract.Fault) {
+	state, doc, fault := ContractOnly(in)
+	if fault != nil {
+		return state, fault
+	}
+	if state.Stamp != StampCurrent {
+		return state, stampFault(in, state.Digest, state.Schema)
+	}
+	if fault := minVersionFault(in, doc); fault != nil {
+		return state, fault
+	}
+	return state, nil
+}
+
+// ContractOnly runs the Gate's contract stages — discovery, declared schema,
+// contract contents and value rules — and stops before the Setup Stamp.
+//
+// Read-only knowledge verbs use it: what a capability requires depends on the
+// Project Contract, not on whether this checkout has been materialized, so
+// `igdev module require` answers before the first `igdev setup`.
+func ContractOnly(in Input) (State, project.Doc, *contract.Fault) {
 	state := State{Stamp: StampRequired}
 	if !in.InProject {
-		return state, notInitializedFault(in)
+		return state, project.Doc{}, notInitializedFault(in)
 	}
 	state.Digest = project.Digest(in.ContractRaw)
 	state.Schema = project.DeclaredSchema(in.ContractRaw)
@@ -156,24 +176,18 @@ func Evaluate(in Input) (State, *contract.Fault) {
 		// file is malformed; a file that parses but says nothing is reported as
 		// undeclared rather than as an unsupported version.
 		if _, err := project.ParseDoc(in.ContractRaw, in.ContractPath); err != nil {
-			return state, contract.AsFault(err)
+			return state, project.Doc{}, contract.AsFault(err)
 		}
-		return state, undeclaredSchemaFault(in)
+		return state, project.Doc{}, undeclaredSchemaFault(in)
 	}
 	if !state.SchemaSupported {
-		return state, schemaUnsupportedFault(in, state.Schema)
+		return state, project.Doc{}, schemaUnsupportedFault(in, state.Schema)
 	}
 	doc, err := project.ParseDoc(in.ContractRaw, in.ContractPath)
 	if err != nil {
-		return state, contract.AsFault(err)
+		return state, project.Doc{}, contract.AsFault(err)
 	}
-	if state.Stamp != StampCurrent {
-		return state, stampFault(in, state.Digest, state.Schema)
-	}
-	if fault := minVersionFault(in, doc); fault != nil {
-		return state, fault
-	}
-	return state, nil
+	return state, doc, nil
 }
 
 // Require is the Gate as a project command consumes it: nil when the checkout
@@ -185,6 +199,19 @@ func Require(in Input) error {
 		return fault
 	}
 	return nil
+}
+
+// RequireProject is the Gate's discovery stage on its own: nil inside a Project
+// Root, otherwise the fault that says there is no repository to act on.
+//
+// The read-only knowledge verbs use it so `igdev module require` insists on a
+// contract — which names the module whitelist and the Project Overlay files —
+// without also insisting that `igdev setup` has run.
+func RequireProject(in Input) *contract.Fault {
+	if in.InProject {
+		return nil
+	}
+	return notInitializedFault(in)
 }
 
 // stampState compares a Checkout Setup record against the contract.

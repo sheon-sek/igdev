@@ -92,6 +92,33 @@ const (
 	// CodeBaselineInvalid covers a `baseline set` source that exists but cannot
 	// be staged as a backup file: a directory, or a path that cannot be read.
 	CodeBaselineInvalid Code = "IGDEV_E_BASELINE_INVALID"
+	// CodeUnknownCapability covers a capability the Effective Catalog cannot
+	// resolve: a system.* function that is not a Gateway-scope 8.3 native
+	// function, a REST request absent from the version's catalog, or a name no
+	// capability rule maps. It is the preflight answer "nothing owns this".
+	CodeUnknownCapability Code = "IGDEV_E_UNKNOWN_CAPABILITY"
+	// CodeModuleNotEnabled covers a required module outside the module
+	// whitelist: scanning says the code needs an artifact the Gateway will not
+	// load. Remediation names the enabling command.
+	CodeModuleNotEnabled Code = "IGDEV_E_MODULE_NOT_ENABLED"
+	// CodeModuleArtifactMissing covers an enabled module that is neither a
+	// built-in nor backed by a `.modl` artifact in the checkout: the whitelist
+	// asks for a module nothing can load.
+	CodeModuleArtifactMissing Code = "IGDEV_E_MODULE_ARTIFACT_MISSING"
+	// CodeOverlayInvalid covers a Project Overlay file the contract declares
+	// that cannot be read or does not follow the overlay format.
+	CodeOverlayInvalid Code = "IGDEV_E_OVERLAY_INVALID"
+	// CodeOverlayConflict covers a Project Overlay whose row has the same key as
+	// a Core Catalog row. The overlay may add to the Core Catalog and may not
+	// shadow it silently, so the run stops and names both rows.
+	CodeOverlayConflict Code = "IGDEV_E_OVERLAY_CONFLICT"
+	// CodeCatalogVersionMissing covers an Ignition version this binary carries
+	// no Core Catalog for. Knowledge fails closed; there is no guessing at
+	// another version's data.
+	CodeCatalogVersionMissing Code = "IGDEV_E_CATALOG_VERSION_MISSING"
+	// CodeCapabilityAmbiguous covers one capability resolving to more than one
+	// owner. Preflight cannot pick for the caller, so it names the candidates.
+	CodeCapabilityAmbiguous Code = "IGDEV_E_CAPABILITY_AMBIGUOUS"
 )
 
 // Remediation is a machine-readable next step: the exact command that clears

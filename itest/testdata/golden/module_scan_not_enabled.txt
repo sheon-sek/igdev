@@ -1,0 +1,2 @@
+[igdev] ERROR IGDEV_E_MODULE_NOT_ENABLED: src/report.py:1: system.report.executeReport requires com.inductiveautomation.reporting (not enabled by the module whitelist)
+[igdev]   fix: igdev module enable com.inductiveautomation.reporting  (add the required modules to the module whitelist)

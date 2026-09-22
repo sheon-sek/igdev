@@ -1,0 +1,70 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "checked": 5,
+    "findings": [
+      {
+        "capability": "system.historian.types.dataPoint",
+        "kind": "native-function",
+        "platform": false,
+        "modules": [
+          "com.inductiveautomation.historian"
+        ],
+        "layer": "core",
+        "class": "module",
+        "note": "Historian type constructor",
+        "file": "src/handlers.py",
+        "line": 1
+      },
+      {
+        "capability": "system.tag.readBlocking",
+        "kind": "native-function",
+        "platform": true,
+        "modules": [],
+        "layer": "core",
+        "class": "platform",
+        "file": "src/handlers.py",
+        "line": 2
+      },
+      {
+        "capability": "GET /data/api/v1/gateway-info",
+        "kind": "rest",
+        "platform": true,
+        "modules": [],
+        "layer": "core",
+        "method": "GET",
+        "template": "/data/api/v1/gateway-info",
+        "file": "src/handlers.py",
+        "line": 3
+      },
+      {
+        "capability": "/data/perspective/api/v1/sessions/",
+        "kind": "rest",
+        "platform": false,
+        "modules": [
+          "com.inductiveautomation.perspective"
+        ],
+        "layer": "core",
+        "template": "/data/perspective/api/v1/sessions/",
+        "file": "src/handlers.py",
+        "line": 4
+      },
+      {
+        "capability": "system.alarm.getRosters",
+        "kind": "native-function",
+        "platform": false,
+        "modules": [
+          "com.inductiveautomation.alarm-notification"
+        ],
+        "layer": "core",
+        "class": "module",
+        "file": "src/nested/deep.js",
+        "line": 1
+      }
+    ]
+  }
+}

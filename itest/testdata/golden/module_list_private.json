@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "ignition_version": "8.3.8",
+    "enabled_all": false,
+    "whitelist": [
+      "com.acme.widgets",
+      "com.acme.absent"
+    ],
+    "private": [
+      {
+        "id": "com.acme.widgets",
+        "name": "Acme Widgets",
+        "version": "1.2.3",
+        "artifact": "acme.modl",
+        "source": "local",
+        "status": "enabled"
+      },
+      {
+        "id": "com.acme.absent",
+        "name": "<unknown>",
+        "version": "-",
+        "artifact": "<missing>",
+        "source": "-",
+        "status": "MISSING-ARTIFACT"
+      }
+    ]
+  }
+}

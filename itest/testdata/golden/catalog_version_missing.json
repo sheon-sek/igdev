@@ -1,0 +1,17 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_CATALOG_VERSION_MISSING",
+  "message": "no Core Catalog for Ignition 8.1.21; this igdev carries 8.3.8",
+  "remediation": [
+    {
+      "command": "igdev catalog status --json",
+      "why": "list the catalog layers and versions this binary carries"
+    },
+    {
+      "command": "igdev status --config ignition.version=8.3.8",
+      "why": "ask for the Ignition version this binary knows"
+    }
+  ],
+  "data": {}
+}

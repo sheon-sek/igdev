@@ -1,0 +1,6 @@
+ignition:  8.3.8
+project:   <ROOT>/repo
+core:      embedded 8.3.8, sha256:32f9ea556ff8bd14075ced23160e4c3b83131eec5f73713769c6c5254cf6ab0d, 33 built-in modules / 392 native functions / 0 capability rules / 694 REST operations
+overlay:   1 file(s), sha256:0cbd8a65bf80dcdd9f15808708ec22896b1ba1f9fac723078e60ba0eaacbe987, 0 built-in modules / 1 native functions / 1 capability rules / 1 REST operations
+  catalog/overlay.tsv
+effective: 33 built-in modules / 393 native functions / 1 capability rules / 695 REST operations

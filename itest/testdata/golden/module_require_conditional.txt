@@ -1,0 +1,2 @@
+[module-preflight] OK: system.device.addDevice -> com.inductiveautomation.opcua
+[module-preflight] NOTE: system.device.addDevice: OPC UA base required; addDevice/device type may also require a driver module

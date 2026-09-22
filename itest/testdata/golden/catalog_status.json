@@ -1,0 +1,40 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "ignition_version": "8.3.8",
+    "core": {
+      "version": "8.3.8",
+      "source": "embedded",
+      "digest": "sha256:32f9ea556ff8bd14075ced23160e4c3b83131eec5f73713769c6c5254cf6ab0d",
+      "counts": {
+        "builtin_modules": 33,
+        "native_functions": 392,
+        "capability_rules": 0,
+        "rest_operations": 694
+      }
+    },
+    "overlay": {
+      "source": "project",
+      "digest": "sha256:0cbd8a65bf80dcdd9f15808708ec22896b1ba1f9fac723078e60ba0eaacbe987",
+      "paths": [
+        "catalog/overlay.tsv"
+      ],
+      "counts": {
+        "builtin_modules": 0,
+        "native_functions": 1,
+        "capability_rules": 1,
+        "rest_operations": 1
+      }
+    },
+    "effective": {
+      "builtin_modules": 33,
+      "native_functions": 393,
+      "capability_rules": 1,
+      "rest_operations": 695
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "checked": 2,
+    "findings": [
+      {
+        "capability": "GET /data/acme/api/v1/widgets",
+        "kind": "rest",
+        "platform": false,
+        "modules": [
+          "com.acme.widgets"
+        ],
+        "layer": "overlay",
+        "method": "GET",
+        "template": "/data/acme/api/v1/widgets",
+        "file": "src/widgets.py",
+        "line": 1
+      },
+      {
+        "capability": "system.acme.widget.ping",
+        "kind": "native-function",
+        "platform": false,
+        "modules": [
+          "com.acme.widgets"
+        ],
+        "layer": "overlay",
+        "class": "module",
+        "file": "src/widgets.py",
+        "line": 1
+      }
+    ]
+  }
+}

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -50,6 +51,7 @@ type Doc struct {
 	Ignition Ignition `toml:"ignition"`
 	Modules  Modules  `toml:"modules"`
 	Scan     Scan     `toml:"scan"`
+	Catalog  Catalog  `toml:"catalog"`
 	Commands Commands `toml:"commands"`
 	Gateway  Gateway  `toml:"gateway"`
 }
@@ -77,6 +79,22 @@ type Ignition struct {
 type Modules struct {
 	Enabled []string `toml:"enabled"`
 }
+
+// Catalog is the capability-knowledge section: the Project Overlay files this
+// repository adds to the embedded Core Catalog (ADR 0005).
+//
+// The key is additive to schema v1. A contract that does not state it behaves
+// exactly as before — the Effective Catalog is the Core Catalog — so existing
+// files keep parsing; adding it to a contract changes the file, which makes the
+// Checkout Setup stale and is repaired with `igdev setup`.
+type Catalog struct {
+	// OverlayPaths are repository-relative paths of tracked overlay files, in
+	// resolution order.
+	OverlayPaths []string `toml:"overlay_paths"`
+}
+
+// Empty reports whether the section declares nothing.
+func (c Catalog) Empty() bool { return len(c.OverlayPaths) == 0 }
 
 // Scan names the directories capability and syntax scanning walk.
 type Scan struct {
@@ -195,6 +213,9 @@ func (d Doc) Filled(defaults Doc) Doc {
 	if out.Scan.Capabilities == nil {
 		out.Scan.Capabilities = append([]string(nil), defaults.Scan.Capabilities...)
 	}
+	if out.Catalog.OverlayPaths == nil {
+		out.Catalog.OverlayPaths = append([]string(nil), defaults.Catalog.OverlayPaths...)
+	}
 	if out.Gateway.MemoryMB == 0 {
 		out.Gateway.MemoryMB = defaults.Gateway.MemoryMB
 	}
@@ -257,6 +278,11 @@ func (d Doc) Validate(path string) error {
 			}
 		}
 	}
+	for _, overlay := range d.Catalog.OverlayPaths {
+		if reason := overlayPathProblem(overlay); reason != "" {
+			return contractInvalid("%scatalog.overlay_paths entry %q %s", where, overlay, reason)
+		}
+	}
 	for _, endpoint := range d.Gateway.SmokeEndpoints {
 		if !smokePath(endpoint) {
 			return contractInvalid("%sgateway.smoke_endpoints entry %q is not a request path like /web/home",
@@ -304,6 +330,11 @@ func (d Doc) Render() []byte {
 	b.WriteString("\n[scan]\n")
 	fmt.Fprintf(&b, "jython = %s\n", tomlStrings(d.Scan.Jython))
 	fmt.Fprintf(&b, "capabilities = %s\n", tomlStrings(d.Scan.Capabilities))
+
+	if !d.Catalog.Empty() {
+		b.WriteString("\n[catalog]\n")
+		fmt.Fprintf(&b, "overlay_paths = %s\n", tomlStrings(d.Catalog.OverlayPaths))
+	}
 
 	if !d.Commands.Empty() {
 		b.WriteString("\n[commands]\n")
@@ -357,6 +388,28 @@ func editionLike(s string) bool { return editionPattern.MatchString(s) }
 func moduleLike(s string) bool { return modulePattern.MatchString(s) }
 
 func timezoneLike(s string) bool { return timezonePattern.MatchString(s) }
+
+// overlayPathProblem reports why a catalog.overlay_paths entry cannot be a
+// tracked overlay file, or "" when it can. Overlay files are tracked, so the path
+// has to be repository-relative: an absolute path or a traversal would escape
+// review.
+func overlayPathProblem(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return "is empty"
+	}
+	if path != strings.TrimSpace(path) {
+		return "carries surrounding whitespace"
+	}
+	if filepath.IsAbs(path) || strings.HasPrefix(path, "/") {
+		return "is an absolute path; tracked overlay files are repository-relative"
+	}
+	for _, segment := range strings.Split(path, "/") {
+		if segment == ".." {
+			return "traverses outside the repository"
+		}
+	}
+	return ""
+}
 
 // smokePath reports a request path smoke can concatenate onto the Gateway URL:
 // rooted at "/" and free of whitespace.

@@ -68,10 +68,12 @@ and `packaging/install.sh` for real against a loopback file server.
 | Path | What lives there |
 | --- | --- |
 | `cmd/igdev` | main; three lines that call `cli.Execute` |
-| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping, `init`, `setup`, `doctor`, the `gateway` verbs, the `baseline` verbs |
+| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping, `init`, `setup`, `doctor`, the `gateway` verbs, the `baseline` verbs, the `module` and `catalog` knowledge verbs |
 | `internal/contract` | frozen envelope, `IGDEV_E_*` codes, exit levels, CLI Contract Version |
 | `internal/config` | five-tier resolver (flags > `IGDEV_*` > `.igdev/local.toml` > `igdev.toml` > defaults) |
 | `internal/baseline` | the staged Baseline: copy, streamed digest, provenance record, restore arguments, mount point |
+| `internal/catalog` | the embedded Core Catalog keyed by Ignition version, the Project Overlay format, the Effective Catalog resolver, and the capability scanner |
+| `internal/modules` | private `.modl` metadata (`module.xml`) and the module whitelist semantics |
 | `internal/project` | Project Root discovery, the `igdev.toml` schema v1 model: parse, validate, render, Contract Digest |
 | `internal/gate` | the Gate: contract schema, Setup Stamp (digest, schema, CLI Contract, Instance identity and ports), `[tool].min_version` — `Evaluate` / `Require` / `Decode` |
 | `internal/instance` | the Instance identity: UUID minting, validation, and the `igdev-<short-id>` namespace |
@@ -125,7 +127,16 @@ Gateway and a person frees memory or passes `--force`), `IGDEV_E_GATEWAY_UNHEALT
 status) and `IGDEV_E_DOCKER` (a container-engine call failed, or the engine is not
 installed). The Baseline commands add `IGDEV_E_BASELINE_MISSING` (the `baseline set`
 source path is not there) and `IGDEV_E_BASELINE_INVALID` (the source exists but cannot
-be staged as a backup file); a source that is not a `.gwbk` is a usage error. A typo in
+be staged as a backup file); a source that is not a `.gwbk` is a usage error. The
+knowledge layer (ticket 12) adds `IGDEV_E_UNKNOWN_CAPABILITY` (nothing in the
+Effective Catalog owns the capability), `IGDEV_E_CAPABILITY_AMBIGUOUS` (one capability
+matches rows that disagree about its owner), `IGDEV_E_MODULE_NOT_ENABLED` (a required
+module is outside the whitelist), `IGDEV_E_MODULE_ARTIFACT_MISSING` (an enabled module
+is neither built-in nor backed by a staged `.modl`), `IGDEV_E_OVERLAY_INVALID` (a
+declared Project Overlay file cannot be read or does not follow the format),
+`IGDEV_E_OVERLAY_CONFLICT` (an overlay row would shadow a row already in force) and
+`IGDEV_E_CATALOG_VERSION_MISSING` (no Core Catalog for the resolved Ignition version).
+A typo in
 a `--config` flag is a usage error (the invocation was wrong); a value igdev read from
 a tier is `IGDEV_E_CONFIG_INVALID` (machine or project state is wrong). `contract` is
 the CLI Contract Version and bumps only when the envelope, codes, or exit levels
@@ -164,7 +175,8 @@ the new `digest`. A run that changes nothing writes nothing and prints nothing.
 
 The schema v1 layout is closed and version-checked: `schema = 1`, then `[project]
 name`, `[tool] min_version`, `[ignition] version|jython_version|edition`,
-`[modules] enabled`, `[scan] jython|capabilities`, `[commands] check|test|build|smoke`
+`[modules] enabled`, `[scan] jython|capabilities`, `[catalog] overlay_paths`
+(omitted when empty), `[commands] check|test|build|smoke`
 (omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints`. A key igdev does
 not know is refused, and a version-like field holds a version. Fields the file leaves
 out fall back to the embedded defaults, so a minimal `schema = 1` contract is valid.
@@ -172,6 +184,12 @@ out fall back to the embedded defaults, so a minimal `schema = 1` contract is va
 unless it is non-empty, and a checkout that does not state it smokes the root document
 alone. `init` merges: a flag overrides the value it names and everything else the file
 holds is preserved; an empty value (`--modules ""`) clears a field.
+
+`[catalog] overlay_paths` is additive to schema v1, so a contract written before this
+key existed keeps parsing and behaves exactly as it did — the Effective Catalog is then
+the Core Catalog alone. Adding it *is* an edit of a tracked file, so it goes through
+`igdev init` (or `igdev setup` if the file was hand-edited): a contract whose bytes
+moved makes the Checkout Setup stale, and the Gate says so until `igdev setup` runs.
 
 The Contract Digest is `sha256:` over the contract bytes. `.igdev/setup.json` holds
 the Setup Stamp — the digest, the contract schema version, the CLI Contract Version,
@@ -341,6 +359,117 @@ leaves the Baseline staged without provenance instead of failing. No Baseline ve
 touches the container engine, and all three pass the Gate first — a Baseline needs a
 materialized checkout — but not Consent: staging a backup is not running a Gateway.
 
+## Capability knowledge
+
+The knowledge layer answers one question before a Gateway starts: does this project
+use something the environment cannot provide? Its data is the **Effective Catalog**:
+the **Core Catalog** embedded in the binary plus this repository's tracked **Project
+Overlay** (ADR 0005). Three planes, resolved together — the native function map, the
+capability rules, and the REST catalog — and the `.modl` archive is never a capability
+source: it only says what is installed.
+
+The Core Catalog is embedded per Ignition version under
+`internal/catalog/assets/<version>/` (`builtin-modules.tsv`,
+`native-system-functions.tsv`, `capability-modules.tsv`, `rest-endpoints.tsv`), copied
+from the legacy `config/` catalogs at this tree's porting commit. Nothing reads
+`config/` at runtime. v0.1 carries exactly `8.3.8`; any other resolved version fails
+closed with `IGDEV_E_CATALOG_VERSION_MISSING` rather than borrowing another version's
+rows. Adding a version is adding data plus a digest, not changing code.
+
+Integrity is a digest, never a row count: `catalog.CoreDigest` hashes the four plane
+files in a frozen order (name, NUL, bytes, NUL) and a unit test pins the result, so any
+byte change to the embedded data fails the suite. Row counts are reported by
+`igdev catalog status` because a human wants to see the shape of the knowledge, never
+asserted.
+
+### The Project Overlay format
+
+A Project Overlay is a project-owned, tracked TSV whose rows have the same column
+shapes as the Core Catalog planes. A comment line switches the active plane:
+
+```tsv
+# igdev Project Overlay for this repository.
+# plane: rest
+GET	/data/acme/api/v1/widgets	module	com.acme.widgets
+# plane: native-function
+system.acme.widget.ping	module	com.acme.widgets
+# plane: capability-rule
+prefix	acme.widget.	com.acme.widgets	Acme widget scripting helpers
+```
+
+- `# plane: rest` — `method`, `path_template`, `owner_kind`
+  (`platform`/`module`/`private-module`), `required_module_ids` (comma-separated, `-`
+  for none). A `{param}` template segment matches exactly one concrete segment.
+- `# plane: native-function` (`native-function`) — `function`, `classification`
+  (`platform`/`module`/`conditional`), `required_module_ids`, `notes`.
+- `# plane: capability-rule` (also `alias`, `rule`) — `kind` (`exact`/`prefix`),
+  `pattern`, `required_module_ids`, `description`.
+
+Blank lines and `#` comments are ignored anywhere. A row before the first directive, an
+unknown plane name, the wrong column count, or an invalid value is
+`IGDEV_E_OVERLAY_INVALID` naming the file and line. Files are read in declaration
+order, and the overlay digest hashes them in that order, so the digest covers exactly
+what was resolved.
+
+The overlay is consulted core-first: it may **add** a function, a rule, or an endpoint
+the core does not carry — which is how a private module's API becomes preflight-visible
+without a new igdev release — but a row whose key the core (or an earlier overlay row)
+already holds is `IGDEV_E_OVERLAY_CONFLICT`, naming both rows. A silently redefined core
+row is not reviewable, so it is refused instead.
+
+Overlay discovery is `[catalog] overlay_paths` in the Project Contract: repository-
+relative paths, validated at parse time (no absolute path, no `..`). A declared file
+that does not exist is `IGDEV_E_OVERLAY_INVALID` too — the contract would be lying.
+
+### The knowledge verbs
+
+`igdev catalog status` reports both layers: `core` (embedded, with its version) and
+`overlay` (project, with its declared files), each with its `digest` and its row
+`counts`, plus the `effective` sum. It works outside a Project Root, where the answer
+is the Core Catalog alone; that is also how a caller asks which versions this binary
+carries. The resolved Ignition version comes from the config precedence chain, so
+`--config ignition.version=8.1.21` is a clean `IGDEV_E_CATALOG_VERSION_MISSING`.
+
+`igdev module list` reports three things: every module that ships in the image with
+whether the whitelist selects it, every `.modl` staged in `.igdev/modules/` with its
+`module.xml` metadata, and the `[modules].enabled` whitelist. An artifact whose
+`module.xml` cannot be read is still listed as `UNREADABLE` (it is in the directory),
+and a whitelisted module no artifact declares is `MISSING-ARTIFACT`. `--built-in` and
+`--private` select one group; the human dialect keeps the legacy group headings, and
+`--json` omits the group a flag did not select. An empty whitelist is not "nothing
+enabled": it is the Gateway image's own semantics for `GATEWAY_MODULES_ENABLED` —
+every module loads — which is why the JSON carries `enabled_all`.
+
+`igdev module require <capability>...` resolves each capability and checks the modules
+it requires. A capability is a `system.*` function, a REST request (`METHOD /data/path`
+with the method optional and case-insensitive, or a bare `/data/path` with the query
+string ignored and a trailing slash tolerated), or an explicit `module:<id>` / `com.*`
+id. Every argument is checked, so one run reports every problem: an unknown capability
+is `IGDEV_E_UNKNOWN_CAPABILITY`; a required module outside the whitelist is
+`IGDEV_E_MODULE_NOT_ENABLED` with `igdev module enable <ids>` in Remediation; an enabled
+module that is neither built-in nor staged is
+`IGDEV_E_MODULE_ARTIFACT_MISSING` with the `module add` command in Remediation.
+
+`igdev module scan [path]...` reads project files (directories are walked for `.py`,
+`.json`, `.js`, `.ts`, `.tsx`, `.java`, `.kt`, `.sh`; an explicit file is read whatever
+its extension) and finds every `system.*` reference — nested namespaces included, so
+`system.historian.types.dataPoint` is found — and every REST path. A method reference
+supersedes the bare path it contains, exactly as the legacy scanner did. Findings carry
+`file` and `line`, and every distinct capability is checked, so a failure message names
+the offending location. Without arguments the contract's `[scan].capabilities` paths
+are used. A path that does not exist is a warning, not a failure.
+
+The knowledge verbs run the Gate's contract stages but not the Setup Stamp: what a
+capability requires depends on the Project Contract — its whitelist and its overlay
+declarations — not on whether the checkout has been materialized, so
+`igdev module require` answers before the first `igdev setup`. They do need a Project
+Root: outside one the answer is `IGDEV_E_NOT_INITIALIZED`.
+
+Human diagnostics keep the legacy `[module-preflight]` vocabulary — `OK`, `NOTE` for a
+conditional function's note — and the legacy closing line of `module scan`. Failures
+are contract faults, so their wording lives in `message` and their fix in
+`remediation`, which is what makes them machine-readable.
+
 ## Host prerequisites
 
 `igdev doctor` audits the host read-only and never fails: the exit level stays 0 and
@@ -385,7 +514,7 @@ and call it in-process. The only in-process unit tests are for pure functions
 (`internal/config`, `internal/contract`, `internal/project`, `internal/gate`,
 `internal/semver`, `internal/textdiff`, `internal/instance`, `internal/ports`,
 `internal/consent`, `internal/localconfig`, `internal/runtimeassets`,
-`internal/doctor`). Do not add a new seam: if a behaviour cannot
+`internal/doctor`, `internal/catalog`, `internal/modules`). Do not add a new seam: if a behaviour cannot
 be observed from argv, exit level, stdout, stderr, the filesystem, or the shim's call
 log, it is not yet a testable requirement.
 
@@ -471,6 +600,15 @@ not. The `gateway` verbs are the first enforcing consumers: `a.gatewayContext()`
 passes the Gate and the Consent check once for every verb, and freezes its refusals in
 `itest/gateway_test.go` (`gate_test.go` still pins the Gate's own envelopes).
 
+### Adding an Ignition version to the Core Catalog
+
+Copy the four plane files of the new version under
+`internal/catalog/assets/<version>/`, add a `CoreDigest` constant to
+`internal/catalog/catalog_test.go`, and add the version to the matrix the release
+pipeline exercises. No code changes: `catalog.Core` reads whatever the embedded
+directory tree carries, and a version that is not there fails closed. Row counts are
+never asserted — the digest is the integrity test, exactly as ADR 0005 requires.
+
 ### Adding a config key
 
 Add a `config.Key` to `config.Schema` with its path, `IGDEV_*` name, kind, default,
@@ -478,7 +616,7 @@ and description. It is immediately resolvable from every tier, reported by
 `igdev status --json`, and settable by tests through `testrig.EnvFor(path)`.
 `internal/testrig` maps the same schema, so nothing has to be kept in sync by hand.
 
-## Deliberate limits of tickets 01-05
+## Deliberate limits of tickets 01-05 and 12
 
 Ticket 01: the walking skeleton — install, `status`, `version`, help, completion, the
 five-tier resolver, the Gate's discovery stage, and the resource/hygiene gates.
@@ -496,9 +634,14 @@ Ticket 05: the Baseline (`baseline set|status|clear` stages a `.gwbk` into the C
 Setup and wires the restore argument into every Gateway launch, so `gateway reset`
 seeds the Gateway from it).
 
-No module commands and therefore no module-license or
-module-certificate acceptance path (ticket 12), no Jython download (setup materializes
-state only), no Wizard prompts (ticket 16), no AGENTS.md managed block, no catalogs, and
+No module *write* commands: `module enable|add` belong to ticket 13, so there is still
+no module-license or module-certificate acceptance path, and
+`catalog import-openapi` (the overlay generator) does not exist yet — an overlay is
+hand-authored today. The knowledge verbs are read-only and complete: list, require,
+scan, and `catalog status`. `module validate` and the preflight stage of
+`igdev check` arrive with ticket 14, which consumes `module scan` and `module require`.
+There is no Jython download (setup materializes
+state only), no Wizard prompts (ticket 16), no AGENTS.md managed block, and
 no pipeline verbs — `check|test|build|verify` — so the declared `[commands]` stages are
 still only data. The repository is not yet dogfooding its own `igdev.toml`; that
 arrives with the conversion ticket. Until then the root `README.md` documents the
