@@ -307,6 +307,105 @@ func (e *Env) ShimDocker() string {
 	return state
 }
 
+// ShimActFile is the act stand-in's filename inside the shim directory.
+const ShimActFile = "act"
+
+// actShimScript is a POSIX sh stand-in for nektos/act, the runner `igdev
+// ci-local` shells out to. It records every invocation as one JSON object per
+// line — argv, the working directory, and the environment act would read the
+// offline decision from — so a test can assert exactly what the CLI asked for,
+// prints canned output, and exits with a chosen code.
+//
+// IGDEV_SHIM_ACT_LINES prints that many numbered stdout lines, IGDEV_SHIM_ACT_OUT
+// one canned stdout line, IGDEV_SHIM_ACT_ERR one stderr line, and
+// IGDEV_SHIM_ACT_EXIT the exit code act reports (0 by default). Nothing else
+// runs: no docker, no network, no workflow.
+const actShimScript = `#!/bin/sh
+state="$IGDEV_SHIM_ACT_STATE"
+if [ -n "$state" ]; then
+  mkdir -p "$(dirname "$state")"
+  n=1
+  [ -f "$state" ] && n=$(( $(wc -l < "$state") + 1 ))
+  escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+  argv=""
+  for arg in "$@"; do
+    if [ -n "$argv" ]; then argv="$argv,"; fi
+    argv="$argv\"$(escape "$arg")\""
+  done
+  # IGDEV_ACT_OFFLINE is the env tier of the offline decision: recording it makes
+  # the environment act inherits observable, not just the flags it was handed.
+  printf '{"n":%s,"cwd":"%s","exit":%s,"argv":[%s],"env":{"IGDEV_ACT_OFFLINE":"%s"}}\n' \
+    "$n" "$(escape "$PWD")" "${IGDEV_SHIM_ACT_EXIT:-0}" "$argv" "$(escape "$IGDEV_ACT_OFFLINE")" >> "$state"
+fi
+if [ -n "$IGDEV_SHIM_ACT_LINES" ]; then
+  i=1
+  while [ "$i" -le "$IGDEV_SHIM_ACT_LINES" ]; do
+    printf 'act shim line %s\n' "$i"
+    i=$((i+1))
+  done
+fi
+[ -n "$IGDEV_SHIM_ACT_OUT" ] && printf '%s\n' "$IGDEV_SHIM_ACT_OUT"
+[ -n "$IGDEV_SHIM_ACT_ERR" ] && printf '%s\n' "$IGDEV_SHIM_ACT_ERR" >&2
+exit "${IGDEV_SHIM_ACT_EXIT:-0}"
+`
+
+// ShimAct installs the fake act on the scratch PATH and returns the state file
+// path (the act call log). Calling it twice is harmless.
+func (e *Env) ShimAct() string {
+	e.T.Helper()
+	state := e.Path("state", "act-calls.jsonl")
+	if err := os.MkdirAll(filepath.Dir(state), 0o755); err != nil {
+		e.T.Fatalf("mkdir shim state: %v", err)
+	}
+	path := filepath.Join(e.Shim, ShimActFile)
+	if err := os.WriteFile(path, []byte(actShimScript), 0o755); err != nil {
+		e.T.Fatalf("write act shim: %v", err)
+	}
+	e.SetBaseEnv("IGDEV_SHIM_ACT_STATE=" + state)
+	e.RegisterReplacement(state, "<ACT_STATE>")
+	return state
+}
+
+// ActCall is one recorded act invocation.
+type ActCall struct {
+	N int `json:"n"`
+	// CWD is the directory act was started in: the Project Root.
+	CWD string `json:"cwd"`
+	// Exit is the exit code the shim was configured to report.
+	Exit int `json:"exit"`
+	// Argv is the argument vector act received, act itself excluded.
+	Argv []string `json:"argv"`
+	// Env is the environment variable set act inherited that igdev's own
+	// behaviour depends on.
+	Env map[string]string `json:"env"`
+}
+
+// ActCalls returns the shim's call log, oldest first. An absent log means act was
+// never invoked.
+func (e *Env) ActCalls(t *testing.T) []ActCall {
+	t.Helper()
+	raw, err := os.ReadFile(e.Path("state", "act-calls.jsonl"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatalf("read act shim state: %v", err)
+	}
+	var calls []ActCall
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var call ActCall
+		if err := json.Unmarshal([]byte(line), &call); err != nil {
+			t.Fatalf("act shim state line %q: %v", line, err)
+		}
+		calls = append(calls, call)
+	}
+	return calls
+}
+
 // DockerCall is one recorded docker invocation. Env is the GATEWAY_* variable
 // set igdev handed the engine: the variables the rendered Compose file
 // interpolates, which is how a test observes the Baseline restore wiring the

@@ -15,6 +15,14 @@ func missingArgument(command, argName, example, why string) *contract.Fault {
 		WithRemediation(contract.Remediation{Command: example, Why: why})
 }
 
+// missingFlag is the frozen way to say "you have to supply this flag": exit 2
+// with IGDEV_E_MISSING_ARGUMENT, naming the flag and one worked command.
+func missingFlag(command, flag, example, why string) *contract.Fault {
+	return contract.NewFault(contract.CodeMissingArgument, contract.ExitUsage,
+		fmt.Sprintf("igdev %s needs the %s flag", command, flag)).
+		WithRemediation(contract.Remediation{Command: example, Why: why})
+}
+
 // extraArguments reports arguments a command cannot use.
 func extraArguments(command string, want int, args []string) *contract.Fault {
 	return contract.UsageFault(

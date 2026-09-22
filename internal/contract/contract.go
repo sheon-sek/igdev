@@ -155,6 +155,16 @@ const (
 	// `.test`, `.build`) that exited non-zero. The exit level is the stage's own
 	// exit code, so a project's failure stays machine-distinguishable.
 	CodeCommandFailed Code = "IGDEV_E_COMMAND_FAILED"
+	// CodeActMissing covers `ci-local` on a host with no act on PATH: the verb
+	// runs this project's workflows through act, and there is nothing to run them
+	// with. Remediation names how act is installed; no subprocess is attempted.
+	CodeActMissing Code = "IGDEV_E_ACT_MISSING"
+	// CodeActFailed covers an act run that exited non-zero, including one that
+	// could not be started. The exit level is act's own exit code — the verb is a
+	// thin wrapper around it — and the envelope's data carries the invocation and
+	// the tail of act's output, so a failing workflow is distinguishable from a
+	// failure of igdev itself.
+	CodeActFailed Code = "IGDEV_E_ACT_FAILED"
 )
 
 // Remediation is a machine-readable next step: the exact command that clears

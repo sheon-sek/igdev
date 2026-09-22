@@ -3,3 +3,4 @@ host:  not ready (a required prerequisite is missing)
   compose  required missing  docker is not on PATH
   java     required missing  java is not on PATH
   gradle   optional missing  gradle is not on PATH
+  act      optional missing  act is not on PATH

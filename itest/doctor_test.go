@@ -58,7 +58,7 @@ func TestDoctorReportsPrerequisites(t *testing.T) {
 			t.Errorf("%s has unknown state %q", entry.Name, entry.State)
 		}
 	}
-	for _, name := range []string{"docker", "compose", "java", "gradle"} {
+	for _, name := range []string{"docker", "compose", "java", "gradle", "act"} {
 		if _, ok := byName[name]; !ok {
 			t.Errorf("doctor does not audit %s:\n%s", name, res.Stdout)
 		}

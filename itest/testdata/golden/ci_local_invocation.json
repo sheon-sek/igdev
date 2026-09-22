@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "event": "pull_request",
+    "job": "foundation",
+    "offline": false,
+    "command": "act pull_request -j foundation",
+    "args": [
+      "act",
+      "pull_request",
+      "-j",
+      "foundation"
+    ],
+    "workdir": "<ROOT_REPO>",
+    "exit": 0,
+    "output_tail": [
+      "act shim line 1",
+      "act shim line 2"
+    ]
+  }
+}

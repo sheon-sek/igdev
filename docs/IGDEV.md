@@ -68,7 +68,7 @@ and `packaging/install.sh` for real against a loopback file server.
 | Path | What lives there |
 | --- | --- |
 | `cmd/igdev` | main; three lines that call `cli.Execute` |
-| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping, `init`, `setup`, `doctor`, the `gateway` verbs, the `baseline` verbs, the `module` and `catalog` knowledge verbs |
+| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping, `init`, `setup`, `doctor`, the `gateway` verbs, the `baseline` verbs, the `module` and `catalog` knowledge verbs, the pipeline verbs, and `ci-local` |
 | `internal/contract` | frozen envelope, `IGDEV_E_*` codes, exit levels, CLI Contract Version |
 | `internal/config` | five-tier resolver (flags > `IGDEV_*` > `.igdev/local.toml` > `igdev.toml` > defaults) |
 | `internal/baseline` | the staged Baseline: copy, streamed digest, provenance record, restore arguments, mount point |
@@ -141,6 +141,10 @@ handed an id that is neither built-in nor declared by a staged `.modl`, so enabl
 would whitelist a module nothing can load) and `IGDEV_E_MODULE_ARCHIVE_INVALID`
 (`module add` was handed a file that is not a readable module archive: not a zip, no
 `module.xml`, no usable id, or an archive the zip-bomb guard refuses).
+`igdev ci-local` adds `IGDEV_E_ACT_MISSING` (no act on PATH: the remediation carries
+the install commands and no subprocess is attempted) and `IGDEV_E_ACT_FAILED` (act
+exited non-zero — the exit level is act's own exit code, and the envelope's `data`
+carries the invocation and the tail of act's output).
 A typo in
 a `--config` flag is a usage error (the invocation was wrong); a value igdev read from
 a tier is `IGDEV_E_CONFIG_INVALID` (machine or project state is wrong). `contract` is
@@ -651,6 +655,37 @@ leaves the Gateway running so the URL it reports can be opened by hand; stop it 
 verb, so on a machine that has not accepted the EULA it fails with
 `IGDEV_E_CONSENT_REQUIRED` at exit 3.
 
+## Running the project's CI locally
+
+```
+igdev ci-local --job <name> [--event <event>] [--offline] [--json] [-- <act args>...]
+```
+
+`igdev ci-local` is the port of the bash specification's `cmd_ci_local`: it runs one job
+of this project's GitHub Actions workflows on the local machine through
+[act](https://github.com/nektos/act). act is invoked as a subprocess from the Project
+Root — `act <event> -j <job>` — and its exit code is this command's exit level, so a
+workflow that fails fails the run the same way it fails CI (`IGDEV_E_ACT_FAILED`). act's
+own output streams through: stdout and stderr stay apart for a human, and in machine
+mode both land on stderr, because stdout is the envelope.
+
+`--event` defaults to `pull_request`. `--offline` hands act `--pull=false
+--action-offline-mode`; it is a resolved setting like any other, so `IGDEV_ACT_OFFLINE=1`
+(the legacy knob), `[act]` `offline = true` in the Project Contract, or the
+checkout-local tier has the same effect, and the flag wins when the tiers disagree.
+Arguments after `--` reach act verbatim and in order, so an act flag igdev does not
+model (`--reuse`, `--container-architecture`) still gets through.
+
+The verb passes the Gate (a current Checkout Setup) but not Consent: no Gateway starts
+and no license is accepted. A host without act fails with `IGDEV_E_ACT_MISSING` — the
+remediation names `pipx install act` and `brew install act` — and nothing is spawned.
+`act` is an optional `igdev doctor` prerequisite for the same reason.
+
+In machine mode `data` carries `event`, `job`, `offline`, `command`, `args`, `workdir`,
+`exit`, and `output_tail` (the last 50 lines act printed). The golden tests drive the
+whole verb against a PATH-shimmed act that records argv, working directory, and the
+environment act inherited, so no docker, no network, and no real workflow is involved.
+
 ## Host prerequisites
 
 `igdev doctor` audits the host read-only and never fails: the exit level stays 0 and
@@ -659,8 +694,9 @@ Each prerequisite is reported with the exact probe, whether it is required, and 
 the version line the tool printed or the reason there is none (`missing` when it is not
 on PATH, `failed` when it is but printed no version). docker and its Compose plugin
 (the Gateway) and a JVM (the Jython check) are required; Gradle is optional because a
-project only needs it when its contract declares a Gradle command. `data.ready` is
-false when a required prerequisite is not present.
+project only needs it when its contract declares a Gradle command, and act is optional
+because only `igdev ci-local` needs it. `data.ready` is false when a required
+prerequisite is not present.
 
 ## Update notice
 
@@ -804,7 +840,7 @@ and description. It is immediately resolvable from every tier, reported by
 `igdev status --json`, and settable by tests through `testrig.EnvFor(path)`.
 `internal/testrig` maps the same schema, so nothing has to be kept in sync by hand.
 
-## Deliberate limits of tickets 01-05, 12, 13, and 14
+## Deliberate limits of tickets 01-05, 12, 13, 14, and 20
 
 Ticket 01: the walking skeleton — install, `status`, `version`, help, completion, the
 five-tier resolver, the Gate's discovery stage, and the resource/hygiene gates.
@@ -831,8 +867,14 @@ Ticket 14: the check pipeline (`check|test|build|verify`, the module-validate an
 module-scan stages, the declared-stage dispatch, and `verify --gateway`) and the Jython
 layer (the pinned, lock-guarded standalone-artifact cache and the one-JVM batched
 compile behind `igdev jython check`). The 500-file timing gate lives in
-`itest/jython_test.go`; the real-JVM half is deferred to the e2e tier, exactly as the
+real-docker half is deferred to the e2e tier, exactly as the
 real-docker half is.
+
+Ticket 20: running the project's CI locally (`ci-local` invokes act as a subprocess from
+the Project Root, with the event, the job, the offline mode, and verbatim passthrough).
+`act` itself is never bundled and no real workflow runs in the hermetic suite: the tests
+shim act on PATH, so a run that pulls images or downloads actions is the user's own.
+The verb is not part of the check pipeline and has no e2e tier of its own.
 
 `module validate` as its own verb is not part of ticket 14: what it used to mean is the
 pipeline's first stage (`module-validate`), and the oracle's REST-catalog structural
@@ -841,8 +883,8 @@ surface is otherwise read-only: there is still no module-license or module-certi
 acceptance path (the Consent terms exist and `setup` records them, but no command
 demands them), and `catalog import-openapi` (the overlay generator) does not exist yet —
 an overlay is hand-authored today. There is no Wizard prompt (ticket 16, which also adds
-the `module add` steps), no
-AGENTS.md managed block, and no `ci-local` verb. The repository is not yet dogfooding its
+the `module add` steps), and no
+AGENTS.md managed block. The repository is not yet dogfooding its
 own `igdev.toml`; that arrives with the conversion ticket. Until then the root
 `README.md` documents the legacy `devctl` foundation and `AGENTS.md` its command
 contract; this file is the igdev reference.

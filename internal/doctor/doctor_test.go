@@ -159,8 +159,8 @@ func TestDefaultProbesAreFrozen(t *testing.T) {
 			t.Errorf("%s has no probe command", p.Name)
 		}
 	}
-	if strings.Join(names, ",") != "docker,compose,java,gradle" {
-		t.Errorf("Default() probes %v, want docker,compose,java,gradle", names)
+	if strings.Join(names, ",") != "docker,compose,java,gradle,act" {
+		t.Errorf("Default() probes %v, want docker,compose,java,gradle,act", names)
 	}
 	if strings.Join(required, ",") != "docker,compose,java" {
 		t.Errorf("required probes = %v, want docker,compose,java", required)

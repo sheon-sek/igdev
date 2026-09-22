@@ -22,6 +22,7 @@ Available Commands:
   build       Run the project's declared build stage, then re-stage the modules
   catalog     Inspect the capability knowledge the CLI resolves against
   check       Run the fixed preflight pipeline before anything else
+  ci-local    Run this project's GitHub Actions workflows locally through act
   completion  Print the shell completion script for igdev
   doctor      Audit the host prerequisites igdev's runtime work depends on
   gateway     Control this Instance's Ignition Gateway

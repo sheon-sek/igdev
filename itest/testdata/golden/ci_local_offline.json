@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "event": "pull_request",
+    "job": "foundation",
+    "offline": true,
+    "command": "act pull_request -j foundation --pull=false --action-offline-mode",
+    "args": [
+      "act",
+      "pull_request",
+      "-j",
+      "foundation",
+      "--pull=false",
+      "--action-offline-mode"
+    ],
+    "workdir": "<ROOT_REPO>",
+    "exit": 0,
+    "output_tail": []
+  }
+}

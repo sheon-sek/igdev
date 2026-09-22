@@ -33,6 +33,12 @@ type App struct {
 	jsonFlag   bool
 	configFlag []string
 	rawArgs    []string
+	// actOffline is the --offline flag's tier value ("true" or "false"), set by
+	// `ci-local` before it resolves config, and "" when the flag was not given.
+	// It is a string because a flag tier has to distinguish "not passed" from an
+	// explicit --offline=false, which outranks a lower tier that asked for
+	// offline runs.
+	actOffline string
 }
 
 // New returns an App bound to the real process surroundings.
@@ -164,6 +170,9 @@ func (a *App) gateInput(found project.Found) gate.Input {
 // flagTier converts the reserved flags into flag-tier config values.
 func (a *App) flagTier() map[string]string {
 	out := map[string]string{}
+	if a.actOffline != "" {
+		out[configKeyActOffline] = a.actOffline
+	}
 	for _, pair := range a.configFlag {
 		key, value, ok := strings.Cut(pair, "=")
 		if !ok {

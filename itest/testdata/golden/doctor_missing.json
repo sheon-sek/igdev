@@ -38,6 +38,14 @@
         "state": "missing",
         "version": "",
         "error": "gradle is not on PATH"
+      },
+      {
+        "name": "act",
+        "command": "act --version",
+        "required": false,
+        "state": "missing",
+        "version": "",
+        "error": "act is not on PATH"
       }
     ]
   }

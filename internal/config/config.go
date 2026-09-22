@@ -99,6 +99,10 @@ var Schema = []Key{
 		Path: "jython.sha256", Env: "IGDEV_JYTHON_SHA256", Kind: KindString, Default: "",
 		Desc: "Expected sha256 of the Jython standalone artifact; empty uses the digest pinned in the embedded version catalog.",
 	},
+	{
+		Path: "act.offline", Env: "IGDEV_ACT_OFFLINE", Kind: KindBool, Default: false,
+		Desc: "Run `igdev ci-local` offline: act is handed --pull=false --action-offline-mode (Project Contract: [act].offline).",
+	},
 }
 
 func keyByPath(path string) (Key, bool) {

@@ -57,6 +57,11 @@
       },
       "resolved": [
         {
+          "key": "act.offline",
+          "value": false,
+          "source": "default"
+        },
+        {
           "key": "ignition.version",
           "value": "8.1.21",
           "source": "contract"

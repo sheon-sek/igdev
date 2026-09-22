@@ -40,13 +40,14 @@ type Prerequisite struct {
 // Default is the frozen probe list, in report order. Docker and its Compose
 // plugin run the Gateway, and a JVM runs the Jython compatibility check; Gradle
 // is optional because a project only needs it when its contract declares a
-// Gradle command.
+// Gradle command, and act is optional because only `igdev ci-local` needs it.
 func Default() []Prerequisite {
 	return []Prerequisite{
 		{Name: "docker", Required: true, Args: []string{"docker", "--version"}},
 		{Name: "compose", Required: true, Args: []string{"docker", "compose", "version"}},
 		{Name: "java", Required: true, Args: []string{"java", "--version"}},
 		{Name: "gradle", Required: false, Args: []string{"gradle", "--version"}},
+		{Name: "act", Required: false, Args: []string{"act", "--version"}},
 	}
 }
 

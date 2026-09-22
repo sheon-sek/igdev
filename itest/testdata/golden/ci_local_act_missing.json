@@ -1,0 +1,17 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_ACT_MISSING",
+  "message": "act is not on PATH: igdev ci-local runs this project's GitHub Actions workflows through it",
+  "remediation": [
+    {
+      "command": "pipx install act",
+      "why": "install act (nektos/act)"
+    },
+    {
+      "command": "brew install act",
+      "why": "install act (nektos/act) on macOS"
+    }
+  ],
+  "data": {}
+}

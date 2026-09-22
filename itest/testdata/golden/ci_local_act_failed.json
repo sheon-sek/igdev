@@ -1,0 +1,24 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_ACT_FAILED",
+  "message": "act exited with code 7: act pull_request -j foundation",
+  "remediation": [],
+  "data": {
+    "event": "pull_request",
+    "job": "foundation",
+    "offline": false,
+    "command": "act pull_request -j foundation",
+    "args": [
+      "act",
+      "pull_request",
+      "-j",
+      "foundation"
+    ],
+    "workdir": "<ROOT_REPO>",
+    "exit": 7,
+    "output_tail": [
+      "workflow failed"
+    ]
+  }
+}
