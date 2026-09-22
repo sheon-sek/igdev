@@ -1,49 +1,84 @@
+<!-- igdev:start -->
+<!-- managed by igdev; edit outside these markers only -->
+## igdev
+`igdev.toml` declares this repository's Ignition toolchain; run `igdev status` first.
+<!-- igdev:end -->
+
 # Agent Instructions
 
-This repository is the reusable local-development foundation for Ignition engineering work.
-The default runtime target is Ignition 8.3.8 with a Jython 2.7.4 compatibility checker.
+This repository is `igdev` itself: the standalone, globally installed Ignition
+development toolchain (Go, `cmd/` + `internal/`). It dogfoods its own Project Contract
+(`igdev.toml`), so the commands below are the same ones it ships.
 
-## Command contract
+## Safe commands
 
-Agents should use `./devctl` rather than inventing one-off Docker commands.
+Read-only; may run automatically after relevant changes:
 
-Safe commands that may run automatically after relevant changes:
+- `igdev status` / `igdev status --json` — the only command that works before init and setup
+- `igdev check` — module validate → capability scan → `make fmt-check vet` → batched Jython compile
+- `igdev module list`, `igdev module validate`, `igdev module require <capability>`
+- `igdev catalog status --json`
+- `igdev doctor` — read-only host audit; it never fails
+- `igdev gateway status`, `igdev gateway logs --tail 200`, `igdev gateway url`
 
-- `./devctl self-test`
-- `./devctl versions`
-- `./devctl jython-check <path>`
-- `./devctl module validate`
-- `./devctl module require <capability>`
-- `./devctl module scan <path>`
-- `./devctl check`
-- `./devctl test`
-- `./devctl gateway status`
-- `./devctl gateway logs --tail 200`
-- `./devctl gateway up`
-- `./devctl gateway wait`
-- `./devctl gateway smoke`
-- `./devctl gateway reset` when the task explicitly requires a clean disposable Gateway
-- `./devctl verify`
+Mutating local state; run when the task calls for it:
 
-Do not use this development Gateway as a production or staging target. Do not perform writes to external systems unless the task explicitly authorizes them.
+- `igdev test` (`make test`) and `igdev build` (`make build`)
+- `igdev setup` — re-materializes `.igdev/`; run it after any `igdev.toml` change
+- `igdev gateway up|wait|smoke|down --volumes` — a disposable local Gateway only
+- `igdev gateway reset` only when the task explicitly requires a clean Gateway
 
-## Validation behavior
+Repository tooling (the Go half of this tree):
 
-After changing code, run the cheapest relevant validation first. `./devctl check` performs module configuration preflight before project checks and should not be bypassed. When code calls a module-owned `system.*` function or Ignition resource API, use `./devctl module require` or configure `MODULE_REQUIREMENT_PATHS` so `module scan` can reject missing modules before the Gateway starts. Escalate to the real Gateway only when behavior depends on Ignition runtime APIs, modules, tags, OPC, Gateway configuration, or MCP.
+- `make all` — `fmt-check vet test`; `make test-quick` skips the timing, packaging, and installer gates
+- `make gates` — the resource and hygiene gates alone
+- `make reference-check` — fails when `docs/reference/` drifts from the command definitions
+- `make package` — release tarballs and checksums under `dist/`
 
-For Jython scripts, a standalone Jython check is only a syntax/bytecode compatibility gate. It does not prove `system.*` behavior. Runtime-dependent behavior must be checked against the real Ignition container.
+## Escalation rules
+
+Validate cheapest first: `igdev check`, then `igdev test`, then the real Gateway.
+Escalate to a real Gateway (Docker) only when behavior depends on Ignition runtime APIs,
+modules, tags, OPC, Gateway configuration, or MCP — and then only through `igdev gateway
+*`, never ad-hoc `docker run` or `docker compose` commands.
+
+A standalone `igdev jython check` is a syntax and bytecode compatibility gate: it does
+not prove `system.*` behavior. Runtime-dependent behavior must be checked against the
+real Ignition container. The development Gateway is never a production or staging
+target, and nothing writes to external systems unless the task explicitly authorizes it.
+
+Consent is human-only. When a command exits 3 with `IGDEV_E_CONSENT_REQUIRED`, stop and
+hand `igdev setup --accept-eula` to a person; never accept the Ignition EULA, a module
+license, or a module certificate on a user's behalf.
 
 ## Version changes
 
-Do not edit the Dockerfile to change runtime versions. Change `IGNITION_VERSION` and, when appropriate, `JYTHON_VERSION` in `.env`, then run `./devctl bootstrap` and `./devctl gateway reset`.
-
-`JYTHON_VERSION` controls only the local standalone checker. The Jython version embedded in Ignition is determined by the selected Ignition image.
+Runtime versions live in `igdev.toml`, never in Docker files: change
+`[ignition].version` or `[ignition].jython_version` (by hand or with
+`igdev init --ignition-version …`) and re-run `igdev setup`. Moving the contract moves
+the Contract Digest and makes the Checkout Setup stale on purpose
+(`IGDEV_E_SETUP_STALE`); `igdev setup` is the repair. Everything under `.igdev/` is
+generated and disposable — never hand-edit it and never commit it.
 
 ## Private modules
 
-Never commit EA, licensed, or private `.modl` files. Add them with `./devctl module add <file.modl>` or place them in the version-scoped global cache reported by `./devctl module cache-path`.
+Never commit EA, licensed, or private `.modl` files. Add them with
+`igdev module add <file.modl>` (staged under the gitignored `.igdev/modules/`), or place
+them in the version-scoped machine cache reported by `igdev module cache-path`. Module
+metadata comes from the archive's embedded `module.xml`; use `igdev module validate`
+before runtime and `igdev module require <capability>` for explicit capability checks
+before a Gateway starts.
 
-Use `./devctl module list` for the full effective environment, `--built-in` or `--private` to filter it, and `./devctl module catalog` when choosing from the complete Ignition 8.3 built-in image catalog.
+`[modules].enabled` in `igdev.toml` may only whitelist a module the selected Ignition
+image ships built-in or one whose `.modl` the checkout stages: an enabled entry nothing
+can load fails `igdev check` with `IGDEV_E_MODULE_ARTIFACT_MISSING` on purpose. A private
+module (here `com.inductiveautomation.mcp`) is therefore staged per checkout, never
+whitelisted from a committed contract.
 
+## The frozen contract
 
-Private `.modl` metadata is read from its embedded `module.xml`, so configured module IDs and artifacts are represented as one record. Use `./devctl module validate` before runtime and `./devctl module require <capability>` for explicit capability checks.
+`itest/testdata/golden/` and `docs/reference/` are the frozen agent-facing contract: the
+JSON envelope, the `IGDEV_E_*` codes, the exit levels, and the help text. After an
+intentional behavior change, run `make goldens` and read the diff, run `make reference`
+to regenerate the public reference, and record any envelope, code, or exit-level change
+as an ADR — that is a CLI Contract Version break, not a normal release.

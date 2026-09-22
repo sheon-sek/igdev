@@ -1,9 +1,9 @@
+# igdev: disposable checkout state (managed entry, do not edit)
+.igdev/
+
 # Local configuration / secrets
 .env
 .env.*.local
-
-# Runtime state and downloaded tools
-.runtime/
 
 # Private / licensed Ignition modules
 modules/private/*.modl
@@ -11,14 +11,11 @@ modules/private/*.modl
 # Gateway backups
 *.gwbk
 
-# act runtime artifacts
-.act-artifacts/
-
 # OS / editor
 .DS_Store
 .vscode/
 .idea/
 
-# igdev Go toolchain build output (ticket 01)
+# igdev Go toolchain build output
 /bin/
 /dist/
