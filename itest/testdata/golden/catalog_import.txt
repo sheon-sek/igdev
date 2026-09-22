@@ -1,0 +1,3 @@
+source:  openapi.json (sha256:9fa03647b7a2617982813ad5188024ac70b97ebde11ff87203d1bef840c27ecd)
+overlay: catalog/rest-overlay.tsv (created, 8 of 14 operations, digest sha256:55e1a0faaf52bb836ee479843ba5119e3d4f8e23f8ba1aafdc776d5905db9431)
+rows:    added 8, preserved 0, removed 0, redundant 6

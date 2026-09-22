@@ -1,0 +1,27 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "ignition_version": "8.3.8",
+    "source": {
+      "path": "openapi.json",
+      "sha256": "sha256:0f09e1ddb51444a63532e63629d04c1e09f3cecefea48a0f34ab0e5f2f097234"
+    },
+    "output": {
+      "path": "catalog/rest-overlay.tsv",
+      "action": "updated",
+      "digest": "sha256:9d21f8d4172c21f86d8dcc5396e656f8309d342000ec6964d0ab6a94b14346af",
+      "declared": true,
+      "diff": "--- a/catalog/rest-overlay.tsv\n+++ b/catalog/rest-overlay.tsv\n@@ -7,8 +7,6 @@\n GET\t/data/api/v1/resources/com.inductiveautomation.sip-notification/voice-settings\tmodule\tcom.inductiveautomation.phone-notification\n GET\t/data/api/v1/system/overview\tplatform\t-\n GET\t/data/api/v1/system/status\tplatform\t-\n-DELETE\t/data/mcp/api/v1/tools/{toolName}\tprivate-module\tcom.inductiveautomation.mcp\n-POST\t/data/mcp/api/v1/tools/{toolName}\tprivate-module\tcom.inductiveautomation.mcp\n GET\t/data/reporting/api/v1/reports/scheduled\tmodule\tcom.inductiveautomation.reporting\n POST\t/data/reporting/api/v1/reports/scheduled\tmodule\tcom.inductiveautomation.reporting\n POST\t/data/reporting/api/v1/reports/{reportPath}\tmodule\tcom.inductiveautomation.reporting\n"
+    },
+    "operations": 13,
+    "written": 7,
+    "added": 0,
+    "preserved": 0,
+    "removed": 2,
+    "redundant": 6
+  }
+}

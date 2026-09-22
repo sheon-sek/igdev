@@ -1,0 +1,1 @@
+[igdev] WARNING: catalog/rest-overlay.tsv is not declared in [catalog].overlay_paths; add it so this repository resolves the overlay

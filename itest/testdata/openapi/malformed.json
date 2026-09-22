@@ -1,0 +1,4 @@
+{
+  "openapi": "3.0.1",
+  "info": { "title": "Ignition Gateway", "version": "8.3.8" },
+  "paths": {

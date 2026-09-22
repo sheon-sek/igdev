@@ -1,0 +1,13 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_USAGE",
+  "message": "igdev catalog import-openapi: malformed.json is not valid JSON: unexpected end of JSON input",
+  "remediation": [
+    {
+      "command": "igdev help catalog import-openapi",
+      "why": "show what this command reads and where it writes"
+    }
+  ],
+  "data": {}
+}

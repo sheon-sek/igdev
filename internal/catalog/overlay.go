@@ -101,6 +101,26 @@ func LoadOverlay(root string, paths []string) (*Overlay, *contract.Fault) {
 	return overlay, nil
 }
 
+// overlayFromBytes parses one overlay file's bytes, with the declared path used
+// when a row has to be named in a fault. `catalog import-openapi` validates the
+// content it is about to write this way, so a file the reader would refuse never
+// reaches the disk.
+func overlayFromBytes(declared string, raw []byte) (*Overlay, *contract.Fault) {
+	rows, err := overlayRows(raw, declared)
+	if err != nil {
+		return nil, err
+	}
+	parsed, err := parsePlanes("", rows, LayerOverlay)
+	if err != nil {
+		return nil, err
+	}
+	return &Overlay{
+		Paths:   []string{declared},
+		Digest:  digest([]digestRow{{name: declared, data: raw}}),
+		Catalog: parsed,
+	}, nil
+}
+
 // overlayPath resolves one declared overlay path. The contract validation
 // already refuses absolute paths and parent traversal; this is the belt to that
 // brace, because a path outside the repository is never a tracked file.

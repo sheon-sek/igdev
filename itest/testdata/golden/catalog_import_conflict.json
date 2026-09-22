@@ -1,0 +1,13 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_OVERLAY_CONFLICT",
+  "message": "project overlay row \"GET\\t/data/api/v1/gateway-info\\tmodule\\tcom.acme.hijack\" conflicts with the core row \"GET\\t/data/api/v1/gateway-info\\tplatform\\t-\" for REST operation GET /data/api/v1/gateway-info; an overlay may add knowledge but must not shadow it",
+  "remediation": [
+    {
+      "command": "igdev catalog status --json",
+      "why": "report the Core Catalog and Project Overlay layers with their digests"
+    }
+  ],
+  "data": {}
+}

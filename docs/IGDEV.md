@@ -430,6 +430,12 @@ Overlay discovery is `[catalog] overlay_paths` in the Project Contract: reposito
 relative paths, validated at parse time (no absolute path, no `..`). A declared file
 that does not exist is `IGDEV_E_OVERLAY_INVALID` too — the contract would be lying.
 
+An overlay file may hold both kinds of knowledge: the REST plane a Gateway's OpenAPI
+document yields goes into a block the file marks as generated
+(`# igdev catalog import-openapi: …`), and that block is the only part an import
+rewrites. The native-function and capability-rule planes are hand-authored, because no
+OpenAPI document knows about them.
+
 ### The knowledge verbs
 
 `igdev catalog status` reports both layers: `core` (embedded, with its version) and
@@ -473,6 +479,51 @@ capability requires depends on the Project Contract — its whitelist and its ov
 declarations — not on whether the checkout has been materialized, so
 `igdev module require` answers before the first `igdev setup`. They do need a Project
 Root: outside one the answer is `IGDEV_E_NOT_INITIALIZED`.
+
+### Importing a Gateway OpenAPI document
+
+`igdev catalog import-openapi <openapi.json>` ports the legacy
+`scripts/generate-rest-catalog.py`: it reads a Gateway `/openapi.json` snapshot and
+writes the REST plane of this repository's tracked Project Overlay, one row per
+operation, mapping the path template to its owner kind and required modules with the
+generator's own rules — the route-prefix table, the `/data/api/v1/resources/<module>`
+aliases (`mcp` → `private-module`, `sip-notification` →
+`com.inductiveautomation.phone-notification`, `opcua.drivers.bacnet` → bacnet *and*
+opcua), the `com.*` module segment, and the platform default. A `{param}` segment is
+preserved as a template, so the imported row resolves the concrete requests the
+generator's rows resolve.
+
+A row the Core Catalog already carries with the same owner is not copied into the
+overlay — a duplicate would be refused as a conflict on the next read — so importing
+the full document of an Ignition version this binary already knows adds nothing, and
+the overlay grows by what the core does not know. A row that would shadow a core row
+with a *different* owner is `IGDEV_E_OVERLAY_CONFLICT` and nothing is written, exactly
+as a hand-authored row would be: an overlay may add knowledge and may not redefine it.
+A hand-authored REST row in the same file that shadows the core is caught the same way,
+by validating the file before it is written.
+
+The file written is `--output`, or the first `[catalog].overlay_paths` entry, or
+`catalog/rest-overlay.tsv`; it has to be repository-relative and inside the Project
+Root, and a file the contract does not declare is warned about on stderr, because an
+overlay nothing declares is never resolved. The Ignition version is
+`--ignition-version` or the resolved `ignition.version`; a version this binary carries
+no Core Catalog for fails closed with `IGDEV_E_CATALOG_VERSION_MISSING` — there would be
+nothing to check the rows against — and a value that is not a version is a usage error.
+A document that cannot be read, is not valid JSON, has no object-valued `paths`, or
+declares no operation is `IGDEV_E_USAGE` naming the file; the empty document is refused
+in particular because importing it with `--prune` would empty a tracked overlay.
+
+The write is atomic and prints the unified diff, like every other tracked write.
+Re-importing an unchanged document reports `unchanged` and writes nothing at all; a
+changed document updates the overlay and the `# source_sha256=` digest its header
+records. Rows a previous import wrote that the document no longer declares are kept — a
+document that stopped listing an endpoint is not proof the project stopped using it —
+and `--prune` is the opt-in that drops them. A row the Core Catalog has come to carry
+itself is dropped either way, with or without `--prune`: keeping it would rebuild the
+conflict an overlay may not have. The `data` member reports `operations`,
+`written`, `added`, `preserved`, `removed`, and `redundant`, so an import says exactly
+what it changed. After an import, `module require METHOD /path` resolves the endpoint
+with `layer: "overlay"`, and `catalog status` reports the overlay layer's digest.
 
 ### Writing modules
 
@@ -840,7 +891,7 @@ and description. It is immediately resolvable from every tier, reported by
 `igdev status --json`, and settable by tests through `testrig.EnvFor(path)`.
 `internal/testrig` maps the same schema, so nothing has to be kept in sync by hand.
 
-## Deliberate limits of tickets 01-05, 12, 13, 14, and 20
+## Deliberate limits of tickets 01-05, 12, 13, 14, 15, and 20
 
 Ticket 01: the walking skeleton — install, `status`, `version`, help, completion, the
 five-tier resolver, the Gate's discovery stage, and the resource/hygiene gates.
@@ -869,6 +920,13 @@ layer (the pinned, lock-guarded standalone-artifact cache and the one-JVM batche
 compile behind `igdev jython check`). The 500-file timing gate lives in
 real-docker half is deferred to the e2e tier, exactly as the
 real-docker half is.
+Ticket 15: the overlay generator (`catalog import-openapi` — the port of
+`scripts/generate-rest-catalog.py`: the generator's mapping rules over a Gateway
+`/openapi.json` snapshot, writing the REST plane of the tracked overlay inside the
+block the file marks as generated, idempotent re-import with `--prune` for the rows a
+document no longer declares, and fail-closed conflicts against the Core Catalog). The
+native-function and capability-rule planes stay hand-authored: `catalog add-function`
+and `catalog sync --gateway` are still deferred.
 
 Ticket 20: running the project's CI locally (`ci-local` invokes act as a subprocess from
 the Project Root, with the event, the job, the offline mode, and verbatim passthrough).
@@ -881,8 +939,7 @@ pipeline's first stage (`module-validate`), and the oracle's REST-catalog struct
 validation is covered instead by the embedded Core Catalog's digest tests. The module
 surface is otherwise read-only: there is still no module-license or module-certificate
 acceptance path (the Consent terms exist and `setup` records them, but no command
-demands them), and `catalog import-openapi` (the overlay generator) does not exist yet —
-an overlay is hand-authored today. There is no Wizard prompt (ticket 16, which also adds
+demands them). There is no Wizard prompt (ticket 16, which also adds
 the `module add` steps), and no
 AGENTS.md managed block. The repository is not yet dogfooding its
 own `igdev.toml`; that arrives with the conversion ticket. Until then the root

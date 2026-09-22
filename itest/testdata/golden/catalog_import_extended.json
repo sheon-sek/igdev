@@ -1,0 +1,27 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "ignition_version": "8.3.8",
+    "source": {
+      "path": "openapi.json",
+      "sha256": "sha256:0f09e1ddb51444a63532e63629d04c1e09f3cecefea48a0f34ab0e5f2f097234"
+    },
+    "output": {
+      "path": "catalog/rest-overlay.tsv",
+      "action": "updated",
+      "digest": "sha256:d473f1561f556813959aa64c7ed4067bbe890428036e9faec70fdd708b56f594",
+      "declared": true,
+      "diff": "--- a/catalog/rest-overlay.tsv\n+++ b/catalog/rest-overlay.tsv\n@@ -1,10 +1,11 @@\n # igdev catalog import-openapi: generated REST plane — regenerate it with `igdev catalog import-openapi`.\n # ignition_version=8.3.8\n-# source_sha256=9fa03647b7a2617982813ad5188024ac70b97ebde11ff87203d1bef840c27ecd\n+# source_sha256=0f09e1ddb51444a63532e63629d04c1e09f3cecefea48a0f34ab0e5f2f097234\n # columns: method<TAB>path_template<TAB>owner_kind(platform|module|private-module)<TAB>required_module_ids(comma-separated or -)\n # plane: rest\n POST\t/data/api/v1/resources/com.inductiveautomation.opcua.drivers.bacnet/IpDeviceConfig\tmodule\tcom.inductiveautomation.opcua.drivers.bacnet,com.inductiveautomation.opcua\n GET\t/data/api/v1/resources/com.inductiveautomation.sip-notification/voice-settings\tmodule\tcom.inductiveautomation.phone-notification\n+GET\t/data/api/v1/system/overview\tplatform\t-\n GET\t/data/api/v1/system/status\tplatform\t-\n DELETE\t/data/mcp/api/v1/tools/{toolName}\tprivate-module\tcom.inductiveautomation.mcp\n POST\t/data/mcp/api/v1/tools/{toolName}\tprivate-module\tcom.inductiveautomation.mcp\n"
+    },
+    "operations": 13,
+    "written": 7,
+    "added": 1,
+    "preserved": 2,
+    "removed": 0,
+    "redundant": 6
+  }
+}

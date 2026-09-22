@@ -1,0 +1,16 @@
+--- /dev/null
++++ b/catalog/rest-overlay.tsv
+@@ -0,0 +1,13 @@
++# igdev catalog import-openapi: generated REST plane — regenerate it with `igdev catalog import-openapi`.
++# ignition_version=8.3.8
++# source_sha256=9fa03647b7a2617982813ad5188024ac70b97ebde11ff87203d1bef840c27ecd
++# columns: method<TAB>path_template<TAB>owner_kind(platform|module|private-module)<TAB>required_module_ids(comma-separated or -)
++# plane: rest
++POST	/data/api/v1/resources/com.inductiveautomation.opcua.drivers.bacnet/IpDeviceConfig	module	com.inductiveautomation.opcua.drivers.bacnet,com.inductiveautomation.opcua
++GET	/data/api/v1/resources/com.inductiveautomation.sip-notification/voice-settings	module	com.inductiveautomation.phone-notification
++GET	/data/api/v1/system/status	platform	-
++DELETE	/data/mcp/api/v1/tools/{toolName}	private-module	com.inductiveautomation.mcp
++POST	/data/mcp/api/v1/tools/{toolName}	private-module	com.inductiveautomation.mcp
++GET	/data/reporting/api/v1/reports/scheduled	module	com.inductiveautomation.reporting
++POST	/data/reporting/api/v1/reports/scheduled	module	com.inductiveautomation.reporting
++POST	/data/reporting/api/v1/reports/{reportPath}	module	com.inductiveautomation.reporting

@@ -1,0 +1,168 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Ignition Gateway",
+    "description": "Public REST API of one Ignition Gateway.",
+    "version": "8.3.8"
+  },
+  "servers": [
+    { "url": "/data" }
+  ],
+  "tags": [
+    { "name": "gateway", "description": "Gateway information." },
+    { "name": "resources", "description": "Project resources." }
+  ],
+  "paths": {
+    "/data/api/v1/gateway-info": {
+      "get": {
+        "tags": ["gateway"],
+        "summary": "Gateway information and status",
+        "operationId": "getGatewayInfo",
+        "responses": {
+          "200": { "description": "Build, license, and uptime of the gateway." }
+        }
+      }
+    },
+    "/data/api/v1/system/status": {
+      "get": {
+        "tags": ["gateway"],
+        "summary": "Runtime status of the platform services",
+        "operationId": "getSystemStatus",
+        "responses": {
+          "200": { "description": "Per-service status." }
+        }
+      }
+    },
+    "/data/api/v1/resources/names/com.inductiveautomation.opcua/device": {
+      "get": {
+        "tags": ["resources"],
+        "summary": "List device resource names",
+        "operationId": "listDeviceNames",
+        "responses": {
+          "200": { "description": "Resource names for the device type." }
+        }
+      }
+    },
+    "/data/api/v1/resources/com.inductiveautomation.sip-notification/script-settings": {
+      "put": {
+        "tags": ["resources"],
+        "summary": "Write the SIP notification script settings",
+        "operationId": "putSipScriptSettings",
+        "parameters": [
+          { "name": "payload", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Settings stored." }
+        }
+      }
+    },
+    "/data/api/v1/resources/com.inductiveautomation.sip-notification/voice-settings": {
+      "get": {
+        "tags": ["resources"],
+        "summary": "Read the voice notification settings",
+        "operationId": "getVoiceSettings",
+        "responses": {
+          "200": { "description": "Voice provider, caller id, and retry policy." }
+        }
+      }
+    },
+    "/data/api/v1/resources/com.inductiveautomation.opcua.drivers.bacnet/IpDeviceConfig": {
+      "post": {
+        "tags": ["resources"],
+        "summary": "Create a BACnet/IP device configuration",
+        "operationId": "createBacnetIpDeviceConfig",
+        "responses": {
+          "200": { "description": "Device configuration created." }
+        }
+      }
+    },
+    "/data/perspective/api/v1/sessions/": {
+      "get": {
+        "tags": ["perspective"],
+        "summary": "List the active Perspective sessions",
+        "operationId": "listSessions",
+        "responses": {
+          "200": { "description": "Active sessions." }
+        }
+      }
+    },
+    "/data/perspective/api/v1/session/{sessionId}": {
+      "parameters": [
+        { "name": "sessionId", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "tags": ["perspective"],
+        "summary": "Read one Perspective session",
+        "operationId": "getSession",
+        "responses": {
+          "200": { "description": "One session." }
+        }
+      }
+    },
+    "/data/reporting/api/v1/reports/current": {
+      "get": {
+        "tags": ["reporting"],
+        "summary": "Execute the current report",
+        "operationId": "getReportCurrent",
+        "responses": {
+          "200": { "description": "Rendered report." }
+        }
+      }
+    },
+    "/data/reporting/api/v1/reports/scheduled": {
+      "get": {
+        "tags": ["reporting"],
+        "summary": "List the scheduled reports",
+        "operationId": "listScheduledReports",
+        "responses": {
+          "200": { "description": "Scheduled reports." }
+        }
+      },
+      "post": {
+        "tags": ["reporting"],
+        "summary": "Schedule a report",
+        "operationId": "scheduleReport",
+        "responses": {
+          "200": { "description": "Report scheduled." }
+        }
+      }
+    },
+    "/data/reporting/api/v1/reports/{reportPath}": {
+      "post": {
+        "tags": ["reporting"],
+        "summary": "Execute a report by path",
+        "operationId": "executeReport",
+        "parameters": [
+          { "name": "reportPath", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Rendered report." }
+        }
+      }
+    },
+    "/data/mcp/api/v1/tools/{toolName}": {
+      "post": {
+        "tags": ["mcp"],
+        "summary": "Call one MCP tool",
+        "operationId": "callTool",
+        "parameters": [
+          { "name": "toolName", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Tool result." }
+        }
+      },
+      "delete": {
+        "tags": ["mcp"],
+        "summary": "Remove one MCP tool registration",
+        "operationId": "removeTool",
+        "parameters": [
+          { "name": "toolName", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Tool removed." }
+        }
+      }
+    }
+  }
+}
