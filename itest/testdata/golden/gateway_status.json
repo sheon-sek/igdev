@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "instance_id": "<INSTANCE_ID>",
+    "namespace": "igdev-<SHORT_ID>",
+    "url": "http://127.0.0.1:<PORT_HTTP>",
+    "ports": {
+      "http": <PORT_HTTP>,
+      "https": <PORT_HTTPS>,
+      "debug": <PORT_DEBUG>
+    },
+    "state": "running",
+    "services": [
+      {
+        "name": "igdev-<SHORT_ID>-gateway-1",
+        "service": "gateway",
+        "state": "running",
+        "status": "Up 1 second"
+      }
+    ]
+  }
+}

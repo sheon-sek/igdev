@@ -1,0 +1,2 @@
+igdev-<SHORT_ID>-gateway-1  | igdev shim: gateway log line 1
+igdev-<SHORT_ID>-gateway-1  | igdev shim: gateway log line 2

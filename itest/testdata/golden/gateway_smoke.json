@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "instance_id": "<INSTANCE_ID>",
+    "url": "http://127.0.0.1:<PORT_HTTP>",
+    "checks": [
+      {
+        "path": "/",
+        "url": "http://127.0.0.1:<PORT_HTTP>/",
+        "status": 200,
+        "ok": true
+      },
+      {
+        "path": "/system/gateway/info",
+        "url": "http://127.0.0.1:<PORT_HTTP>/system/gateway/info",
+        "status": 200,
+        "ok": true
+      },
+      {
+        "path": "/data/api/v1/gateway-info",
+        "url": "http://127.0.0.1:<PORT_HTTP>/data/api/v1/gateway-info",
+        "status": 200,
+        "ok": true
+      }
+    ]
+  }
+}

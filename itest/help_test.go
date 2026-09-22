@@ -109,11 +109,11 @@ func TestHelpInMachineModeIsAnEnvelope(t *testing.T) {
 func TestHelpUnknownTopic(t *testing.T) {
 	env := testrig.NewEnv(t)
 
-	res := env.MustRun("help", "gateway", "--json")
+	res := env.MustRun("help", "nonesuch", "--json")
 	testrig.WantExit(t, res, contract.ExitUsage)
 	envelope := testrig.Envelope(t, res.Stdout)
 	testrig.WantCode(t, envelope, contract.CodeUsage)
-	if !strings.Contains(envelope.Message, "gateway") {
+	if !strings.Contains(envelope.Message, "nonesuch") {
 		t.Errorf("message does not name the unknown topic: %q", envelope.Message)
 	}
 }

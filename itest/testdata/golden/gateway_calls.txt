@@ -1,0 +1,5 @@
+compose --project-name igdev-<SHORT_ID> --file <ROOT>/repo/.igdev/runtime/compose.yaml --env-file <ROOT>/repo/.igdev/runtime/compose.env up --detach --build gateway
+compose --project-name igdev-<SHORT_ID> --file <ROOT>/repo/.igdev/runtime/compose.yaml --env-file <ROOT>/repo/.igdev/runtime/compose.env ps --format json
+compose --project-name igdev-<SHORT_ID> --file <ROOT>/repo/.igdev/runtime/compose.yaml --env-file <ROOT>/repo/.igdev/runtime/compose.env logs --tail 50 gateway
+compose --project-name igdev-<SHORT_ID> --file <ROOT>/repo/.igdev/runtime/compose.yaml --env-file <ROOT>/repo/.igdev/runtime/compose.env restart gateway
+compose --project-name igdev-<SHORT_ID> --file <ROOT>/repo/.igdev/runtime/compose.yaml --env-file <ROOT>/repo/.igdev/runtime/compose.env down --volumes --remove-orphans

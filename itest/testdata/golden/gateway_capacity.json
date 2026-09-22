@@ -1,0 +1,17 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_CAPACITY",
+  "message": "the Capacity Gate refused to start a Gateway: 1024 MiB available, 2560 MiB required (2048 MiB heap plus 512 MiB headroom); running igdev instances: igdev-<SHORT_ID>",
+  "remediation": [
+    {
+      "command": "igdev gateway up --force",
+      "why": "start anyway, accepting the out-of-memory risk"
+    },
+    {
+      "command": "igdev gateway down --volumes",
+      "why": "stop this checkout's Gateway and give its memory back"
+    }
+  ],
+  "data": {}
+}

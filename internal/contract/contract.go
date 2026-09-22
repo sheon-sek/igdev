@@ -75,6 +75,17 @@ const (
 	// CodeVersionUnsupported covers a Project Contract requiring a newer igdev
 	// than the one running: `[tool].min_version` is above this binary.
 	CodeVersionUnsupported Code = "IGDEV_E_VERSION_UNSUPPORTED"
+	// CodeCapacity covers the Capacity Gate refusing to start a Gateway because
+	// the machine's free memory is below the requested heap plus headroom
+	// (ADR 0003). It is a human-required code: exit level 3, because a person
+	// either frees memory or accepts the risk with --force.
+	CodeCapacity Code = "IGDEV_E_CAPACITY"
+	// CodeGatewayUnhealthy covers a Gateway that did not answer health checks
+	// before the deadline, or answered a smoke check with an error status.
+	CodeGatewayUnhealthy Code = "IGDEV_E_GATEWAY_UNHEALTHY"
+	// CodeDocker covers a container-engine call that failed: the engine is
+	// missing, is not compose v2, or refused the work.
+	CodeDocker Code = "IGDEV_E_DOCKER"
 )
 
 // Remediation is a machine-readable next step: the exact command that clears

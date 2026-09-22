@@ -1,0 +1,99 @@
+name: igdev-gateway-e2e
+
+# The non-hermetic tier: one real container engine, one real Ignition image, the
+# whole Gateway lifecycle — `up`, `wait`, `smoke`, `down --volumes`. The PR suite
+# stays hermetic (a PATH-shimmed docker and a loopback Gateway stand-in); an
+# Ignition image is pulled here and nowhere else, so this job is dispatched or
+# scheduled, never a required check.
+#
+# Consent is a human act (ADR 0004): the client below records the EULA acceptance
+# with `setup --accept-eula`, which is the person who dispatched this workflow
+# accepting the terms for this machine. No step reads the admin password; nothing
+# secret is ever printed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ignition_version:
+        description: Ignition version to boot
+        required: true
+        default: "8.3.8"
+      wait_timeout:
+        description: Seconds `igdev gateway wait` may take for health
+        required: true
+        default: "420"
+  schedule:
+    # Nightly, so a moved base image or a changed Docker API surfaces without a
+    # person dispatching anything.
+    - cron: "17 4 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  gateway-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IGNITION_VERSION: ${{ github.event.inputs.ignition_version || '8.3.8' }}
+      WAIT_TIMEOUT: ${{ github.event.inputs.wait_timeout || '420' }}
+      CHECKOUT: ${{ runner.temp }}/e2e-checkout
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build igdev
+        run: |
+          go build -trimpath -o "$RUNNER_TEMP/igdev" ./cmd/igdev
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Report the engine
+        run: |
+          docker version
+          docker compose version
+
+      - name: Materialize a checkout
+        run: |
+          mkdir -p "$CHECKOUT"
+          cd "$CHECKOUT"
+          igdev init \
+            --name ignition-devenv-automation-e2e \
+            --ignition-version "$IGNITION_VERSION" \
+            --gateway-timezone UTC \
+            --gateway-memory-mb 2048 \
+            --json
+          igdev setup --accept-eula --json
+
+      - name: Boot the Gateway and drive its lifecycle
+        working-directory: ${{ env.CHECKOUT }}
+        run: |
+          igdev gateway up --json
+          igdev gateway wait --timeout "$WAIT_TIMEOUT" --json
+          igdev gateway smoke --json
+          igdev gateway status
+          igdev gateway url
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        working-directory: ${{ env.CHECKOUT }}
+        run: |
+          igdev gateway status --json > gateway-status.json 2>&1 || true
+          igdev gateway logs --tail 500 > gateway-logs.txt 2>&1 || true
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: igdev-gateway-e2e-logs
+          path: |
+            ${{ env.CHECKOUT }}/gateway-logs.txt
+            ${{ env.CHECKOUT }}/gateway-status.json
+          if-no-files-found: ignore
+
+      - name: Stop the Gateway
+        if: always()
+        working-directory: ${{ env.CHECKOUT }}
+        run: igdev gateway down --volumes || true

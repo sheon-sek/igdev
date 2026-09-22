@@ -98,6 +98,10 @@ type Commands struct {
 type Gateway struct {
 	MemoryMB int    `toml:"memory_mb"`
 	Timezone string `toml:"timezone"`
+	// SmokeEndpoints are the request paths `igdev gateway smoke` checks beyond the
+	// root document, in the order they are checked. The key is optional: a
+	// contract that does not state it checks the root alone.
+	SmokeEndpoints []string `toml:"smoke_endpoints"`
 }
 
 // Empty reports whether every stage is undeclared.
@@ -253,6 +257,12 @@ func (d Doc) Validate(path string) error {
 			}
 		}
 	}
+	for _, endpoint := range d.Gateway.SmokeEndpoints {
+		if !smokePath(endpoint) {
+			return contractInvalid("%sgateway.smoke_endpoints entry %q is not a request path like /web/home",
+				where, endpoint)
+		}
+	}
 	if d.Gateway.MemoryMB < 0 {
 		return contractInvalid("%sgateway.memory_mb = %d, want a positive heap in MiB",
 			where, d.Gateway.MemoryMB)
@@ -312,6 +322,9 @@ func (d Doc) Render() []byte {
 	b.WriteString("\n[gateway]\n")
 	fmt.Fprintf(&b, "memory_mb = %d\n", d.Gateway.MemoryMB)
 	fmt.Fprintf(&b, "timezone = %s\n", tomlString(d.Gateway.Timezone))
+	if len(d.Gateway.SmokeEndpoints) > 0 {
+		fmt.Fprintf(&b, "smoke_endpoints = %s\n", tomlStrings(d.Gateway.SmokeEndpoints))
+	}
 	return []byte(b.String())
 }
 
@@ -344,6 +357,12 @@ func editionLike(s string) bool { return editionPattern.MatchString(s) }
 func moduleLike(s string) bool { return modulePattern.MatchString(s) }
 
 func timezoneLike(s string) bool { return timezonePattern.MatchString(s) }
+
+// smokePath reports a request path smoke can concatenate onto the Gateway URL:
+// rooted at "/" and free of whitespace.
+func smokePath(s string) bool {
+	return strings.HasPrefix(s, "/") && !strings.ContainsAny(s, " \t\r") && printable(s)
+}
 
 // printable reports a value that survives a single TOML line unchanged.
 func printable(s string) bool {

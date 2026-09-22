@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/sheon-sek/igdev/internal/capacity"
 )
 
 // ShimDockerFile is the docker stand-in's filename inside the shim directory.
@@ -19,12 +21,26 @@ const ShimDockerFile = "docker"
 // synthetic container id for run/create, or with a chosen exit code — the knobs
 // the setup and gateway tickets drive.
 //
+// The compose idioms an Instance's lifecycle needs are answered from the state
+// the shim keeps beside the call log: `up` records the project's container and
+// named volume (reading the published ports out of the rendered Compose file, so
+// they are the recorded triplet), `ps` reports them as a running service, `logs`
+// replays a canned line, `ls` lists the projects a machine is running, and `down
+// --volumes` retires both objects. Everything else the script ignores.
+//
 // Recognition of what was created or destroyed happens in Go (DockerOrphans),
 // keeping this script dumb. One JSON object per line; an argument containing a
 // raw newline is not representable, which no test does.
 const dockerShimScript = `#!/bin/sh
-# igdev test rig docker shim: records invocations, replays canned answers.
+# igdev test rig docker shim: records invocations, replays canned answers, and
+# keeps the container and volume state a compose project owns, beside the call
+# log. Object state lives under "<state dir>/docker/", so one scratch machine
+# sees one engine.
 state="$IGDEV_SHIM_DOCKER_STATE"
+home=""
+if [ -n "$state" ]; then
+  home="$(dirname "$state")/docker"
+fi
 escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 n=1
 if [ -n "$state" ] && [ -f "$state" ]; then
@@ -42,11 +58,102 @@ if [ -n "$state" ]; then
 fi
 if [ -n "$IGDEV_SHIM_DOCKER_OUT" ]; then
   printf '%s\n' "$IGDEV_SHIM_DOCKER_OUT"
-elif [ "$1" = "run" ] || [ "$1" = "create" ]; then
-  printf '%064x\n' "$n"
+  exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
 fi
+[ $# -gt 0 ] || exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
+if [ "$1" = "run" ] || [ "$1" = "create" ]; then
+  printf '%064x\n' "$n"
+  exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
+fi
+if [ "$1" != "compose" ] || [ -z "$home" ]; then
+  exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
+fi
+shift
+project=""; file=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -p|--project-name) project="$2"; shift 2 ;;
+    --project-name=*) project="${1#*=}"; shift ;;
+    -f|--file) file="$2"; shift 2 ;;
+    --file=*) file="${1#*=}"; shift ;;
+    --env-file|--project-directory|--profile|--ansi|--progress) shift 2 ;;
+    --*=*|-*) shift ;;
+    *) break ;;
+  esac
+done
+verb="$1"
+[ $# -gt 0 ] && shift
+# A real compose takes the project name from the file's name: key when no flag
+# says otherwise, so the shim does the same.
+if [ -z "$project" ] && [ -n "$file" ] && [ -f "$file" ]; then
+  project="$(sed -n 's/^name:[[:space:]]*\(.*\)$/\1/p' "$file" | head -n 1)"
+fi
+container="$project-gateway-1"
+volume="${project}_gateway-data"
+mkdir -p "$home/containers" "$home/volumes"
+case "$verb" in
+  up)
+    ports="$(sed -n 's/.*127\.0\.0\.1:\([0-9][0-9]*\):[0-9][0-9]*.*/\1/p' "$file" 2>/dev/null | tr '\n' ' ')"
+    printf 'project=%s\nports=%s\n' "$project" "$ports" > "$home/containers/$container"
+    printf 'project=%s\n' "$project" > "$home/volumes/$volume"
+    printf ' Container %s  Started\n' "$container"
+    ;;
+  down)
+    volumes=no
+    for a in "$@"; do [ "$a" = "--volumes" ] && volumes=yes; done
+    rm -f "$home/containers/$container"
+    [ "$volumes" = yes ] && rm -f "$home/volumes/$volume"
+    printf ' Container %s  Removed\n' "$container"
+    ;;
+  restart)
+    printf ' Container %s  Restarted\n' "$container"
+    ;;
+  ps)
+    printf '['
+    sep=""
+    for f in "$home"/containers/*; do
+      [ -f "$f" ] || continue
+      [ "$(sed -n 's/^project=//p' "$f")" = "$project" ] || continue
+      ports="$(sed -n 's/^ports=//p' "$f")"
+      http="$(printf '%s' "$ports" | cut -d' ' -f1)"
+      https="$(printf '%s' "$ports" | cut -d' ' -f2)"
+      dbg="$(printf '%s' "$ports" | cut -d' ' -f3)"
+      printf '%s{"Name":"%s","Service":"gateway","State":"running","Health":"","ExitCode":0,"Status":"Up 1 second","Publishers":[{"URL":"127.0.0.1","TargetPort":8088,"PublishedPort":%s,"Protocol":"tcp"},{"URL":"127.0.0.1","TargetPort":8043,"PublishedPort":%s,"Protocol":"tcp"},{"URL":"127.0.0.1","TargetPort":8000,"PublishedPort":%s,"Protocol":"tcp"}]}' "$sep" "$(basename "$f")" "${http:-0}" "${https:-0}" "${dbg:-0}"
+      sep=","
+    done
+    printf ']\n'
+    ;;
+  logs)
+    printf '%s  | igdev shim: gateway log line 1\n' "$container"
+    printf '%s  | igdev shim: gateway log line 2\n' "$container"
+    ;;
+  ls)
+    printf '['
+    sep=""
+    for f in "$home"/containers/*; do
+      [ -f "$f" ] || continue
+      printf '%s{"Name":"%s","Status":"running(1)","ConfigFiles":"-"}' "$sep" "$(sed -n 's/^project=//p' "$f")"
+      sep=","
+    done
+    printf ']\n'
+    ;;
+esac
 exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
 `
+
+// ShimMeminfo writes a meminfo-format file reporting availableMB of MemAvailable
+// and points every later run in this Env at it. The Capacity Gate reads the path
+// named by capacity.MeminfoEnv instead of /proc/meminfo, which is how a test
+// decides how much free memory the machine appears to have.
+func (e *Env) ShimMeminfo(availableMB int) string {
+	e.T.Helper()
+	path := e.Write("state/meminfo", fmt.Sprintf(
+		"MemTotal: %d kB\nMemFree: %d kB\nMemAvailable: %d kB\nBuffers: 0 kB\n",
+		(availableMB+1024)*1024, availableMB*1024, availableMB*1024))
+	e.SetBaseEnv(capacity.MeminfoEnv + "=" + path)
+	e.RegisterReplacement(path, "<MEMINFO>")
+	return path
+}
 
 // ShimDocker installs the fake docker on the scratch PATH and returns the state
 // file path (the docker call log). Calling it twice is harmless.
@@ -151,8 +258,10 @@ func (o Orphans) String() string {
 // removes it at exit. A removal naming something unknown is reported as unmatched
 // and retires nothing, so mismatched cleanups cannot hide a leak.
 //
-// Compose verbs (`docker compose up|down`) arrive with the gateway ticket, which
-// owns the project namespace; until then they are recorded but not tallied.
+// The compose idioms are tallied under the names a real engine gives them:
+// `docker compose up` creates the project's gateway container and its named
+// volume, and `down --volumes` retires both (`down` alone leaves the volume,
+// which is exactly the state the operator asked for).
 func (e *Env) DockerOrphans(t *testing.T) Orphans {
 	t.Helper()
 	alive := map[string]objectRef{}
@@ -195,6 +304,23 @@ func (e *Env) DockerOrphans(t *testing.T) Orphans {
 		case "rm", "rmi":
 			for _, name := range positional(argv[1:]) {
 				retire("container", name, call.N)
+			}
+		case "compose":
+			project := composeProject(argv[1:])
+			if project == "" {
+				continue
+			}
+			container := ComposeContainer(project)
+			volume := ComposeVolume(project)
+			switch ComposeVerb(argv[1:]) {
+			case "up":
+				alive["container:"+container] = objectRef{kind: "container", id: container}
+				alive["volume:"+volume] = objectRef{kind: "volume", id: volume}
+			case "down":
+				retire("container", container, call.N)
+				if hasFlag(argv, "--volumes") {
+					retire("volume", volume, call.N)
+				}
 			}
 		case "network", "volume":
 			if len(argv) < 2 {
@@ -282,6 +408,54 @@ func firstPositional(argv []string) string {
 		return ""
 	}
 	return names[0]
+}
+
+// ComposeContainer and ComposeVolume are the names a compose project's objects
+// carry, which is what the orphan tally and the docker shim both register.
+func ComposeContainer(project string) string { return project + "-gateway-1" }
+
+// ComposeVolume is the named volume the gateway service mounts.
+func ComposeVolume(project string) string { return project + "_gateway-data" }
+
+// composeValueFlags are the compose flags whose value is a separate argument, so
+// the verb scan does not mistake a path or a project name for one.
+var composeValueFlags = []string{
+	"-p", "--project-name", "-f", "--file", "--env-file",
+	"--project-directory", "--profile", "--ansi", "--progress",
+}
+
+// composeProject returns the project a recorded compose call named.
+func composeProject(argv []string) string {
+	if project := flagValue(argv, "--project-name"); project != "" {
+		return project
+	}
+	return flagValue(argv, "-p")
+}
+
+// ComposeVerb returns the first non-flag argument of a recorded compose call:
+// the subcommand (up, down, ps, logs, ls, restart).
+func ComposeVerb(argv []string) string {
+	for i := 0; i < len(argv); {
+		arg := argv[i]
+		if !strings.HasPrefix(arg, "-") {
+			return arg
+		}
+		if !strings.Contains(arg, "=") && containsString(composeValueFlags, arg) {
+			i += 2
+			continue
+		}
+		i++
+	}
+	return ""
+}
+
+func containsString(haystack []string, needle string) bool {
+	for _, value := range haystack {
+		if value == needle {
+			return true
+		}
+	}
+	return false
 }
 
 // hasFlag reports a boolean flag, in either --flag or --flag=value form.

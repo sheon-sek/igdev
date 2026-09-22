@@ -68,13 +68,15 @@ and `packaging/install.sh` for real against a loopback file server.
 | Path | What lives there |
 | --- | --- |
 | `cmd/igdev` | main; three lines that call `cli.Execute` |
-| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping, `init`, `setup`, `doctor` |
+| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping, `init`, `setup`, `doctor`, the `gateway` verbs |
 | `internal/contract` | frozen envelope, `IGDEV_E_*` codes, exit levels, CLI Contract Version |
 | `internal/config` | five-tier resolver (flags > `IGDEV_*` > `.igdev/local.toml` > `igdev.toml` > defaults) |
 | `internal/project` | Project Root discovery, the `igdev.toml` schema v1 model: parse, validate, render, Contract Digest |
 | `internal/gate` | the Gate: contract schema, Setup Stamp (digest, schema, CLI Contract, Instance identity and ports), `[tool].min_version` — `Evaluate` / `Require` / `Decode` |
 | `internal/instance` | the Instance identity: UUID minting, validation, and the `igdev-<short-id>` namespace |
 | `internal/ports` | dynamic loopback port allocation by bind probe, and the free-port check a refresh uses |
+| `internal/capacity` | the Capacity Gate: `MemAvailable` measurement and the refusal arithmetic (ADR 0003) |
+| `internal/docker` | the `docker compose` client: one Instance's project, `up` / `down` / `ps` / `logs` / `restart`, and the running-project listing the Capacity Gate reports |
 | `internal/consent` | the machine-global human-only Consent record: term table, load/accept, the exit-3 check |
 | `internal/runtimeassets` | the embedded Compose / Compose-env / Dockerfile templates and their deterministic render |
 | `internal/localconfig` | the checkout-local tier `.igdev/local.toml`: Gateway credentials, password generation, key-preserving writes |
@@ -88,6 +90,7 @@ and `packaging/install.sh` for real against a loopback file server.
 | `itest` | behaviour tests and the goldens that freeze the contract |
 | `packaging` | `package.sh` (linux/darwin x amd64/arm64 tarballs + `checksums.txt`), `install.sh` |
 | `.github/workflows/igdev-ci.yml` | build, vet, gofmt, goldens, resource gates |
+| `.github/workflows/igdev-gateway-e2e.yml` | the non-hermetic tier: real docker, real Ignition image, the whole Gateway lifecycle |
 | `.github/workflows/igdev-release.yml` | tag push → checksummed GitHub Release |
 
 ## Agent contract (frozen)
@@ -114,7 +117,12 @@ error, `3` human action required. Codes are namespaced `IGDEV_E_*`; `igdev` emit
 `IGDEV_E_NOT_INITIALIZED`, `IGDEV_E_SETUP_REQUIRED`, `IGDEV_E_SETUP_STALE`,
 `IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED`, `IGDEV_E_VERSION_UNSUPPORTED`, and from the
 Checkout Setup (ticket 03) `IGDEV_E_CONSENT_REQUIRED` (exit 3: a person must accept a
-legal term) and `IGDEV_E_PORT_ALLOC` (the host refused three loopback binds). A typo in
+legal term) and `IGDEV_E_PORT_ALLOC` (the host refused three loopback binds). The
+Gateway suite adds `IGDEV_E_CAPACITY` (exit 3: the Capacity Gate refused to start a
+Gateway and a person frees memory or passes `--force`), `IGDEV_E_GATEWAY_UNHEALTHY`
+(a Gateway did not answer before the deadline, or answered a smoke check with an error
+status) and `IGDEV_E_DOCKER` (a container-engine call failed, or the engine is not
+installed). A typo in
 a `--config` flag is a usage error (the invocation was wrong); a value igdev read from
 a tier is `IGDEV_E_CONFIG_INVALID` (machine or project state is wrong). `contract` is
 the CLI Contract Version and bumps only when the envelope, codes, or exit levels
@@ -154,11 +162,13 @@ the new `digest`. A run that changes nothing writes nothing and prints nothing.
 The schema v1 layout is closed and version-checked: `schema = 1`, then `[project]
 name`, `[tool] min_version`, `[ignition] version|jython_version|edition`,
 `[modules] enabled`, `[scan] jython|capabilities`, `[commands] check|test|build|smoke`
-(omitted when empty), `[gateway] memory_mb|timezone`. A key igdev does not know is
-refused, and a version-like field holds a version. Fields the file leaves out fall
-back to the embedded defaults, so a minimal `schema = 1` contract is valid. `init`
-merges: a flag overrides the value it names and everything else the file holds is
-preserved; an empty value (`--modules ""`) clears a field.
+(omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints`. A key igdev does
+not know is refused, and a version-like field holds a version. Fields the file leaves
+out fall back to the embedded defaults, so a minimal `schema = 1` contract is valid.
+`smoke_endpoints` is the one optional list: it is omitted from the rendered contract
+unless it is non-empty, and a checkout that does not state it smokes the root document
+alone. `init` merges: a flag overrides the value it names and everything else the file
+holds is preserved; an empty value (`--modules ""`) clears a field.
 
 The Contract Digest is `sha256:` over the contract bytes. `.igdev/setup.json` holds
 the Setup Stamp — the digest, the contract schema version, the CLI Contract Version,
@@ -224,7 +234,8 @@ printable, quote-safe alphabet, `crypto/rand`) or takes `IGDEV_GATEWAY_ADMIN_PAS
 (the `--admin-password` flag wins, then the environment, then what the checkout
 already holds). It is written to `.igdev/local.toml` mode 0600 and never printed: not
 in the JSON envelope, not on stdout, not on stderr. `igdev gateway credentials --json`
-(ticket 11) will be the only way to read it back out. The rendered runtime files carry
+is the only way to read it back out — human `credentials` prints the username and the
+source and says so. The rendered runtime files carry
 no secret at all — the Compose environment only *references* the credential variables,
 which the igdev process supplies at `gateway up` time.
 
@@ -236,6 +247,53 @@ at exit level 3, naming the exact command in Remediation. Consent is checked bef
 anything is written, so a refused setup leaves the tree untouched. Re-accepting on a
 machine that already consented is a successful no-op: the first acceptance is the
 legal fact, so its timestamp does not move.
+
+## The Gateway lifecycle
+
+`igdev gateway` drives the Ignition container the Checkout Setup describes. Every verb
+passes the Gate (a current Checkout Setup) and the machine Consent record first, so a
+refused verb is the same frozen shape `setup` produces, and no verb ever talks to the
+engine before both hold.
+
+```
+igdev gateway up [--force]          build if needed, then `docker compose up --detach
+                                    --build` for this Instance's project
+igdev gateway down [--volumes]      stop and remove the containers; --volumes also
+                                    discards the Gateway's data volume
+igdev gateway reset [--force] [--timeout N]   down --volumes, then up, then wait
+igdev gateway restart               restart the container in place
+igdev gateway wait [--timeout N]    poll the recorded URL until it answers below 400
+igdev gateway smoke [--timeout N]   wait, then GET the root document and the
+                                    contract's [gateway] smoke_endpoints, in order
+igdev gateway status                `docker compose ps` for this project plus the
+                                    recorded URL
+igdev gateway logs [--tail N]       the Gateway's log: streamed for humans, in
+                                    data.logs with --json
+igdev gateway url                   the recorded URL, and nothing else
+igdev gateway credentials --json    {username, password}; human mode never prints the
+                                    password
+```
+
+Every engine call is `docker compose --project-name igdev-<instance> --file
+<runtime>/compose.yaml --env-file <runtime>/compose.env <verb>`, with the admin
+credentials supplied from the process environment — so a parallel worktree's Instance
+can never be addressed by mistake, and no rendered file carries a secret.
+
+`wait` accepts bare seconds (`--timeout 240`) or a Go duration (`--timeout 3m`);
+180 s is the default, 60 s for `smoke`. A failed wait reports the last 50 log lines on
+stderr, because the reason a Gateway never came up is in its own log. `smoke` fails
+with the failing endpoint named in the message, and the transport error or status is
+in `data.checks[].error` for a passing run's report.
+
+**Capacity Gate.** `up` and `reset` read `MemAvailable` from `/proc/meminfo` (ADR
+0003) and refuse to start another Gateway when it is below the contract's
+`[gateway] memory_mb` plus 512 MiB headroom: `IGDEV_E_CAPACITY` at exit level 3, with
+the running `igdev-*` compose projects named in the message and `--force` in
+Remediation. `--force` starts the Gateway anyway and says so on stderr. A host whose
+free memory cannot be read (no `MemAvailable`, another platform) is not refused: there
+is no evidence of a shortage, and the warning on stderr records that the guard did not
+apply. The rig points the gate at a fixture through `capacity.MeminfoEnv`
+(`IGDEV_SHIM_MEMINFO`), which is what makes the refusal reachable in a hermetic test.
 
 ## Host prerequisites
 
@@ -361,9 +419,9 @@ fault: never call `os.Exit` and never write to stdout from a helper.
 
 A command that reads or mutates project state calls `gate.Require(a.gateInput(found))`
 first and returns the fault unchanged; `init` and `setup` are the repair paths and do
-not. Ticket 09 wires no enforcing consumer yet: the pipeline commands (ticket 11) are
-the first that must pass the Gate, so ticket 08 still exercises `Require` and freezes
-its refusal envelopes in `itest/gate_test.go`.
+not. The `gateway` verbs are the first enforcing consumers: `a.gatewayContext()`
+passes the Gate and the Consent check once for every verb, and freezes its refusals in
+`itest/gateway_test.go` (`gate_test.go` still pins the Gate's own envelopes).
 
 ### Adding a config key
 
@@ -372,7 +430,7 @@ and description. It is immediately resolvable from every tier, reported by
 `igdev status --json`, and settable by tests through `testrig.EnvFor(path)`.
 `internal/testrig` maps the same schema, so nothing has to be kept in sync by hand.
 
-## Deliberate limits of tickets 01-03
+## Deliberate limits of tickets 01-04
 
 Ticket 01: the walking skeleton — install, `status`, `version`, help, completion, the
 five-tier resolver, the Gate's discovery stage, and the resource/hygiene gates.
@@ -381,15 +439,17 @@ Ticket 02: the Project Contract (`init` reads, validates, renders, and diffs
 Ticket 03: the Checkout Setup (`setup` mints the Instance identity, allocates the ports,
 materializes the runtime from the embedded templates, records the machine-global
 Consent, and writes the admin credential; `doctor` audits the host).
+Ticket 04: the Gateway suite (`gateway up|down|reset|restart|wait|smoke|status|logs|url`
+drives the Instance's compose project through the Gate, the Consent record, and the
+Capacity Gate, and `gateway credentials --json` is the one readable home of the admin
+password). Its non-hermetic half is `.github/workflows/igdev-gateway-e2e.yml`, which
+boots a real Ignition image: dispatched or nightly, never a PR check.
 
-No Capacity Gate yet (it attaches where a Gateway starts, ticket 10), no Docker
-lifecycle (`gateway up|down|wait|status|logs`, ticket 10), no `gateway credentials`
-(ticket 11), no Baseline commands (ticket 11), no module commands and therefore no
-module-license or module-certificate acceptance path (ticket 12), no Jython download
-(setup materializes state only), no Wizard prompts (ticket 16), no AGENTS.md managed
-block, no catalogs, and no gated verb yet: ticket 08 exercises the Gate's enforcement
-through `internal/gate` and freezes its refusal envelopes in `itest/gate_test.go`,
-because the first commands that must pass it arrive with the pipeline tickets. The
-repository is not yet dogfooding its own `igdev.toml`; that arrives with the conversion
-in ticket 13. Until then the root `README.md` documents the legacy `devctl` foundation
-and `AGENTS.md` its command contract; this file is the igdev reference.
+No Baseline commands (ticket 11), no module commands and therefore no module-license or
+module-certificate acceptance path (ticket 12), no Jython download (setup materializes
+state only), no Wizard prompts (ticket 16), no AGENTS.md managed block, no catalogs, and
+no pipeline verbs — `check|test|build|verify` — so the declared `[commands]` stages are
+still only data. The repository is not yet dogfooding its own `igdev.toml`; that
+arrives with the conversion ticket. Until then the root `README.md` documents the
+legacy `devctl` foundation and `AGENTS.md` its command contract; this file is the
+igdev reference.
