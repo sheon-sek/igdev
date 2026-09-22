@@ -13,9 +13,8 @@ import (
 )
 
 // assets holds the Core Catalog data, one directory per Ignition version. The
-// files carry the same TSV shapes the bash foundation kept in config/; they are
-// copied into the binary at build time so it reads no repository file at runtime
-// (ADR 0005).
+// files carry the four TSV plane shapes; they are copied into the binary at build
+// time so it reads no repository file at runtime (ADR 0005).
 //
 //go:embed assets
 var assets embed.FS
@@ -149,10 +148,8 @@ func dataRows(raw []byte) []tsvRow {
 	return out
 }
 
-// parsePlanes interprets the four plane row sets of one layer. Rows are
-// validated with the same rules the bash foundation's validate_modules and
-// self-test applied: a row that cannot mean anything is a fault, not a silently
-// dropped line.
+// parsePlanes interprets the four plane row sets of one layer. A row that cannot
+// mean anything is a fault, not a silently dropped line.
 func parsePlanes(version string, planed map[Plane][]tsvRow, layer Layer) (*Catalog, *contract.Fault) {
 	out := &Catalog{Version: version}
 	var fault *contract.Fault

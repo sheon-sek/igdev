@@ -24,7 +24,7 @@ igdev jython check <path>... [flags]
 
 ```text
   igdev jython check src/main/python
-  igdev jython check scripts/lib.py --json
+  igdev jython check ignition/script-python --json
 ```
 
 ## Options

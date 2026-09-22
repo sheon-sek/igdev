@@ -34,11 +34,11 @@ func writeModl(t *testing.T, dir, name, moduleXML string) {
 	}
 }
 
-// A staged artifact reports the metadata its module.xml carries, and the shape
-// the bash self-test used — a `<modules><module>` wrapper on one line — is read.
+// A staged artifact reports the metadata its module.xml carries, and the
+// single-line `<modules><module>` wrapper shape is read.
 func TestScanReadsModuleXML(t *testing.T) {
 	dir := t.TempDir()
-	writeModl(t, dir, "test.modl", `<modules><module><id>com.example.devctl-test</id><name>Devctl Test</name><version>1.0.0</version><requiredIgnitionVersion>8.3.0</requiredIgnitionVersion></module></modules>`)
+	writeModl(t, dir, "test.modl", `<modules><module><id>com.example.sample-test</id><name>Sample Test</name><version>1.0.0</version><requiredIgnitionVersion>8.3.0</requiredIgnitionVersion></module></modules>`)
 	records, fault := Scan(dir)
 	if fault != nil {
 		t.Fatalf("Scan: %v", fault)
@@ -47,13 +47,13 @@ func TestScanReadsModuleXML(t *testing.T) {
 		t.Fatalf("records = %+v, want one", records)
 	}
 	got := records[0]
-	if got.ID != "com.example.devctl-test" || got.Name != "Devctl Test" || got.Version != "1.0.0" {
+	if got.ID != "com.example.sample-test" || got.Name != "Sample Test" || got.Version != "1.0.0" {
 		t.Errorf("record = %+v, want the module.xml metadata", got)
 	}
 	if got.Artifact != "test.modl" || got.Source != Local || got.Err != "" {
 		t.Errorf("record provenance = %+v, want test.modl from the local directory", got)
 	}
-	if !Has(records, "com.example.devctl-test") {
+	if !Has(records, "com.example.sample-test") {
 		t.Error("Has did not find the staged module")
 	}
 }

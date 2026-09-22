@@ -10,15 +10,15 @@ import (
 	"github.com/sheon-sek/igdev/internal/contract"
 )
 
-// This file ports the legacy scripts/generate-rest-catalog.py, which stays the
-// executable specification for the mapping rules: the route prefixes, the
-// resource-module aliases, the classification order, and the row ordering are the
-// generator's. Its output is now the REST plane of the Core Catalog itself
+// This file carries the mapping rules the retirement ticket ported from the
+// predecessor generator: the route prefixes, the resource-module aliases, the
+// classification order, and the row ordering are that generator's. Its output is
+// now the REST plane of the Core Catalog itself
 // (internal/catalog/assets/<version>/rest-endpoints.tsv), so what
 // `catalog import-openapi` writes is the overlay layer: the endpoints this
 // binary's Core Catalog does not already carry.
 
-// openAPIMethods are the path-item members the legacy generator recognized, in its
+// openAPIMethods are the path-item members the generator recognized, in its
 // order. The match is case-sensitive, exactly as the generator's was: an OpenAPI
 // document spells its operations in lower case, and a member it does not spell
 // that way declares nothing.
@@ -84,7 +84,7 @@ var openAPIResourceAliases = map[string]openAPIOwner{
 }
 
 // OpenAPIOperation is one operation an OpenAPI document declares, classified the
-// way the legacy generator classified it: who serves the path template and which
+// way the generator classified it: who serves the path template and which
 // modules the endpoint needs.
 type OpenAPIOperation struct {
 	// Method is the upper-case HTTP method.
@@ -98,7 +98,7 @@ type OpenAPIOperation struct {
 }
 
 // ParseOpenAPI reads an OpenAPI 3 JSON document and returns its REST operations,
-// sorted by path template and then method, exactly as the legacy generator sorted
+// sorted by path template and then method, exactly as the generator sorted
 // its rows.
 //
 // A document that cannot be read as JSON, or whose `paths` member is absent or not

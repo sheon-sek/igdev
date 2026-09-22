@@ -14,8 +14,7 @@ Without arguments the contract's `[scan].capabilities` paths are used, which is
 what `igdev check` scans too (ticket 14). A path that does not exist is a warning,
 not a failure: the scan reports what it could read.
 
-The Bash foundation scanned for the same references; this command keeps its
-findings and adds the line numbers.
+The scan reports every reference it finds and the line each one sits on.
 
 ## Usage
 

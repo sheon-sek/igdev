@@ -12,12 +12,12 @@ import (
 	"github.com/sheon-sek/igdev/internal/testrig"
 )
 
-// catalog import-openapi is the port of the legacy scripts/generate-rest-catalog.py:
-// it reads a Gateway /openapi.json snapshot, maps every operation to its owner the
-// way that generator mapped it, and writes the REST plane of the tracked Project
-// Overlay. These tests assert the whole observable behaviour through seam S1: the
-// exit level, the JSON envelope, the overlay bytes, the printed diff, and what
-// `module require` and `catalog status` then resolve.
+// catalog import-openapi ports the retired bash generator: it reads a Gateway
+// /openapi.json snapshot, maps every operation to its owner the way that generator
+// mapped it, and writes the REST plane of the tracked Project Overlay. These tests
+// assert the whole observable behaviour through seam S1: the exit level, the JSON
+// envelope, the overlay bytes, the printed diff, and what `module require` and
+// `catalog status` then resolve.
 
 // openAPIFixture reads one OpenAPI document from testdata/openapi.
 func openAPIFixture(t *testing.T, name string) string {

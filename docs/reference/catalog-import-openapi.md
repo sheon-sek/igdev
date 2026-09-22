@@ -4,8 +4,8 @@
 
 import-openapi reads a Gateway `/openapi.json` snapshot and writes the REST plane
 of this repository's tracked Project Overlay: one row per operation, mapping the
-path template to its owner kind and required modules with the same rules the legacy
-`scripts/generate-rest-catalog.py` used (ADR 0005).
+path template to its owner kind and required modules with the same rules the retired
+bash generator used (ADR 0005).
 
 The REST plane is generated, so it is replaced wholesale inside a block the file
 marks as generated; the native function and capability rule planes are

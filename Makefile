@@ -1,6 +1,5 @@
-# igdev build and validation entry points. The legacy bash foundation keeps its
-# own ./devctl dispatcher; this Makefile covers only the Go toolchain (ticket 13
-# retires the bash side).
+# igdev build and validation entry points: this repository is the CLI's home, so
+# these are the project commands its own igdev.toml dispatches (see AGENTS.md).
 GO      ?= go
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 

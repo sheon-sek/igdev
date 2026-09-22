@@ -15,8 +15,8 @@ development toolchain (Go, `cmd/` + `internal/`). It dogfoods its own Project Co
 Read-only; may run automatically after relevant changes:
 
 - `igdev status` / `igdev status --json` — the only command that works before init and setup
-- `igdev check` — module validate → capability scan → `make fmt-check vet` → batched Jython compile
-- `igdev module list`, `igdev module validate`, `igdev module require <capability>`
+- `igdev check` — the fixed pipeline: module-validate → module-scan → `make fmt-check vet` → batched Jython compile
+- `igdev module list`, `igdev module require <capability>`, `igdev module scan <path>`
 - `igdev catalog status --json`
 - `igdev doctor` — read-only host audit; it never fails
 - `igdev gateway status`, `igdev gateway logs --tail 200`, `igdev gateway url`
@@ -65,9 +65,9 @@ generated and disposable — never hand-edit it and never commit it.
 Never commit EA, licensed, or private `.modl` files. Add them with
 `igdev module add <file.modl>` (staged under the gitignored `.igdev/modules/`), or place
 them in the version-scoped machine cache reported by `igdev module cache-path`. Module
-metadata comes from the archive's embedded `module.xml`; use `igdev module validate`
-before runtime and `igdev module require <capability>` for explicit capability checks
-before a Gateway starts.
+metadata comes from the archive's embedded `module.xml`; `igdev check` validates the
+enabled modules against what the checkout stages, and `igdev module require <capability>`
+resolves an explicit capability before a Gateway starts.
 
 `[modules].enabled` in `igdev.toml` may only whitelist a module the selected Ignition
 image ships built-in or one whose `.modl` the checkout stages: an enabled entry nothing

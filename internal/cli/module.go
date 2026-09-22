@@ -246,8 +246,7 @@ Without arguments the contract's ` + "`[scan].capabilities`" + ` paths are used,
 what ` + "`igdev check`" + ` scans too (ticket 14). A path that does not exist is a warning,
 not a failure: the scan reports what it could read.
 
-The Bash foundation scanned for the same references; this command keeps its
-findings and adds the line numbers.`,
+The scan reports every reference it finds and the line each one sits on.`,
 		Example: `  igdev module scan
   igdev module scan src/main/python scripts
   igdev module scan ignition/script-python --json`,
@@ -432,8 +431,8 @@ func (k *knowledge) privateRows() []modulePrivateData {
 	return rows
 }
 
-// printModuleList reports the listing in the shape the bash foundation printed:
-// the built-in group, then the private table.
+// printModuleList reports the listing in its frozen shape: the built-in group,
+// then the private table.
 func (a *App) printModuleList(data moduleListData) {
 	fmt.Fprintf(a.Stdout, "ignition:  %s\n", data.IgnitionVersion)
 	if data.EnabledAll {

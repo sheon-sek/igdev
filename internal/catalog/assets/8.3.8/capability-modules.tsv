@@ -1,8 +1,8 @@
 # Optional non-system capability aliases -> required module map.
 # Built-in Ignition 8.3 Gateway-scope system.* functions are authoritative in:
-#   config/native-system-functions.tsv
+#   native-system-functions.tsv
 # Native REST operations are authoritative in versioned OpenAPI-derived catalogs:
-#   config/rest-endpoints-<IGNITION_VERSION>.tsv
+#   rest-endpoints-<IGNITION_VERSION>.tsv
 # Format: kind<TAB>pattern<TAB>required_module_ids(comma-separated)<TAB>description
 #
 # Project-specific aliases may be added here with kind "exact" or "prefix".

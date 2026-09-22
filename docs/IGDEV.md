@@ -1,10 +1,11 @@
 # igdev — the Go toolchain
 
-`igdev` is the standalone, globally installed Ignition development toolchain that
-replaces the repository-vendored `devctl` foundation. This tree now holds both:
-the legacy bash foundation (`devctl`, `scripts/`, `config/`, `docker/`, `.env`,
-`.runtime/`) still works exactly as before and is retired by ticket 13, while the
-Go CLI is built here under `cmd/` and `internal/`. Vocabulary lives in
+`igdev` is the standalone, globally installed Ignition development toolchain. This
+repository is the CLI's home: the Go source lives under `cmd/` and `internal/`, and the
+tree dogfoods the binary it builds — `igdev.toml` is its own Project Contract and
+`.igdev/` its disposable Checkout Setup. The predecessor vendored bash foundation was
+retired by the cutover ticket (issue #19) once the golden suite proved parity; nothing
+in this tree carries that layout any more. Vocabulary lives in
 [`CONTEXT.md`](../CONTEXT.md); the hard-to-reverse choices in
 [`docs/adr/`](adr/).
 
@@ -383,9 +384,9 @@ source: it only says what is installed.
 
 The Core Catalog is embedded per Ignition version under
 `internal/catalog/assets/<version>/` (`builtin-modules.tsv`,
-`native-system-functions.tsv`, `capability-modules.tsv`, `rest-endpoints.tsv`), copied
-from the legacy `config/` catalogs at this tree's porting commit. Nothing reads
-`config/` at runtime. v0.1 carries exactly `8.3.8`; any other resolved version fails
+`native-system-functions.tsv`, `capability-modules.tsv`, `rest-endpoints.tsv`), ported
+from the predecessor toolchain's catalogs at the cutover. Nothing reads a repository file
+at runtime. v0.1 carries exactly `8.3.8`; any other resolved version fails
 closed with `IGDEV_E_CATALOG_VERSION_MISSING` rather than borrowing another version's
 rows. Adding a version is adding data plus a digest, not changing code.
 
@@ -486,8 +487,8 @@ Root: outside one the answer is `IGDEV_E_NOT_INITIALIZED`.
 
 ### Importing a Gateway OpenAPI document
 
-`igdev catalog import-openapi <openapi.json>` ports the legacy
-`scripts/generate-rest-catalog.py`: it reads a Gateway `/openapi.json` snapshot and
+`igdev catalog import-openapi <openapi.json>` ports the retired bash generator: it reads
+a Gateway `/openapi.json` snapshot and
 writes the REST plane of this repository's tracked Project Overlay, one row per
 operation, mapping the path template to its owner kind and required modules with the
 generator's own rules — the route-prefix table, the `/data/api/v1/resources/<module>`
@@ -943,8 +944,8 @@ layer (the pinned, lock-guarded standalone-artifact cache and the one-JVM batche
 compile behind `igdev jython check`). The 500-file timing gate lives in
 real-docker half is deferred to the e2e tier, exactly as the
 real-docker half is.
-Ticket 15: the overlay generator (`catalog import-openapi` — the port of
-`scripts/generate-rest-catalog.py`: the generator's mapping rules over a Gateway
+Ticket 15: the overlay generator (`catalog import-openapi` — the port of the retired
+bash generator: the generator's mapping rules over a Gateway
 `/openapi.json` snapshot, writing the REST plane of the tracked overlay inside the
 block the file marks as generated, idempotent re-import with `--prune` for the rows a
 document no longer declares, and fail-closed conflicts against the Core Catalog). The
@@ -958,15 +959,33 @@ shim act on PATH, so a run that pulls images or downloads actions is the user's 
 The verb is not part of the check pipeline and has no e2e tier of its own.
 
 `module validate` as its own verb is not part of ticket 14: what it used to mean is the
-pipeline's first stage (`module-validate`), and the oracle's REST-catalog structural
+pipeline's first stage (`module-validate`), and the predecessor's REST-catalog structural
 validation is covered instead by the embedded Core Catalog's digest tests. No command
 demands the module-license or module-certificate terms yet (the Consent terms exist and
-`setup` records them), so the module surface is otherwise read-only. The AGENTS.md
-managed block exists as of ticket 17, but this repository is not yet dogfooding its own
-`igdev.toml`; that arrives with the conversion ticket. Until then the root `README.md`
-leads with the igdev lifecycle and keeps the legacy `devctl` foundation in an appendix,
-`AGENTS.md` carries the managed command block, and the public command reference is the
-generated `docs/reference/`; this file is the design and development notes.
+`setup` records them), so the module surface is otherwise read-only.
+
+Ticket 19 is the cutover, and the "not yet dogfooding" state above is gone: this
+repository carries its own Project Contract and runs on the installed binary. `igdev.toml`
+declares Ignition `8.3.8`, Jython `2.7.4`, the built-in modules the image ships, the
+Makefile targets behind `[commands]` check/test/build, 2048 MiB of Gateway heap, and no
+`[scan]` paths, because after the retirement the tree holds no Jython sources (`igdev
+check` reports the scan and Jython stages as skipped). The whitelist stops short of the
+predecessor's fifth module, `com.inductiveautomation.mcp`: that one is a private artifact
+the image does not ship, and an enabled module nothing can load is
+`IGDEV_E_MODULE_ARTIFACT_MISSING` by design. A private `.modl` is staged per checkout
+with `igdev module add`, never named by a committed contract, so a fresh clone's
+`igdev check` is green and `igdev init` is a no-op against the committed bytes.
+`AGENTS.md` was rewritten for the igdev world — safe commands, escalation, human-only
+Consent, version changes through `igdev.toml` plus `igdev setup`, the private-module
+rule, and the frozen golden/reference contract — while keeping the managed block
+byte-identical so `init` stays idempotent. The vendored foundation (its dispatcher,
+scripts, catalogs, Compose assets, hooks, `.env` template, its two workflows, its
+architecture and troubleshooting notes, and the README appendix) was deleted in the same
+change with no dead references left. The PR gate `igdev-ci` gained a self-dogfood job
+next to the Go suite: package, install the tarball into a temp prefix, then
+`init` → `setup --accept-eula` → `status --json` → `check` → `doctor` in a scratch clone;
+`igdev-gateway-e2e` stays the real-Docker tier. The GitHub repository rename to `igdev`
+is still pending — the Go module path and the install docs already anticipate it.
 
 Ticket 16 adds the Wizards: `init` (6 steps), `setup` (7 steps), and `module add` (4
 steps). A Wizard prompts only when a required value is missing, stdin is a terminal,
@@ -1007,8 +1026,8 @@ drift test and the `igdev-ci` step both fail when the committed reference is not
 definitions render, so CLI behaviour and docs cannot drift. The root `README.md` became
 install + lifecycle + agent-workflow narrative with no hand-maintained command tables,
 and `README.zh-CN.md` shrank to an onboarding guide that carries none either (the public
-reference is English-only by decision). The legacy `devctl` documentation stays in the
-README's appendix until ticket 19 retires the bash tree; `docs/TROUBLESHOOTING.md` and
-`docs/ARCHITECTURE.md` point at the generated reference from their heads. Deferred: a
-rendered docs site (v0.1 publishes Markdown), and any command-table content in the zh-CN
-guide.
+reference is English-only by decision). With the cutover, the README's appendix and the
+two per-concern notes it pointed at are gone: troubleshooting starts from the generated
+reference plus `igdev gateway logs`/`igdev gateway status`, and the architecture notes
+are this file. Deferred: a rendered docs site (v0.1 publishes Markdown), and any
+command-table content in the zh-CN guide.

@@ -64,7 +64,7 @@ found.
 The paths are relative to the working directory. Inside a Project Root the
 contract's ` + "`[ignition].jython_version`" + ` selects the checker version.`,
 		Example: `  igdev jython check src/main/python
-  igdev jython check scripts/lib.py --json`,
+  igdev jython check ignition/script-python --json`,
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return missingArgument("jython check", "path",

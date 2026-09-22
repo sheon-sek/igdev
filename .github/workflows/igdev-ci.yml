@@ -1,8 +1,9 @@
 name: igdev-ci
 
-# The Go toolchain's own gate: the frozen agent contract (goldens) plus the
-# resource and hygiene gates run on every change. The legacy foundation-ci and
-# gateway-smoke workflows are untouched until ticket 13 retires the bash side.
+# The Go toolchain's own gate: the frozen agent contract (goldens), the resource and
+# hygiene gates, the generated-reference drift check, and a self-dogfood job that
+# packages the binary, installs it from the tarball into a temp prefix, and drives this
+# repository's own Project Contract from a scratch clone.
 
 on:
   push:
@@ -68,3 +69,65 @@ jobs:
       - name: Report gate measurements
         if: always()
         run: go test ./itest/ -run 'TestGate' -v -count=1
+
+  # The repository runs on the binary it ships. `suite` is the Go-side gate; this job
+  # is the end-to-end proof that the packaged, installed artifact drives the committed
+  # Project Contract: package → install into a temp prefix → from a scratch clone,
+  # `init` → `setup --accept-eula` → `status --json` → `check` → `doctor`.
+  #
+  # `setup --accept-eula` records the Ignition EULA acceptance for this machine (ADR
+  # 0004). The workflow itself is the act of the person who pushed or dispatched it;
+  # no step reads the generated admin password and nothing secret is printed.
+  dogfood:
+    name: self-dogfood from the installed tarball
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: suite
+    env:
+      GOTOOLCHAIN: local
+      DOGFOOD_VERSION: 0.0.0-ci
+      DOGFOOD_PREFIX: ${{ runner.temp }}/igdev-prefix
+      DOGFOOD_CHECKOUT: ${{ runner.temp }}/dogfood
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: false
+
+      - name: Package the release artifacts
+        run: packaging/package.sh "$DOGFOOD_VERSION"
+
+      - name: Install the tarball into a temp prefix
+        run: |
+          # The prefix is already on PATH, so the installer registers nothing in the
+          # login profile; it verifies the checksum before installing.
+          export PATH="$DOGFOOD_PREFIX:$PATH"
+          packaging/install.sh --version "$DOGFOOD_VERSION" --prefix "$DOGFOOD_PREFIX" \
+            --base-url "file://$PWD/dist/$DOGFOOD_VERSION"
+          igdev version
+          echo "$DOGFOOD_PREFIX" >> "$GITHUB_PATH"
+
+      - name: Scratch clone of this repository
+        run: git clone --quiet "$GITHUB_WORKSPACE" "$DOGFOOD_CHECKOUT"
+
+      - name: init is a no-op against the committed contract
+        working-directory: ${{ env.DOGFOOD_CHECKOUT }}
+        run: |
+          igdev init --json
+          # The committed igdev.toml, .gitignore entry, and AGENTS.md managed block are
+          # exactly what init would write, so init must leave the worktree untouched.
+          dirty="$(git status --porcelain)"
+          if [ -n "$dirty" ]; then
+            echo "init changed tracked files:"; echo "$dirty"; exit 1
+          fi
+
+      - name: setup, status, check, doctor
+        working-directory: ${{ env.DOGFOOD_CHECKOUT }}
+        run: |
+          igdev setup --accept-eula --json
+          igdev status --json
+          igdev check
+          igdev doctor

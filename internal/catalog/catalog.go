@@ -3,13 +3,14 @@
 // Overlay, the Effective Catalog that resolves the two together, and the scanner
 // that finds the capabilities project code intends to use.
 //
-// The data is domain knowledge, not project state: nothing here reads
-// config/ at runtime, and a version with no embedded catalog fails closed
+// The data is domain knowledge, not project state: nothing here reads a tracked
+// catalog file at runtime, and a version with no embedded catalog fails closed
 // instead of borrowing another version's rows (ADR 0005).
 //
-// Ported from the bash foundation's scripts/modules.sh, which stays the
-// executable specification: the lookup order, the REST path matching, the
-// classification vocabulary, and the diagnostic wording all come from there.
+// The lookup order, the REST path matching, the classification vocabulary, and
+// the diagnostic wording were ported from the predecessor bash toolchain, which
+// was the executable specification until this package's tests pinned them; that
+// toolchain is retired, so this package and its goldens are the specification now.
 package catalog
 
 import (

@@ -8,10 +8,9 @@ import (
 )
 
 // The classification table is the ported mapping rule, and these are the anchors
-// the legacy scripts/generate-rest-catalog.py pinned: a route prefix, a resource
-// module, each alias, the private module that never ships in the image, and the
-// platform default. The row-level behaviour is exercised through the binary in
-// itest; this test names the rule itself.
+// it pins: a route prefix, a resource module, each alias, the private module that
+// never ships in the image, and the platform default. The row-level behaviour is
+// exercised through the binary in itest; this test names the rule itself.
 func TestClassifyOpenAPIPath(t *testing.T) {
 	for _, tc := range []struct {
 		path    string

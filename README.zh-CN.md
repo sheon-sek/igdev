@@ -89,5 +89,6 @@ Instance 与端口、Gateway 是否在运行、已暂存的模块、catalog 摘�
 - [`docs/reference/`](docs/reference/README.md)：完整命令参考，由命令定义自动生成，**请勿手改**。
 - [`docs/IGDEV.md`](docs/IGDEV.md)：本仓库的设计与开发说明。
 - [`CONTEXT.md`](CONTEXT.md)：规范术语；[`docs/adr/`](docs/adr)：不可逆决策记录。
-- 仓库里仍保留旧的 Bash foundation（`./devctl`、`.env`、hooks），其中文文档已随本文件收敛；
-  在迁移工作（ticket #19）完成之前，请参考 [README.md](README.md) 末尾的英文附录。
+- [`AGENTS.md`](AGENTS.md)：仓库内的 Agent 指令（安全命令、升级规则、版本变更路径）。
+- 本仓库同时是 igdev 自身的代码仓库，并以此工具链自举：项目契约见 `igdev.toml`，
+  本地状态见 `.igdev/`；开发用命令见 [README.md](README.md) 的 “Developing this repository”。

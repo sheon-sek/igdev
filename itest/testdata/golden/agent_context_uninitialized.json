@@ -28,7 +28,7 @@
       "staged": []
     },
     "catalog": {
-      "core_digest": "sha256:32f9ea556ff8bd14075ced23160e4c3b83131eec5f73713769c6c5254cf6ab0d",
+      "core_digest": "sha256:cb2c0f1d81212bbfb5b3cc9686f105acf818a886283e71c89b12d57fc95cdbf0",
       "overlay": {
         "present": false,
         "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
