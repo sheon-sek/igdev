@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "stages": [
+      {
+        "stage": "declared-build",
+        "status": "passed",
+        "command": "printf 'built\n'"
+      },
+      {
+        "stage": "module-restage",
+        "status": "passed",
+        "modules_dir": "<ROOT>/repo/.igdev/modules",
+        "staged": [
+          "com.acme.vision"
+        ],
+        "runtime_dir": "<ROOT>/repo/.igdev/runtime"
+      }
+    ]
+  }
+}

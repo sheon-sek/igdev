@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "version": "2.7.4",
+    "jar": "<HOME>/.cache/igdev/jython/2.7.4/jython-standalone-2.7.4.jar",
+    "file_count": 2,
+    "files": [
+      "src/alpha.py",
+      "src/beta.py"
+    ]
+  }
+}

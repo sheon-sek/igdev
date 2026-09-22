@@ -12,6 +12,8 @@ consent:   <HOME>/.config/igdev/accepted.toml
   module-cert        not accepted
 config:
   ignition.version          8.3.8                                                         [default]
+  jython.maven_base_url     https://repo1.maven.org/maven2/org/python/jython-standalone   [default]
+  jython.sha256                                                                           [default]
   output.format             text                                                          [flag]
   updater.cache_ttl_hours   24                                                            [default]
   updater.enabled           true                                                          [default]

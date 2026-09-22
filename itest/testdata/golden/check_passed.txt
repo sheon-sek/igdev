@@ -1,0 +1,5 @@
+check stage ran
+module-validate: passed  (every module loads)
+module-scan:     passed  (1 checked, 1 finding(s))
+declared-check:  passed  (printf 'check stage ran\n')
+jython-check:    passed  (1 file(s))

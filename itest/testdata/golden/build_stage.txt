@@ -1,0 +1,3 @@
+built
+declared-build: passed  (printf 'built\n')
+module-restage: passed  (1 staged)

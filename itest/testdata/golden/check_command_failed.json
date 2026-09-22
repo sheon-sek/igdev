@@ -1,0 +1,30 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_COMMAND_FAILED",
+  "message": "the declared check stage exited with code 7: printf 'child says hi\n'; exit 7",
+  "remediation": [],
+  "data": {
+    "stages": [
+      {
+        "stage": "module-validate",
+        "status": "passed",
+        "message": "whitelist is empty: every module loads"
+      },
+      {
+        "stage": "module-scan",
+        "status": "passed",
+        "paths": [
+          "<ROOT>/repo/src"
+        ]
+      },
+      {
+        "stage": "declared-check",
+        "status": "failed",
+        "command": "printf 'child says hi\n'; exit 7",
+        "exit": 7
+      }
+    ],
+    "failed": "declared-check"
+  }
+}

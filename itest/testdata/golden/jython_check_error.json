@@ -1,0 +1,23 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_JYTHON_SYNTAX",
+  "message": "src/broken.py:3: unmatched ')'",
+  "remediation": [],
+  "data": {
+    "version": "2.7.4",
+    "jar": "<HOME>/.cache/igdev/jython/2.7.4/jython-standalone-2.7.4.jar",
+    "file_count": 2,
+    "files": [
+      "src/broken.py",
+      "src/ok.py"
+    ],
+    "diagnostics": [
+      {
+        "file": "src/broken.py",
+        "line": 3,
+        "message": "unmatched ')'"
+      }
+    ]
+  }
+}

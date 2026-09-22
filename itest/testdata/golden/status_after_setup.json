@@ -67,6 +67,16 @@
           "source": "contract"
         },
         {
+          "key": "jython.maven_base_url",
+          "value": "https://repo1.maven.org/maven2/org/python/jython-standalone",
+          "source": "default"
+        },
+        {
+          "key": "jython.sha256",
+          "value": "",
+          "source": "default"
+        },
+        {
           "key": "output.format",
           "value": "json",
           "source": "flag"

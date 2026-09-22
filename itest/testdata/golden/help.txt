@@ -19,15 +19,20 @@ Usage:
 
 Available Commands:
   baseline    Stage and report the Gateway backup this checkout restores from
+  build       Run the project's declared build stage, then re-stage the modules
   catalog     Inspect the capability knowledge the CLI resolves against
+  check       Run the fixed preflight pipeline before anything else
   completion  Print the shell completion script for igdev
   doctor      Audit the host prerequisites igdev's runtime work depends on
   gateway     Control this Instance's Ignition Gateway
   help        Show help for a command
   init        Create or edit the Project Contract (igdev.toml)
+  jython      Compile project code with the pinned Jython compatibility checker
   module      List modules and check what project code requires
   setup       Materialize this checkout: Instance identity, ports, runtime files
   status      Report project, setup, and effective config state
+  test        Run the project's declared test stage
+  verify      Run check, test, and build in sequence
   version     Print the CLI version and the CLI Contract Version
 
 Flags:

@@ -265,43 +265,16 @@ findings and adds the line numbers.`,
 				return missingArgument("module scan", "path", "igdev module scan src/main/python",
 					"name a path to scan, or declare [scan].capabilities in the contract")
 			}
-			result := catalog.Scan(paths)
+			result, resolved, fault := k.scanCapabilities(paths)
 			for _, missing := range result.Missing {
 				fmt.Fprintf(a.Stderr, "[igdev] WARNING: module scan path missing: %s\n", missing)
 			}
-
-			resolved := map[string]catalog.Resolution{}
-			var (
-				ok          []catalog.Resolution
-				failures    []string
-				remediation []contract.Remediation
-				code        contract.Code
-			)
-			for _, capability := range result.Capabilities() {
-				res, fault := k.eff.Verify(capability, k.set)
-				if fault == nil {
-					resolved[capability] = res
-					ok = append(ok, res)
-					continue
-				}
-				if code == "" {
-					code = fault.Code
-				}
-				remediation = mergeRemediation(remediation, fault.Remediation...)
-				for _, finding := range result.Findings {
-					if finding.Capability != capability {
-						continue
-					}
-					failures = append(failures, fmt.Sprintf("%s:%d: %s", finding.File, finding.Line, fault.Message))
-				}
-			}
-			if len(failures) > 0 {
+			if fault != nil {
 				if !k.res.IsJSON() {
-					a.printCapabilityLines(ok)
+					a.printCapabilityLines(orderedResolutions(result, resolved))
 					a.printScanSummary(result)
 				}
-				return contract.NewFault(code, contract.ExitFailure, strings.Join(failures, "; ")).
-					WithRemediation(remediation...)
+				return fault
 			}
 
 			data := scanData{
@@ -316,12 +289,63 @@ findings and adds the line numbers.`,
 				})
 			}
 			a.emit(k.res, data, func() {
-				a.printCapabilityLines(ok)
+				a.printCapabilityLines(orderedResolutions(result, resolved))
 				a.printScanSummary(result)
 			})
 			return nil
 		},
 	}
+}
+
+// scanCapabilities finds the capability references under paths and checks every
+// one against this checkout. It returns the scan, the capabilities that
+// resolved, and one fault describing every failure — or a nil fault when all of
+// them resolved.
+//
+// Both `module scan` and the check pipeline's scan stage answer from here, so the
+// two report the same findings, the same fault code, and the same remediation.
+func (k *knowledge) scanCapabilities(paths []string) (catalog.ScanResult, map[string]catalog.Resolution, *contract.Fault) {
+	result := catalog.Scan(paths)
+	resolved := map[string]catalog.Resolution{}
+	var (
+		failures    []string
+		remediation []contract.Remediation
+		code        contract.Code
+	)
+	for _, capability := range result.Capabilities() {
+		res, fault := k.eff.Verify(capability, k.set)
+		if fault == nil {
+			resolved[capability] = res
+			continue
+		}
+		if code == "" {
+			code = fault.Code
+		}
+		remediation = mergeRemediation(remediation, fault.Remediation...)
+		for _, finding := range result.Findings {
+			if finding.Capability != capability {
+				continue
+			}
+			failures = append(failures, fmt.Sprintf("%s:%d: %s", finding.File, finding.Line, fault.Message))
+		}
+	}
+	if len(failures) > 0 {
+		return result, resolved, contract.NewFault(code, contract.ExitFailure, strings.Join(failures, "; ")).
+			WithRemediation(remediation...)
+	}
+	return result, resolved, nil
+}
+
+// orderedResolutions lists the resolved capabilities in the order the scan found
+// them, which is the order a human reads them in.
+func orderedResolutions(result catalog.ScanResult, resolved map[string]catalog.Resolution) []catalog.Resolution {
+	out := make([]catalog.Resolution, 0, len(resolved))
+	for _, capability := range result.Capabilities() {
+		if res, ok := resolved[capability]; ok {
+			out = append(out, res)
+		}
+	}
+	return out
 }
 
 // printScanSummary is the legacy closing line: how many distinct capabilities

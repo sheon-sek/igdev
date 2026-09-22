@@ -1,0 +1,2 @@
+tests ran
+declared-test: passed  (printf 'tests ran\n')

@@ -12,7 +12,12 @@ type Fault struct {
 	Message     string
 	Exit        Exit
 	Remediation []Remediation
-	cause       error
+	// Data is optional command-specific detail the failure envelope carries in
+	// `data` instead of the empty object. The pipeline verbs use it to report the
+	// per-stage results of the run that failed. A nil Data keeps the frozen empty
+	// object every other fault reports.
+	Data  any
+	cause error
 }
 
 func (f *Fault) Error() string {
@@ -36,6 +41,15 @@ func (f *Fault) WithCause(err error) *Fault {
 func (f *Fault) WithRemediation(r ...Remediation) *Fault {
 	out := *f
 	out.Remediation = r
+	return &out
+}
+
+// WithData attaches command-specific detail the failure envelope reports in
+// `data`. It is how a pipeline failure carries the per-stage results of the run
+// that stopped.
+func (f *Fault) WithData(data any) *Fault {
+	out := *f
+	out.Data = data
 	return &out
 }
 

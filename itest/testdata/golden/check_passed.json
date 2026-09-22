@@ -1,0 +1,39 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "stages": [
+      {
+        "stage": "module-validate",
+        "status": "passed",
+        "message": "whitelist is empty: every module loads"
+      },
+      {
+        "stage": "module-scan",
+        "status": "passed",
+        "paths": [
+          "<ROOT>/repo/src"
+        ],
+        "checked": 1,
+        "findings": 1
+      },
+      {
+        "stage": "declared-check",
+        "status": "passed",
+        "command": "printf 'check stage ran\n'"
+      },
+      {
+        "stage": "jython-check",
+        "status": "passed",
+        "paths": [
+          "<ROOT>/repo/src"
+        ],
+        "jar": "<HOME>/.cache/igdev/jython/2.7.4/jython-standalone-2.7.4.jar",
+        "file_count": 1
+      }
+    ]
+  }
+}

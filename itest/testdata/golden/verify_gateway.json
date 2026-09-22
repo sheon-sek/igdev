@@ -1,0 +1,66 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "stages": [
+      {
+        "stage": "module-validate",
+        "status": "passed",
+        "message": "whitelist is empty: every module loads"
+      },
+      {
+        "stage": "module-scan",
+        "status": "passed",
+        "paths": [
+          "<ROOT>/repo/src"
+        ]
+      },
+      {
+        "stage": "declared-check",
+        "status": "skipped",
+        "message": "no [commands].check declared"
+      },
+      {
+        "stage": "jython-check",
+        "status": "passed",
+        "paths": [
+          "<ROOT>/repo/src"
+        ],
+        "jar": "<HOME>/.cache/igdev/jython/2.7.4/jython-standalone-2.7.4.jar",
+        "file_count": 1
+      },
+      {
+        "stage": "declared-test",
+        "status": "skipped",
+        "message": "no [commands].test declared"
+      },
+      {
+        "stage": "declared-build",
+        "status": "skipped",
+        "message": "no [commands].build declared"
+      },
+      {
+        "stage": "module-restage",
+        "status": "passed",
+        "modules_dir": "<ROOT>/repo/.igdev/modules",
+        "runtime_dir": "<ROOT>/repo/.igdev/runtime"
+      },
+      {
+        "stage": "gateway-up",
+        "status": "passed"
+      },
+      {
+        "stage": "gateway-wait",
+        "status": "passed"
+      },
+      {
+        "stage": "gateway-smoke",
+        "status": "passed"
+      }
+    ],
+    "gateway_url": "http://127.0.0.1:<PORT_HTTP>"
+  }
+}

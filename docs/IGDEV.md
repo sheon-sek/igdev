@@ -547,6 +547,110 @@ conditional function's note — and the legacy closing line of `module scan`. Fa
 are contract faults, so their wording lives in `message` and their fix in
 `remediation`, which is what makes them machine-readable.
 
+## The check pipeline
+
+`igdev check` is the fast, fixed gate: four stages in a frozen order, each one
+stopping the run when it fails.
+
+1. **module-validate** — the `[modules].enabled` whitelist against what this
+   checkout can load: a built-in module, a solution-suite selector, or an id a
+   staged `.modl` declares. A whitelisted id nothing can load is
+   `IGDEV_E_MODULE_ARTIFACT_MISSING`; the OPC UA driver rule is ported with it (an
+   enabled `com.inductiveautomation.opcua.drivers.*` needs
+   `com.inductiveautomation.opcua`). An empty whitelist means every module loads, so
+   there is nothing to validate.
+2. **module-scan** — the capability references under `[scan].capabilities`, resolved
+   against the Effective Catalog. It is the same finding set `igdev module scan`
+   reports, because both answer from `scanCapabilities`.
+3. **declared-check** — `[commands].check`, run with `bash` at the Project Root.
+   Undeclared means skipped, never failed; a stage that exits non-zero propagates its
+   own exit code as the process exit level.
+4. **jython-check** — every `.py` file under `[scan].jython`, compiled by one JVM.
+
+Contract-declared `[scan]` paths are repository-relative: the pipeline resolves them
+against the Project Root, so a run from a subdirectory scans the same files.
+
+`--json` reports one entry per stage in `data.stages` (`stage`, `status`, and the
+stage's own detail), the stage that stopped the run in `data.failed`, and — for
+`verify --gateway` — the running Gateway's URL in `data.gateway_url`. A failure
+carries the same stage list in `data`, so an agent reads how far the run got instead
+of guessing from the message.
+
+Every pipeline verb passes the Gate's Setup Stamp stage, because validating the
+enabled modules means comparing them against what this checkout actually stages.
+
+```json
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_JYTHON_SYNTAX",
+  "message": "/repo/src/bad.py:3: unmatched ')'",
+  "remediation": [],
+  "data": {
+    "stages": [
+      { "stage": "module-validate", "status": "passed", "message": "whitelist is empty: every module loads" },
+      { "stage": "module-scan", "status": "passed", "paths": ["/repo/src"] },
+      { "stage": "declared-check", "status": "skipped", "message": "no [commands].check declared" },
+      { "stage": "jython-check", "status": "failed", "paths": ["/repo/src"], "jar": "/home/u/.cache/igdev/jython/2.7.4/jython-standalone-2.7.4.jar",
+        "file_count": 2, "diagnostics": [{ "file": "/repo/src/bad.py", "line": 3, "message": "unmatched ')'" }] }
+    ],
+    "failed": "jython-check"
+  }
+}
+```
+
+### The Jython checker and its cache
+
+`igdev jython check <path>...` is the last stage on its own: a directory is walked
+for `.py` files, a file argument is compiled as given, and **one** JVM compiles all
+of them, however many there are — one launch, not one per file. The driver is a small
+script embedded in the binary and handed to the interpreter with `-c`; it compiles
+each file, prints `path:line: message` for every file it rejected, and exits
+non-zero. All files are checked before the exit level is decided, so one run reports
+every problem. Failures are `IGDEV_E_JYTHON_SYNTAX`, a path that does not exist is
+`IGDEV_E_JYTHON_PATH_MISSING`, and a machine without a JVM is
+`IGDEV_E_JAVA_MISSING`.
+
+The standalone jar is a downloaded artifact pinned by sha256 in the embedded
+version-keyed table (`jython.Pins`; 2.7.4 is the Ignition 8.3.8 target). The cache
+entry is `<XDG cache>/igdev/jython/<version>/jython-standalone-<version>.jar`, and
+every access follows the frozen cache policy:
+
+- a per-entry `flock` (`jython.lock`) is taken first, so N parallel igdev processes on
+  one machine fetch the artifact exactly once: the first downloads, the rest verify
+  what it stored;
+- the artifact is downloaded to a temp file *inside the cache directory* and renamed
+  into place only after it verified, so no partial file is ever visible under the
+  final name and nothing round-trips through `$TMPDIR`;
+- a cached entry is re-hashed on every use; bytes that do not match the pin are moved
+  aside as `jython-standalone-<version>.jar.corrupt-<timestamp>` and refetched;
+- a download that does not match the pin is quarantined the same way and retried
+  once; a second mismatch is `IGDEV_E_CHECKSUM_MISMATCH`, and no JVM ever sees the
+  bytes.
+
+Deleting the whole cache directory is safe: it costs a re-download and nothing else.
+Two config keys exist for CI. `jython.maven_base_url` points the fetch at a loopback
+stand-in, and `jython.sha256` replaces the expected digest of a pinned version. The
+override cannot make an unpinned version supported — the table still decides which
+versions igdev speaks — so an unknown `[ignition].jython_version` fails closed with
+`IGDEV_E_JYTHON_VERSION_UNSUPPORTED`.
+
+### test, build, and verify
+
+`igdev test` dispatches `[commands].test` at the Project Root. `igdev build`
+dispatches `[commands].build` and then re-materializes the module staging the Gateway
+mounts — the same re-render `module add` performs, reported as a `module-restage`
+stage. Both skip an undeclared stage with a note rather than failing it, and both
+propagate a declared stage's exit code (`IGDEV_E_COMMAND_FAILED`) as their own exit
+level, stopping before anything that follows.
+
+`igdev verify` is check, then test, then build, each stopping the run. `--gateway`
+adds the runtime half — the Capacity Gate, `up`, `wait` (240 s), and `smoke` — and
+leaves the Gateway running so the URL it reports can be opened by hand; stop it with
+`igdev gateway down`. The Gateway half needs recorded Consent like every gateway
+verb, so on a machine that has not accepted the EULA it fails with
+`IGDEV_E_CONSENT_REQUIRED` at exit 3.
+
 ## Host prerequisites
 
 `igdev doctor` audits the host read-only and never fails: the exit level stays 0 and
@@ -578,7 +682,10 @@ rewriting, chmod-ing, or deleting anything in the scratch tree fails the asserti
 and `TMPDIR` must be empty), zero orphan docker objects (the `docker` shim records
 every argv, and `DockerOrphans` tallies by object identity — `--name`, or the
 synthetic container id the shim echoes — so `create leaked` plus `rm unrelated` is
-still a leak, while `run --rm` is not one). Measured here on an i7-13700KF: P95 2 ms, peak RSS
+still a leak, while `run --rm` is not one), a batched-Jython timing gate (`igdev check`
+over a 500-file tree, artifact already cached and the JVM shimmed, completes well under
+three seconds — the JVM's own cost is deferred to the real-Docker e2e tier), and the
+same rules for TMPDIR. Measured here on an i7-13700KF: P95 2 ms, peak RSS
 6.4 MiB, binary 7.2 MiB.
 
 ## Working in this tree
@@ -591,7 +698,7 @@ and call it in-process. The only in-process unit tests are for pure functions
 (`internal/config`, `internal/contract`, `internal/project`, `internal/gate`,
 `internal/semver`, `internal/textdiff`, `internal/instance`, `internal/ports`,
 `internal/consent`, `internal/localconfig`, `internal/runtimeassets`,
-`internal/doctor`, `internal/catalog`, `internal/modules`). Do not add a new seam: if a behaviour cannot
+`internal/doctor`, `internal/catalog`, `internal/modules`, `internal/jython`). Do not add a new seam: if a behaviour cannot
 be observed from argv, exit level, stdout, stderr, the filesystem, or the shim's call
 log, it is not yet a testable requirement.
 
@@ -620,6 +727,10 @@ env.AssertNoDockerCalls(t)            // status/startup must stay off the engine
 env.AssertNoDockerOrphans(t)          // created objects were all removed
 server := testrig.ServeLatestRelease(t, "v9.9.9"); env.PointAt(server); server.Hits()
 testrig.ServeDir(t, dist)             // loopback file server over a directory of artifacts
+env.ShimJava()                        // PATH shim for the JVM; records to state/java-calls.jsonl
+env.JavaCalls(t)                      // each launch: call.Argv, call.Jar(), call.Files()
+download := testrig.ServeDownloadDir(t, dir)  // counting loopback Maven stand-in; download.Hits()
+env.PointAtDownload(download)         // points jython.maven_base_url at that server
 testrig.EnvFor("updater.enabled")     // the IGDEV_* name that sets a frozen config key
 env.SetBaseEnv("IGDEV_NO_UPDATE_NOTIFIER=")  // turn the notice on for this env only
 testrig.RunScriptIn(root, env, "packaging/package.sh", version)
@@ -693,7 +804,7 @@ and description. It is immediately resolvable from every tier, reported by
 `igdev status --json`, and settable by tests through `testrig.EnvFor(path)`.
 `internal/testrig` maps the same schema, so nothing has to be kept in sync by hand.
 
-## Deliberate limits of tickets 01-05, 12, and 13
+## Deliberate limits of tickets 01-05, 12, 13, and 14
 
 Ticket 01: the walking skeleton — install, `status`, `version`, help, completion, the
 five-tier resolver, the Gate's discovery stage, and the resource/hygiene gates.
@@ -716,17 +827,22 @@ Effective Catalog, and `module list|require|scan`, plus `catalog status`).
 Ticket 13: the module write verbs (`module enable|add|clear|cache-path` — the contract
 whitelist write, the `.modl` staging the Gateway mounts, the machine cache path, and
 the staged-artifact report in `status`).
+Ticket 14: the check pipeline (`check|test|build|verify`, the module-validate and
+module-scan stages, the declared-stage dispatch, and `verify --gateway`) and the Jython
+layer (the pinned, lock-guarded standalone-artifact cache and the one-JVM batched
+compile behind `igdev jython check`). The 500-file timing gate lives in
+`itest/jython_test.go`; the real-JVM half is deferred to the e2e tier, exactly as the
+real-docker half is.
 
-The module surface is otherwise read-only: there is still no module-license or
-module-certificate acceptance path (the Consent terms exist and `setup` records them,
-but no command demands them), and `catalog import-openapi` (the overlay generator) does
-not exist yet — an overlay is hand-authored today. `module validate` and the preflight
-stage of `igdev check` arrive with ticket 14, which consumes `module scan` and
-`module require`. There is no Jython download (setup materializes
-state only), no Wizard prompts (ticket 16, which also adds the `module add` steps), no
-AGENTS.md managed block, and
-no pipeline verbs — `check|test|build|verify` — so the declared `[commands]` stages are
-still only data. The repository is not yet dogfooding its own `igdev.toml`; that
-arrives with the conversion ticket. Until then the root `README.md` documents the
-legacy `devctl` foundation and `AGENTS.md` its command contract; this file is the
-igdev reference.
+`module validate` as its own verb is not part of ticket 14: what it used to mean is the
+pipeline's first stage (`module-validate`), and the oracle's REST-catalog structural
+validation is covered instead by the embedded Core Catalog's digest tests. The module
+surface is otherwise read-only: there is still no module-license or module-certificate
+acceptance path (the Consent terms exist and `setup` records them, but no command
+demands them), and `catalog import-openapi` (the overlay generator) does not exist yet —
+an overlay is hand-authored today. There is no Wizard prompt (ticket 16, which also adds
+the `module add` steps), no
+AGENTS.md managed block, and no `ci-local` verb. The repository is not yet dogfooding its
+own `igdev.toml`; that arrives with the conversion ticket. Until then the root
+`README.md` documents the legacy `devctl` foundation and `AGENTS.md` its command
+contract; this file is the igdev reference.

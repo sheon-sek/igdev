@@ -151,6 +151,131 @@ esac
 exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
 `
 
+// ShimJavaFile is the java stand-in's filename inside the shim directory.
+const ShimJavaFile = "java"
+
+// javaShimScript is a POSIX sh stand-in for the JVM igdev launches for the
+// batched Jython check. It records every invocation as one JSON object per line
+// — the code the CLI passed with -c collapses to <DRIVER>, because a multi-line
+// argument is not representable in this format — and answers instantly.
+//
+// Unless IGDEV_SHIM_JAVA_FAST=1, it also emulates the JVM faithfully enough to
+// produce real diagnostics: the driver the CLI passed with -c is executed by
+// python3 (present on every supported host) against the same file arguments. A
+// syntax error therefore reaches igdev as the same `path:line: message` line a
+// real JVM would print. IGDEV_SHIM_JAVA_EXIT/IGDEV_SHIM_JAVA_OUT replace all of
+// that with a canned answer, for a failure the driver cannot produce.
+const javaShimScript = `#!/bin/sh
+state="$IGDEV_SHIM_JAVA_STATE"
+if [ -n "$state" ]; then
+  mkdir -p "$(dirname "$state")"
+  n=1
+  [ -f "$state" ] && n=$(( $(wc -l < "$state") + 1 ))
+  escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+  argv=""
+  previous=""
+  for arg in "$@"; do
+    if [ "$previous" = "-c" ]; then arg="<DRIVER>"; fi
+    if [ -n "$argv" ]; then argv="$argv,"; fi
+    argv="$argv\"$(escape "$arg")\""
+    previous="$arg"
+  done
+  printf '{"n":%s,"cwd":"%s","argv":[%s]}\n' "$n" "$(escape "$PWD")" "$argv" >> "$state"
+fi
+if [ -n "$IGDEV_SHIM_JAVA_EXIT" ]; then
+  [ -n "$IGDEV_SHIM_JAVA_OUT" ] && printf '%s\n' "$IGDEV_SHIM_JAVA_OUT"
+  exit "$IGDEV_SHIM_JAVA_EXIT"
+fi
+if [ "$IGDEV_SHIM_JAVA_FAST" = "1" ]; then exit 0; fi
+code=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -jar) shift 2 ;;
+    -c) code="$2"; shift 2 ;;
+    *) break ;;
+  esac
+done
+if [ -n "$code" ] && command -v python3 >/dev/null 2>&1; then
+  exec python3 -c "$code" "$@"
+fi
+exit 0
+`
+
+// ShimJava installs the fake JVM on the scratch PATH and returns the state file
+// path (the invocation log). Calling it twice is harmless.
+func (e *Env) ShimJava() string {
+	e.T.Helper()
+	state := e.Path("state", "java-calls.jsonl")
+	if err := os.MkdirAll(filepath.Dir(state), 0o755); err != nil {
+		e.T.Fatalf("mkdir shim state: %v", err)
+	}
+	path := filepath.Join(e.Shim, ShimJavaFile)
+	if err := os.WriteFile(path, []byte(javaShimScript), 0o755); err != nil {
+		e.T.Fatalf("write java shim: %v", err)
+	}
+	e.SetBaseEnv("IGDEV_SHIM_JAVA_STATE=" + state)
+	e.RegisterReplacement(state, "<JAVA_STATE>")
+	return state
+}
+
+// JavaCall is one recorded JVM invocation.
+type JavaCall struct {
+	N    int      `json:"n"`
+	CWD  string   `json:"cwd"`
+	Argv []string `json:"argv"`
+}
+
+// Jar is the jar the JVM was told to run, or "" when it was not a -jar call.
+func (c JavaCall) Jar() string {
+	for i := 0; i+1 < len(c.Argv); i++ {
+		if c.Argv[i] == "-jar" {
+			return c.Argv[i+1]
+		}
+	}
+	return ""
+}
+
+// Files lists the file arguments the JVM was given: everything after the -c
+// driver.
+func (c JavaCall) Files() []string {
+	for i := range c.Argv {
+		if c.Argv[i] != "-c" {
+			continue
+		}
+		if i+2 > len(c.Argv) {
+			return nil
+		}
+		return c.Argv[i+2:]
+	}
+	return nil
+}
+
+// JavaCalls returns the shim's call log, oldest first. An absent log means no JVM
+// was ever launched.
+func (e *Env) JavaCalls(t *testing.T) []JavaCall {
+	t.Helper()
+	raw, err := os.ReadFile(e.Path("state", "java-calls.jsonl"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatalf("read java shim state: %v", err)
+	}
+	var calls []JavaCall
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var call JavaCall
+		if err := json.Unmarshal([]byte(line), &call); err != nil {
+			t.Fatalf("java shim state line %q: %v", line, err)
+		}
+		calls = append(calls, call)
+	}
+	return calls
+}
+
 // ShimMeminfo writes a meminfo-format file reporting availableMB of MemAvailable
 // and points every later run in this Env at it. The Capacity Gate reads the path
 // named by capacity.MeminfoEnv instead of /proc/meminfo, which is how a test

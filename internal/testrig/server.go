@@ -121,6 +121,67 @@ func ServeDir(t *testing.T, dir string) string {
 	return server.URL
 }
 
+// DownloadServer is a loopback stand-in for the Maven host the pinned Jython
+// standalone checker is fetched from. It counts every request, so a test can
+// assert that parallel processes fetched the artifact exactly once, and it can
+// be pointed at a corrupted tree instead.
+type DownloadServer struct {
+	// URL is the repository base igdev is pointed at.
+	URL string
+
+	server *httptest.Server
+	dir    string
+	mu     sync.Mutex
+	hits   int
+	status int
+}
+
+// ServeDownloadDir starts a counting file server over dir, which must hold the
+// Maven layout `<version>/jython-standalone-<version>.jar`.
+func ServeDownloadDir(t *testing.T, dir string) *DownloadServer {
+	t.Helper()
+	ds := &DownloadServer{dir: dir, status: http.StatusOK}
+	ds.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ds.mu.Lock()
+		ds.hits++
+		status := ds.status
+		ds.mu.Unlock()
+		if status != http.StatusOK {
+			w.WriteHeader(status)
+			return
+		}
+		http.FileServer(http.Dir(ds.dir)).ServeHTTP(w, r)
+	}))
+	ds.URL = ds.server.URL
+	t.Cleanup(ds.Close)
+	return ds
+}
+
+// Hits reports how many requests the server answered.
+func (ds *DownloadServer) Hits() int {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	return ds.hits
+}
+
+// SetStatus makes every response fail with an HTTP status, standing in for a
+// mirror that is down.
+func (ds *DownloadServer) SetStatus(status int) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	ds.status = status
+}
+
+// Close shuts the server down.
+func (ds *DownloadServer) Close() { ds.server.Close() }
+
+// PointAtDownload makes this scratch environment fetch the pinned artifact from
+// ds, and collapses the URL in goldens.
+func (e *Env) PointAtDownload(ds *DownloadServer) {
+	e.RegisterReplacement(ds.URL, "<MAVEN_URL>")
+	e.SetBaseEnv(EnvFor("jython.maven_base_url") + "=" + ds.URL)
+}
+
 // EnvFor returns the IGDEV_* environment name that sets a frozen config key. It
 // panics on an unknown key: the schema is frozen, so that is a rig bug.
 func EnvFor(path string) string {

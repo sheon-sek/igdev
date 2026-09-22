@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "stages": [
+      {
+        "stage": "declared-test",
+        "status": "passed",
+        "command": "printf 'tests ran\n'"
+      }
+    ]
+  }
+}

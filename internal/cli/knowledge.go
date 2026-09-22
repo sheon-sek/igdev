@@ -90,6 +90,14 @@ func (a *App) projectKnowledge() (*knowledge, error) {
 // checkout that was never set up, or whose contract moved since, is refused with
 // the same faults every other project command reports.
 func (a *App) projectWrite() (project.Found, *knowledge, error) {
+	return a.projectStaged()
+}
+
+// projectStaged is projectKnowledge plus the Gate's Setup Stamp stage. It is what
+// the check pipeline runs on: validating the enabled modules means comparing them
+// against what this checkout actually stages, which only exists once the checkout
+// has been materialized.
+func (a *App) projectStaged() (project.Found, *knowledge, error) {
 	found, res, doc, eff, err := a.catalogContext()
 	if err != nil {
 		return found, nil, err

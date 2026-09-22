@@ -1,0 +1,32 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_MODULE_ARTIFACT_MISSING",
+  "message": "com.acme.ghost is enabled but its .modl is missing",
+  "remediation": [
+    {
+      "command": "igdev module add <file.modl>",
+      "why": "stage the module artifact the whitelist names"
+    },
+    {
+      "command": "igdev module enable <id>",
+      "why": "whitelist a module whose artifact is staged"
+    }
+  ],
+  "data": {
+    "stages": [
+      {
+        "stage": "module-validate",
+        "status": "failed",
+        "message": "com.acme.ghost is enabled but its .modl is missing",
+        "enabled": [
+          "com.acme.ghost"
+        ],
+        "missing": [
+          "com.acme.ghost"
+        ]
+      }
+    ],
+    "failed": "module-validate"
+  }
+}

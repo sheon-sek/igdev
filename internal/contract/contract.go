@@ -130,6 +130,31 @@ const (
 	// CodeCapabilityAmbiguous covers one capability resolving to more than one
 	// owner. Preflight cannot pick for the caller, so it names the candidates.
 	CodeCapabilityAmbiguous Code = "IGDEV_E_CAPABILITY_AMBIGUOUS"
+	// CodeJavaMissing covers a Jython check with no JVM on PATH: the batched
+	// compatibility compile cannot run without one.
+	CodeJavaMissing Code = "IGDEV_E_JAVA_MISSING"
+	// CodeJythonVersionUnsupported covers a contract naming a Jython version
+	// this binary carries no pinned artifact digest for. The cache fails closed:
+	// an unverifiable download is never trusted.
+	CodeJythonVersionUnsupported Code = "IGDEV_E_JYTHON_VERSION_UNSUPPORTED"
+	// CodeJythonFetch covers the pinned Jython artifact that could not be
+	// downloaded: no network, a failed request, or an unwritable cache.
+	CodeJythonFetch Code = "IGDEV_E_JYTHON_FETCH"
+	// CodeChecksumMismatch covers a downloaded artifact whose sha256 does not
+	// match the pin, after the bad bytes were quarantined and the fetch retried
+	// once. It is the integrity failure: the artifact is never used.
+	CodeChecksumMismatch Code = "IGDEV_E_CHECKSUM_MISMATCH"
+	// CodeJythonPathMissing covers a `jython check` argument that does not
+	// exist: there is nothing to compile.
+	CodeJythonPathMissing Code = "IGDEV_E_JYTHON_PATH_MISSING"
+	// CodeJythonSyntax covers files the batched JVM compile rejected: the
+	// message names each path and line. It is what `check` reports for the
+	// Jython stage.
+	CodeJythonSyntax Code = "IGDEV_E_JYTHON_SYNTAX"
+	// CodeCommandFailed covers a declared project stage (`[commands].check`,
+	// `.test`, `.build`) that exited non-zero. The exit level is the stage's own
+	// exit code, so a project's failure stays machine-distinguishable.
+	CodeCommandFailed Code = "IGDEV_E_COMMAND_FAILED"
 )
 
 // Remediation is a machine-readable next step: the exact command that clears
@@ -167,12 +192,17 @@ func Success(data any) Envelope {
 }
 
 // Failure builds an error envelope for err. An err that is not a *Fault is
-// reported as IGDEV_E_INTERNAL at exit 1.
+// reported as IGDEV_E_INTERNAL at exit 1. A fault carrying Data reports it; every
+// other fault reports the frozen empty object.
 func Failure(err error) Envelope {
 	f := AsFault(err)
 	remediation := f.Remediation
 	if remediation == nil {
 		remediation = []Remediation{}
+	}
+	data := f.Data
+	if data == nil {
+		data = map[string]any{}
 	}
 	return Envelope{
 		Ok:          false,
@@ -180,7 +210,7 @@ func Failure(err error) Envelope {
 		Code:        string(f.Code),
 		Message:     f.Message,
 		Remediation: remediation,
-		Data:        map[string]any{},
+		Data:        data,
 	}
 }
 

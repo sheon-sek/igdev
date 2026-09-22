@@ -15,6 +15,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/sheon-sek/igdev/internal/contract"
+	"github.com/sheon-sek/igdev/internal/jython"
 )
 
 // Source names the tier a resolved value came from. The strings are part of the
@@ -89,6 +90,14 @@ var Schema = []Key{
 	{
 		Path: "updater.timeout_seconds", Env: "IGDEV_UPDATER_TIMEOUT_SECONDS", Kind: KindInt, Default: 2,
 		Desc: "Hard ceiling on a single release fetch.",
+	},
+	{
+		Path: "jython.maven_base_url", Env: "IGDEV_JYTHON_MAVEN_BASE_URL", Kind: KindString, Default: jython.DefaultBaseURL,
+		Desc: "Maven repository the pinned Jython standalone checker is downloaded from (CI points this at a loopback stand-in).",
+	},
+	{
+		Path: "jython.sha256", Env: "IGDEV_JYTHON_SHA256", Kind: KindString, Default: "",
+		Desc: "Expected sha256 of the Jython standalone artifact; empty uses the digest pinned in the embedded version catalog.",
 	},
 }
 
