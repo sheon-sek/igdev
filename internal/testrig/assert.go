@@ -109,6 +109,11 @@ type StatusData struct {
 			Debug int `json:"debug"`
 		} `json:"ports"`
 	} `json:"setup"`
+	Modules struct {
+		Dir    string   `json:"dir"`
+		Count  int      `json:"count"`
+		Staged []string `json:"staged"`
+	} `json:"modules"`
 	Consent struct {
 		Path  string `json:"path"`
 		Terms []struct {

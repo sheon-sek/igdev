@@ -1,0 +1,17 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_MODULE_UNKNOWN",
+  "message": "com.inductiveautomation.perspectiv is neither a built-in module nor declared by a staged .modl (closest: com.inductiveautomation.perspective)",
+  "remediation": [
+    {
+      "command": "igdev module list --built-in",
+      "why": "list the module ids this igdev knows"
+    },
+    {
+      "command": "igdev module add <file.modl>",
+      "why": "stage a private module so its id can be enabled"
+    }
+  ],
+  "data": {}
+}

@@ -1,0 +1,3 @@
+[igdev] ERROR IGDEV_E_MODULE_UNKNOWN: com.inductiveautomation.perspectiv is neither a built-in module nor declared by a staged .modl (closest: com.inductiveautomation.perspective)
+[igdev]   fix: igdev module list --built-in  (list the module ids this igdev knows)
+[igdev]   fix: igdev module add <file.modl>  (stage a private module so its id can be enabled)

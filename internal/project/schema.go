@@ -387,6 +387,13 @@ func editionLike(s string) bool { return editionPattern.MatchString(s) }
 
 func moduleLike(s string) bool { return modulePattern.MatchString(s) }
 
+// ValidModuleID reports whether an id is a module id as contract schema v1
+// defines it. The rule is shared with the artifact reader (internal/modules):
+// a `[modules].enabled` entry the contract accepts must be an id a staged
+// module.xml may declare, and vice versa, or `module add` could stage an
+// artifact `module enable` refuses to write.
+func ValidModuleID(id string) bool { return moduleLike(id) }
+
 func timezoneLike(s string) bool { return timezonePattern.MatchString(s) }
 
 // overlayPathProblem reports why a catalog.overlay_paths entry cannot be a

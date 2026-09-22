@@ -1,0 +1,3 @@
+mount:  <MODULES>
+env:    IGDEV_MODULES_PATH=<MODULES>
+staged: acme-vision.modl

@@ -105,6 +105,17 @@ const (
 	// built-in nor backed by a `.modl` artifact in the checkout: the whitelist
 	// asks for a module nothing can load.
 	CodeModuleArtifactMissing Code = "IGDEV_E_MODULE_ARTIFACT_MISSING"
+	// CodeModuleArchiveInvalid covers a `.modl` that cannot be staged: not a
+	// readable archive, no module.xml, no usable module id, or an archive whose
+	// declared expansion trips the zip-bomb guard. The archive is never treated
+	// as a capability source (ADR 0005), so the fault is about the file, not
+	// about what it might contain.
+	CodeModuleArchiveInvalid Code = "IGDEV_E_MODULE_ARCHIVE_INVALID"
+	// CodeModuleUnknown covers `module enable` being asked for an id that is
+	// neither a built-in module nor declared by a staged `.modl`: enabling it
+	// would whitelist a module nothing can load. The message names the closest
+	// built-in ids, because a typo is the common cause.
+	CodeModuleUnknown Code = "IGDEV_E_MODULE_UNKNOWN"
 	// CodeOverlayInvalid covers a Project Overlay file the contract declares
 	// that cannot be read or does not follow the overlay format.
 	CodeOverlayInvalid Code = "IGDEV_E_OVERLAY_INVALID"

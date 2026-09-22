@@ -10,6 +10,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -45,6 +46,22 @@ const (
 	// StatusMissingArtifact means the whitelist names the module and no artifact
 	// declares it.
 	StatusMissingArtifact = "MISSING-ARTIFACT"
+)
+
+// The limits a `.modl` is read under. A module archive is metadata-only input
+// (ADR 0005): igdev needs one small file out of it, so an archive that wants to
+// expand into gigabytes — or into a small file at an absurd ratio — is refused
+// before anything is decompressed. The numbers are generous for real modules: a
+// module.xml is a handful of kilobytes, and even a fat module archive stays well
+// under the total.
+const (
+	// MaxArchiveBytes bounds the total uncompressed size of every entry.
+	MaxArchiveBytes = 64 << 20
+	// MaxMetadataBytes bounds the uncompressed module.xml igdev reads.
+	MaxMetadataBytes = 1 << 20
+	// MaxCompressionRatio bounds how far one entry may expand relative to its
+	// stored size. A 200:1 entry is already far past anything a module needs.
+	MaxCompressionRatio = 200
 )
 
 // Record is one private module artifact found in the checkout.
@@ -125,6 +142,10 @@ func read(path, name string) Record {
 		return record
 	}
 	defer reader.Close()
+	if err := guard(&reader.Reader); err != nil {
+		record.Err = err.Error()
+		return record
+	}
 	for _, file := range reader.File {
 		if file.Name != "module.xml" {
 			continue
@@ -134,7 +155,7 @@ func read(path, name string) Record {
 			record.Err = err.Error()
 			return record
 		}
-		raw, readErr := io.ReadAll(handle)
+		raw, readErr := readMetadata(handle)
 		handle.Close()
 		if readErr != nil {
 			record.Err = readErr.Error()
@@ -150,6 +171,55 @@ func read(path, name string) Record {
 	}
 	record.Err = "the archive carries no module.xml"
 	return record
+}
+
+// guard refuses an archive whose declared sizes are not those of a module
+// archive: an expansion past MaxArchiveBytes, a module.xml past
+// MaxMetadataBytes, or an entry stored at a ratio that only a decompression bomb
+// uses. The declared sizes are read from the central directory, so nothing is
+// decompressed to make this decision.
+func guard(reader *zip.Reader) error {
+	var total, stored uint64
+	for _, file := range reader.File {
+		total += file.UncompressedSize64
+		stored += file.CompressedSize64
+		if file.UncompressedSize64 > MaxArchiveBytes {
+			return fmt.Errorf("the entry %s declares %d bytes, past the %d-byte archive limit",
+				file.Name, file.UncompressedSize64, MaxArchiveBytes)
+		}
+		if file.Name == "module.xml" && file.UncompressedSize64 > MaxMetadataBytes {
+			return fmt.Errorf("module.xml declares %d bytes, past the %d-byte metadata limit",
+				file.UncompressedSize64, MaxMetadataBytes)
+		}
+		if file.CompressedSize64 > 0 && file.UncompressedSize64/file.CompressedSize64 > MaxCompressionRatio {
+			return fmt.Errorf("the entry %s expands %d-fold, which looks like a decompression bomb",
+				file.Name, file.UncompressedSize64/file.CompressedSize64)
+		}
+	}
+	if total > MaxArchiveBytes {
+		return fmt.Errorf("the archive declares %d uncompressed bytes, past the %d-byte archive limit",
+			total, MaxArchiveBytes)
+	}
+	if stored > 0 && total/stored > MaxCompressionRatio {
+		return fmt.Errorf("the archive expands %d-fold, which looks like a decompression bomb",
+			total/stored)
+	}
+	return nil
+}
+
+// readMetadata reads module.xml under the metadata limit. The limit is enforced
+// on the bytes actually read, not only on the size the archive declares: a
+// stored size is a claim, and the guard above must not be the only thing standing
+// between igdev and a large allocation.
+func readMetadata(handle io.Reader) ([]byte, error) {
+	raw, err := io.ReadAll(io.LimitReader(handle, MaxMetadataBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > MaxMetadataBytes {
+		return nil, fmt.Errorf("module.xml is larger than the %d-byte metadata limit", MaxMetadataBytes)
+	}
+	return raw, nil
 }
 
 // metadata reads id, name, and version out of a module.xml document. The tags
@@ -256,6 +326,75 @@ func Status(record Record, whitelist []string) string {
 	default:
 		return StatusStagedNotEnabled
 	}
+}
+
+// SuggestLimit is how many ids a "closest match" hint names at most: enough to
+// catch a typo, few enough to stay a hint.
+const SuggestLimit = 3
+
+// suggestFloor is how much of the final dotted segment a candidate has to share
+// with the unknown id to be named at all. Only the segment that names the module
+// is compared: the vendor namespace every Ignition module shares ("com...") is
+// noise as a hint, and an id from an unrelated vendor gets none.
+const suggestFloor = 3
+
+// Suggest ranks known ids by how close they are to an unknown one, so the fault
+// for an unknown module can name what the caller probably meant. The ranking is
+// the shared leading run of the ids' final dotted segment — a typo inside a
+// module name scores high, a different module name scores nothing — with ties
+// broken by id, which keeps the hint deterministic.
+func Suggest(known []string, unknown string, max int) []string {
+	if max <= 0 {
+		return nil
+	}
+	tail := lastSegment(unknown)
+	type scored struct {
+		id    string
+		score int
+	}
+	candidates := make([]scored, 0, len(known))
+	for _, id := range known {
+		score := commonPrefix(lastSegment(id), tail)
+		if score < suggestFloor {
+			continue
+		}
+		candidates = append(candidates, scored{id: id, score: score})
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].score != candidates[j].score {
+			return candidates[i].score > candidates[j].score
+		}
+		return candidates[i].id < candidates[j].id
+	})
+	out := make([]string, 0, min(max, len(candidates)))
+	for _, candidate := range candidates {
+		if len(out) == max {
+			break
+		}
+		out = append(out, candidate.id)
+	}
+	return out
+}
+
+// commonPrefix is the length in bytes of the run both strings start with. Module
+// ids are ASCII, so the count is also a character count.
+func commonPrefix(a, b string) int {
+	n := min(len(a), len(b))
+	for i := range n {
+		if a[i] != b[i] {
+			return i
+		}
+	}
+	return n
+}
+
+// lastSegment is the dotted segment after the final dot, which is the part of a
+// module id that names the module rather than its vendor namespace.
+func lastSegment(id string) string {
+	if i := strings.LastIndex(id, "."); i >= 0 {
+		return id[i+1:]
+	}
+	return id
 }
 
 // Missing lists the whitelisted module ids that are neither built-in nor declared

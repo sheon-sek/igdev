@@ -1,0 +1,3 @@
+contract:  <ROOT>/repo/igdev.toml (updated, digest sha256:f63a81533a3de72ad21fdadf161128bfe831a9633dfe67c094f0438896e21a7c)
+modules:   added com.inductiveautomation.opcua
+setup:     stale (run `igdev setup` to re-materialize the checkout)

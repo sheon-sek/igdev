@@ -5,6 +5,7 @@
 package atomicfile
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -13,40 +14,65 @@ import (
 // dirMode when it is missing. The mode is applied with chmod, so it does not
 // depend on the process umask: a file igdev declares 0600 is 0600.
 func Write(path string, data []byte, mode, dirMode os.FileMode) error {
+	_, err := replace(path, mode, dirMode, func(tmp *os.File) (int64, error) {
+		written, err := tmp.Write(data)
+		return int64(written), err
+	})
+	return err
+}
+
+// Copy replaces path with the contents of src, under the same rules as Write:
+// a temp file in the destination directory, fsynced, then renamed. It streams
+// instead of buffering, so staging an artifact costs no more memory than the
+// copy buffer, and it returns the number of bytes written.
+func Copy(path, src string, mode, dirMode os.FileMode) (int64, error) {
+	handle, err := os.Open(src)
+	if err != nil {
+		return 0, err
+	}
+	defer handle.Close()
+	return replace(path, mode, dirMode, func(tmp *os.File) (int64, error) {
+		return io.Copy(tmp, handle)
+	})
+}
+
+// replace runs fill against a temp file next to path and renames it into place.
+// The rename is atomic, but only the sync makes the bytes durable before it: a
+// state file must not come back empty after a crash.
+func replace(path string, mode, dirMode os.FileMode, fill func(tmp *os.File) (int64, error)) (int64, error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, dirMode); err != nil {
-		return err
+		return 0, err
 	}
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-")
 	if err != nil {
-		return err
+		return 0, err
 	}
 	name := tmp.Name()
 	discard := func() {
 		tmp.Close()
 		os.Remove(name)
 	}
-	if _, err := tmp.Write(data); err != nil {
+	written, err := fill(tmp)
+	if err != nil {
 		discard()
-		return err
+		return 0, err
 	}
 	if err := tmp.Chmod(mode); err != nil {
 		discard()
-		return err
+		return 0, err
 	}
-	// The rename is atomic, but only the sync makes the bytes durable before it:
-	// a state file must not come back empty after a crash.
 	if err := tmp.Sync(); err != nil {
 		discard()
-		return err
+		return 0, err
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(name)
-		return err
+		return 0, err
 	}
 	if err := os.Rename(name, path); err != nil {
 		os.Remove(name)
-		return err
+		return 0, err
 	}
-	return nil
+	return written, nil
 }

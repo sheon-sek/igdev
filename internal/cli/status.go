@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -10,6 +11,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/consent"
 	"github.com/sheon-sek/igdev/internal/gate"
 	"github.com/sheon-sek/igdev/internal/instance"
+	"github.com/sheon-sek/igdev/internal/modules"
 	"github.com/sheon-sek/igdev/internal/ports"
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/xdg"
@@ -23,6 +25,7 @@ type statusData struct {
 	WorkingDir  string         `json:"working_dir"`
 	Contract    statusContract `json:"contract"`
 	Setup       statusSetup    `json:"setup"`
+	Modules     statusModules  `json:"modules"`
 	Consent     statusConsent  `json:"consent"`
 	Config      statusConfig   `json:"config"`
 }
@@ -57,6 +60,21 @@ type statusSetup struct {
 	// Ports are the loopback ports allocated to this Instance, or null before
 	// setup. Nothing may assume 8088 (ADR 0003).
 	Ports *ports.Triplet `json:"ports"`
+}
+
+// statusModules reports the private module artifacts this checkout stages. It is
+// a report, not a verdict: an artifact whose module.xml cannot be read is counted
+// and named with the ids that could be read, and a checkout that does not exist
+// yet stages nothing.
+type statusModules struct {
+	// Dir is the staging directory the rendered Compose file mounts. It is
+	// reported inside a Project Root only.
+	Dir string `json:"dir"`
+	// Count is how many readable or unreadable `.modl` files are staged.
+	Count int `json:"count"`
+	// Staged lists the module ids the staged artifacts declare, in artifact
+	// order.
+	Staged []string `json:"staged"`
 }
 
 // statusConsent reports the machine-global Consent record (ADR 0004) term by
@@ -133,6 +151,7 @@ flag > IGDEV_* environment > .igdev/local.toml > igdev.toml > embedded defaults.
 					Digest:          state.Digest,
 				},
 				Setup:   setupStatus(found, state),
+				Modules: modulesStatus(found),
 				Consent: consentStatus(),
 				Config: statusConfig{
 					TierFiles: res.TierFiles,
@@ -161,6 +180,19 @@ func setupStatus(found project.Found, state gate.State) statusSetup {
 		out.Ports = &stamp.Ports
 	}
 	return out
+}
+
+// modulesStatus reads the staged module artifacts. A directory igdev cannot read
+// reports as nothing staged rather than failing the report: status describes the
+// checkout, and the module verbs are where an unreadable directory becomes a
+// fault.
+func modulesStatus(found project.Found) statusModules {
+	if !found.InProject() {
+		return statusModules{Staged: []string{}}
+	}
+	dir := modules.Dir(found.Root)
+	records, _ := modules.Scan(dir)
+	return statusModules{Dir: dir, Count: len(records), Staged: modules.IDs(records)}
 }
 
 // consentStatus reads the machine-global Consent record. A record igdev cannot
@@ -202,6 +234,11 @@ func (a *App) printStatus(found project.Found, res *config.Resolution, state gat
 		if data.Setup.Ports != nil {
 			fmt.Fprintf(out, "ports:     http %d, https %d, debug %d\n",
 				data.Setup.Ports.HTTP, data.Setup.Ports.HTTPS, data.Setup.Ports.Debug)
+		}
+		if data.Modules.Count == 0 {
+			fmt.Fprintf(out, "modules:   none staged (%s)\n", data.Modules.Dir)
+		} else {
+			fmt.Fprintf(out, "modules:   %d staged (%s)\n", data.Modules.Count, strings.Join(data.Modules.Staged, ", "))
 		}
 	} else {
 		fmt.Fprint(out, "project:   not initialized\n")

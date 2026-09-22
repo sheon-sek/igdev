@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "contract": {
+      "path": "<ROOT>/machine/igdev.toml",
+      "action": "updated",
+      "digest": "sha256:f63a81533a3de72ad21fdadf161128bfe831a9633dfe67c094f0438896e21a7c",
+      "diff": "--- a/igdev.toml\n+++ b/igdev.toml\n@@ -1,3 +1,9 @@\n+# igdev Project Contract (schema 1).\n+#\n+# Written by `igdev init`; every igdev write prints a unified diff, so tracked\n+# changes stay reviewable. Hand-editing this file makes the Checkout Setup stale:\n+# run `igdev setup` afterwards.\n+\n schema = 1\n \n [project]\n@@ -9,7 +15,7 @@\n edition = \"standard\"\n \n [modules]\n-enabled = [\"com.inductiveautomation.perspective\"]\n+enabled = [\"com.inductiveautomation.perspective\", \"com.inductiveautomation.opcua\"]\n \n [scan]\n jython = [\"src\"]\n"
+    },
+    "whitelist": [
+      "com.inductiveautomation.perspective",
+      "com.inductiveautomation.opcua"
+    ],
+    "added": [
+      "com.inductiveautomation.opcua"
+    ],
+    "already_enabled": [],
+    "unrestricted": false,
+    "setup_stale": true
+  }
+}

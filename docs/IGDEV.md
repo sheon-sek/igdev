@@ -73,7 +73,7 @@ and `packaging/install.sh` for real against a loopback file server.
 | `internal/config` | five-tier resolver (flags > `IGDEV_*` > `.igdev/local.toml` > `igdev.toml` > defaults) |
 | `internal/baseline` | the staged Baseline: copy, streamed digest, provenance record, restore arguments, mount point |
 | `internal/catalog` | the embedded Core Catalog keyed by Ignition version, the Project Overlay format, the Effective Catalog resolver, and the capability scanner |
-| `internal/modules` | private `.modl` metadata (`module.xml`) and the module whitelist semantics |
+| `internal/modules` | private `.modl` metadata (`module.xml`) under a zip-bomb guard, artifact staging/clearing, and the module whitelist semantics |
 | `internal/project` | Project Root discovery, the `igdev.toml` schema v1 model: parse, validate, render, Contract Digest |
 | `internal/gate` | the Gate: contract schema, Setup Stamp (digest, schema, CLI Contract, Instance identity and ports), `[tool].min_version` — `Evaluate` / `Require` / `Decode` |
 | `internal/instance` | the Instance identity: UUID minting, validation, and the `igdev-<short-id>` namespace |
@@ -136,6 +136,11 @@ is neither built-in nor backed by a staged `.modl`), `IGDEV_E_OVERLAY_INVALID` (
 declared Project Overlay file cannot be read or does not follow the format),
 `IGDEV_E_OVERLAY_CONFLICT` (an overlay row would shadow a row already in force) and
 `IGDEV_E_CATALOG_VERSION_MISSING` (no Core Catalog for the resolved Ignition version).
+The module write verbs (ticket 13) add `IGDEV_E_MODULE_UNKNOWN` (`module enable` was
+handed an id that is neither built-in nor declared by a staged `.modl`, so enabling it
+would whitelist a module nothing can load) and `IGDEV_E_MODULE_ARCHIVE_INVALID`
+(`module add` was handed a file that is not a readable module archive: not a zip, no
+`module.xml`, no usable id, or an archive the zip-bomb guard refuses).
 A typo in
 a `--config` flag is a usage error (the invocation was wrong); a value igdev read from
 a tier is `IGDEV_E_CONFIG_INVALID` (machine or project state is wrong). `contract` is
@@ -465,6 +470,78 @@ declarations — not on whether the checkout has been materialized, so
 `igdev module require` answers before the first `igdev setup`. They do need a Project
 Root: outside one the answer is `IGDEV_E_NOT_INITIALIZED`.
 
+### Writing modules
+
+`igdev module enable <id>...` is a contract write, and it follows the same rule as
+`igdev init`: the Project Contract is rewritten atomically (never in place, never with
+a `.bak`) and the unified diff is printed, so a tracked change stays reviewable. The
+JSON reports the file, the action, the Contract Digest after the write, and the diff;
+the whitelist, the ids added, and the ids that were already enabled.
+
+An id has to be one this environment can load — a built-in module from the Core
+Catalog, a solution-suite selector, or an id a staged `.modl` declares. One unknown id
+refuses the whole run with `IGDEV_E_MODULE_UNKNOWN`, names the closest built-in ids,
+and stages nothing. Enabling what the whitelist already names changes nothing and
+writes nothing, so re-running is safe. When the whitelist is *empty* every module
+already loads, so `enable` reports that state instead of writing a list that would
+restrict the Gateway; an explicit whitelist comes from `igdev init --modules`.
+
+Because the write moves the Contract Digest, the Checkout Setup becomes stale: the Gate
+refuses the next project command with `IGDEV_E_SETUP_STALE` until `igdev setup`
+re-materializes the staging the Gateway mounts. That is the same rule a hand-edit of the
+contract follows.
+
+`igdev module add <file.modl>` validates the archive, reports the metadata it declares
+(id, name, version), copies the file into `.igdev/modules/` atomically, and re-renders
+the runtime so the next `igdev gateway up` mounts it. The archive is read under a
+zip-bomb guard — 64 MiB of declared expansion, 1 MiB of `module.xml`, and no entry
+stored at more than a 200:1 ratio — so a bomb is refused before anything is
+decompressed; a file that is not a readable zip carrying a `module.xml` with a usable
+id is `IGDEV_E_MODULE_ARCHIVE_INVALID` with the reason. The artifact is metadata-only:
+id, name, and version is everything igdev reads out of a `.modl`, and the archive is
+never a source of capability knowledge (ADR 0005). Re-adding a file name already staged
+replaces it, which is how a newer build of one module is staged.
+
+Staging is not a contract change, so the Setup Stamp stays current: what moved is what
+is staged, not what the contract asked for. A staged private module is a first-class id,
+so `module enable <id>` and `module require module:<id>` accept it once the artifact is
+there. `igdev module clear` deletes every staged `.modl` and re-renders the runtime; the
+whitelist survives, so a whitelisted module whose artifact was cleared reads as
+`MISSING-ARTIFACT` — the state that makes a Gateway refuse it.
+
+Both write verbs pass the full Gate, so they need a current Checkout Setup, and both
+report what the re-materialization did to each runtime file.
+
+`igdev module cache-path` prints the machine-wide module cache directory for the
+resolved Ignition version (`<XDG cache>/igdev/modules/<version>`), as a bare path in the
+human dialect so a script can use it. It is a property of the machine and the version,
+not of the checkout, so it works outside a Project Root; an absent directory is reported
+(`exists: false`), never failed on, because the cache is disposable. Opting a module
+into that cache is `module add --global`, deferred.
+
+```json
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "contract": {
+      "path": "/repo/igdev.toml",
+      "action": "updated",
+      "digest": "sha256:...",
+      "diff": "--- a/igdev.toml\n+++ b/igdev.toml\n@@ -9,7 +9,7 @@\n [modules]\n-enabled = [\"com.inductiveautomation.perspective\"]\n+enabled = [\"com.inductiveautomation.perspective\", \"com.inductiveautomation.opcua\"]\n"
+    },
+    "whitelist": ["com.inductiveautomation.perspective", "com.inductiveautomation.opcua"],
+    "added": ["com.inductiveautomation.opcua"],
+    "already_enabled": [],
+    "unrestricted": false,
+    "setup_stale": true
+  }
+}
+```
+
 Human diagnostics keep the legacy `[module-preflight]` vocabulary — `OK`, `NOTE` for a
 conditional function's note — and the legacy closing line of `module scan`. Failures
 are contract faults, so their wording lives in `message` and their fix in
@@ -616,7 +693,7 @@ and description. It is immediately resolvable from every tier, reported by
 `igdev status --json`, and settable by tests through `testrig.EnvFor(path)`.
 `internal/testrig` maps the same schema, so nothing has to be kept in sync by hand.
 
-## Deliberate limits of tickets 01-05 and 12
+## Deliberate limits of tickets 01-05, 12, and 13
 
 Ticket 01: the walking skeleton — install, `status`, `version`, help, completion, the
 five-tier resolver, the Gate's discovery stage, and the resource/hygiene gates.
@@ -634,14 +711,20 @@ Ticket 05: the Baseline (`baseline set|status|clear` stages a `.gwbk` into the C
 Setup and wires the restore argument into every Gateway launch, so `gateway reset`
 seeds the Gateway from it).
 
-No module *write* commands: `module enable|add` belong to ticket 13, so there is still
-no module-license or module-certificate acceptance path, and
-`catalog import-openapi` (the overlay generator) does not exist yet — an overlay is
-hand-authored today. The knowledge verbs are read-only and complete: list, require,
-scan, and `catalog status`. `module validate` and the preflight stage of
-`igdev check` arrive with ticket 14, which consumes `module scan` and `module require`.
-There is no Jython download (setup materializes
-state only), no Wizard prompts (ticket 16), no AGENTS.md managed block, and
+Ticket 12: the knowledge layer (the embedded Core Catalog, the Project Overlay, the
+Effective Catalog, and `module list|require|scan`, plus `catalog status`).
+Ticket 13: the module write verbs (`module enable|add|clear|cache-path` — the contract
+whitelist write, the `.modl` staging the Gateway mounts, the machine cache path, and
+the staged-artifact report in `status`).
+
+The module surface is otherwise read-only: there is still no module-license or
+module-certificate acceptance path (the Consent terms exist and `setup` records them,
+but no command demands them), and `catalog import-openapi` (the overlay generator) does
+not exist yet — an overlay is hand-authored today. `module validate` and the preflight
+stage of `igdev check` arrive with ticket 14, which consumes `module scan` and
+`module require`. There is no Jython download (setup materializes
+state only), no Wizard prompts (ticket 16, which also adds the `module add` steps), no
+AGENTS.md managed block, and
 no pipeline verbs — `check|test|build|verify` — so the declared `[commands]` stages are
 still only data. The repository is not yet dogfooding its own `igdev.toml`; that
 arrives with the conversion ticket. Until then the root `README.md` documents the

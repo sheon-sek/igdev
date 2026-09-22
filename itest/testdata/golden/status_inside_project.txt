@@ -5,6 +5,7 @@ digest:    sha256:3d567280e5e4165cf2effc952fcb60417d4384b3500f93ce373b8a35c093f9
 schema:    supported
 setup:     missing (<ROOT>/repo/.igdev/setup.json)
 stamp:     required
+modules:   none staged (<ROOT>/repo/.igdev/modules)
 consent:   <HOME>/.config/igdev/accepted.toml
   ignition-eula      not accepted
   module-license     not accepted

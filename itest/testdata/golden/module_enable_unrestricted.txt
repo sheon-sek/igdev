@@ -1,0 +1,4 @@
+contract:  <ROOT>/repo/igdev.toml (unchanged, digest sha256:871e36c34dcde659f4cd7e14089cc0d293c8b54d0359ce1ba7727ca3830aab27)
+modules:   none added (the whitelist is empty: every module loads)
+note:      write an explicit whitelist with `igdev init --modules <ids>`
+setup:     current

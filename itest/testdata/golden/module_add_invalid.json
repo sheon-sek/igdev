@@ -1,0 +1,13 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_MODULE_ARCHIVE_INVALID",
+  "message": "<BOMB> is not a module archive igdev can stage: the entry module.xml expands 872-fold, which looks like a decompression bomb",
+  "remediation": [
+    {
+      "command": "igdev help module add",
+      "why": "show what `module add` accepts and what a .modl has to contain"
+    }
+  ],
+  "data": {}
+}

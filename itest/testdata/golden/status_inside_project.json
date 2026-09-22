@@ -23,6 +23,11 @@
       "namespace": "",
       "ports": null
     },
+    "modules": {
+      "dir": "<ROOT>/repo/.igdev/modules",
+      "count": 0,
+      "staged": []
+    },
     "consent": {
       "path": "<HOME>/.config/igdev/accepted.toml",
       "terms": [

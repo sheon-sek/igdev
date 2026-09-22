@@ -17,6 +17,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/gate"
 	"github.com/sheon-sek/igdev/internal/instance"
 	"github.com/sheon-sek/igdev/internal/localconfig"
+	"github.com/sheon-sek/igdev/internal/modules"
 	"github.com/sheon-sek/igdev/internal/ports"
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/runtimeassets"
@@ -195,50 +196,12 @@ free memory.`,
 				createdAt = now.Format(time.RFC3339)
 			}
 
-			stateDir := filepath.Join(found.Root, project.StateDir)
-			runtimeDir := filepath.Join(stateDir, "runtime")
-			modulesDir := filepath.Join(stateDir, "modules")
-			// The Baseline directory is the mount point the rendered Compose file
-			// names. setup creates it and never touches what is staged inside it:
-			// a staged Baseline is user state that outlives a re-materialization.
-			baselineDir := baseline.Dir(stateDir)
-
-			rendered := runtimeassets.Input{
-				InstanceID:      instanceID,
-				Namespace:       instance.Namespace(instanceID),
-				IgnitionVersion: doc.Ignition.Version,
-				JythonVersion:   doc.Ignition.JythonVersion,
-				Edition:         doc.Ignition.Edition,
-				Modules:         doc.Modules.Enabled,
-				MemoryMB:        doc.Gateway.MemoryMB,
-				Timezone:        doc.Gateway.Timezone,
-				Ports:           triplet,
-				RuntimeDir:      runtimeDir,
-				ModulesDir:      modulesDir,
-				BaselineDir:     baselineDir,
-			}
-			files, err := runtimeassets.Materialize(rendered)
+			writes, err := a.materializeRuntime(found, doc, instanceID, triplet)
 			if err != nil {
-				return contract.NewFault(contract.CodeInternal, contract.ExitFailure,
-					fmt.Sprintf("cannot render the runtime files: %v", err)).WithCause(err)
+				return err
 			}
 
-			writes := make([]setupWrite, 0, 8)
-			for _, dir := range []string{runtimeDir, modulesDir, baselineDir} {
-				write, err := materializeDir(dir)
-				if err != nil {
-					return err
-				}
-				writes = append(writes, write)
-			}
-			for _, file := range files {
-				write, err := materializeFile(filepath.Join(runtimeDir, file.Name), file.Data, renderedMode)
-				if err != nil {
-					return err
-				}
-				writes = append(writes, write)
-			}
-
+			stateDir := filepath.Join(found.Root, project.StateDir)
 			creds, source, err := a.adminCredentials(found, adminUsername, adminPassword)
 			if err != nil {
 				return err
@@ -351,6 +314,79 @@ func actionOf(changed, existed bool) string {
 	default:
 		return "unchanged"
 	}
+}
+
+// runtimePaths are the Checkout Setup directories a materialization owns: the
+// build context, the module staging directory the Gateway mounts, and the
+// Baseline restore mount point.
+type runtimePaths struct {
+	state    string
+	runtime  string
+	modules  string
+	baseline string
+}
+
+// setupPaths resolves the Checkout Setup directories of one Project Root.
+func setupPaths(root string) runtimePaths {
+	state := filepath.Join(root, project.StateDir)
+	return runtimePaths{
+		state:    state,
+		runtime:  filepath.Join(state, "runtime"),
+		modules:  modules.Dir(root),
+		baseline: baseline.Dir(state),
+	}
+}
+
+// materializeRuntime creates the Instance's runtime directories and renders its
+// runtime files, reporting what each write did.
+//
+// Everything staged in the module directory is mounted by the rendered Compose
+// file, so a materialization is also what makes a staging change visible to the
+// next `gateway up`. `setup` runs it for a fresh or stale checkout; the module
+// write verbs run it again after changing what is staged, which is why an
+// artifact added to a current checkout reaches the Gateway without the contract —
+// and therefore the Setup Stamp — moving.
+//
+// The Baseline directory is only created: what is staged inside it is user state
+// that outlives a re-materialization.
+func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceID string, triplet ports.Triplet) ([]setupWrite, error) {
+	paths := setupPaths(found.Root)
+	rendered := runtimeassets.Input{
+		InstanceID:      instanceID,
+		Namespace:       instance.Namespace(instanceID),
+		IgnitionVersion: doc.Ignition.Version,
+		JythonVersion:   doc.Ignition.JythonVersion,
+		Edition:         doc.Ignition.Edition,
+		Modules:         doc.Modules.Enabled,
+		MemoryMB:        doc.Gateway.MemoryMB,
+		Timezone:        doc.Gateway.Timezone,
+		Ports:           triplet,
+		RuntimeDir:      paths.runtime,
+		ModulesDir:      paths.modules,
+		BaselineDir:     paths.baseline,
+	}
+	files, err := runtimeassets.Materialize(rendered)
+	if err != nil {
+		return nil, contract.NewFault(contract.CodeInternal, contract.ExitFailure,
+			fmt.Sprintf("cannot render the runtime files: %v", err)).WithCause(err)
+	}
+
+	writes := make([]setupWrite, 0, len(files)+3)
+	for _, dir := range []string{paths.runtime, paths.modules, paths.baseline} {
+		write, err := materializeDir(dir)
+		if err != nil {
+			return nil, err
+		}
+		writes = append(writes, write)
+	}
+	for _, file := range files {
+		write, err := materializeFile(filepath.Join(paths.runtime, file.Name), file.Data, renderedMode)
+		if err != nil {
+			return nil, err
+		}
+		writes = append(writes, write)
+	}
+	return writes, nil
 }
 
 // materializeFile writes one generated file, reporting what happened. Generated

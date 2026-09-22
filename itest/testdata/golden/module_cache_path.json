@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "path": "<HOME>/.cache/igdev/modules/8.3.8",
+    "ignition_version": "8.3.8",
+    "exists": false
+  }
+}

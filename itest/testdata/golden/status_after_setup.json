@@ -27,6 +27,11 @@
         "debug": <PORT_DEBUG>
       }
     },
+    "modules": {
+      "dir": "<ROOT>/repo/.igdev/modules",
+      "count": 0,
+      "staged": []
+    },
     "consent": {
       "path": "<HOME>/.config/igdev/accepted.toml",
       "terms": [

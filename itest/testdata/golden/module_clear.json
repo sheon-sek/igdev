@@ -1,0 +1,55 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "modules_dir": "<ROOT>/repo/.igdev/modules",
+    "removed": [
+      "acme-reports.modl",
+      "acme-vision.modl"
+    ],
+    "count": 2,
+    "staged": [],
+    "runtime_dir": "<ROOT>/repo/.igdev/runtime",
+    "runtime": [
+      {
+        "path": "<ROOT>/repo/.igdev/runtime",
+        "kind": "dir",
+        "action": "unchanged",
+        "mode": "0755"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/modules",
+        "kind": "dir",
+        "action": "unchanged",
+        "mode": "0755"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/baseline",
+        "kind": "dir",
+        "action": "unchanged",
+        "mode": "0755"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/runtime/compose.yaml",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/runtime/compose.env",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/runtime/Dockerfile",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
+      }
+    ]
+  }
+}

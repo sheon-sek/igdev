@@ -82,6 +82,29 @@ func (a *App) projectKnowledge() (*knowledge, error) {
 	if fault := gate.RequireProject(a.gateInput(found)); fault != nil {
 		return nil, fault
 	}
+	return stagedKnowledge(found, res, doc, eff)
+}
+
+// projectWrite is projectKnowledge plus the Gate's Setup Stamp stage: the module
+// write verbs change what a materialized checkout stages, so they need one. A
+// checkout that was never set up, or whose contract moved since, is refused with
+// the same faults every other project command reports.
+func (a *App) projectWrite() (project.Found, *knowledge, error) {
+	found, res, doc, eff, err := a.catalogContext()
+	if err != nil {
+		return found, nil, err
+	}
+	if fault := gate.Require(a.gateInput(found)); fault != nil {
+		return found, nil, fault
+	}
+	k, err := stagedKnowledge(found, res, doc, eff)
+	return found, k, err
+}
+
+// stagedKnowledge pairs the resolved catalog and contract with the private
+// artifacts this checkout stages, which is everything the module verbs answer
+// from.
+func stagedKnowledge(found project.Found, res *config.Resolution, doc project.Doc, eff *catalog.Effective) (*knowledge, error) {
 	records, fault := modules.Scan(modules.Dir(found.Root))
 	if fault != nil {
 		return nil, fault
