@@ -3,9 +3,11 @@
 package project
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/BurntSushi/toml"
 
@@ -89,9 +91,22 @@ func Discover(dir string) (Found, error) {
 				found.Setup = true
 			}
 			local := filepath.Join(current, StateDir, LocalConfig)
-			if localRaw, localErr := os.ReadFile(local); localErr == nil {
+			localRaw, localErr := os.ReadFile(local)
+			switch {
+			case localErr == nil:
 				found.LocalConfigPath = local
 				found.LocalConfigTOML = localRaw
+			case os.IsNotExist(localErr), errors.Is(localErr, syscall.ENOTDIR):
+				// No checkout-local tier, or no .igdev directory yet: absent.
+			default:
+				// A tier that exists but cannot be read must not be silently
+				// dropped: the run would use config the user did not ask for.
+				return Found{}, contract.NewFault(contract.CodeConfigInvalid, contract.ExitFailure,
+					fmt.Sprintf("local config %s cannot be read: %v", local, localErr)).
+					WithCause(localErr).WithRemediation(contract.Remediation{
+					Command: fmt.Sprintf("chmod u+r %s", local),
+					Why:     "igdev will not resolve config from a tier it cannot read",
+				})
 			}
 			return found, nil
 		case os.IsNotExist(err):

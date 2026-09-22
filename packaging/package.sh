@@ -8,7 +8,8 @@
 #   (for example 0.1.0) to build a deterministic tree for testing.
 #
 # Output: dist/<version>/igdev-<version>-<os>-<arch>.tar.gz holding the binary
-# (and LICENSE when the repository has one), plus dist/<version>/checksums.txt.
+# (and LICENSE when the repository has one) for linux/{amd64,arm64} and
+# darwin/{amd64,arm64}, plus dist/<version>/checksums.txt.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,10 +23,13 @@ MODULE="github.com/sheon-sek/igdev"
 COMMIT="$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
 BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# The release targets igdev supports (ADR 0002): Linux and macOS, WSL uses the
-# Linux binary, Windows native is unsupported.
+# Every target the installer recognizes, so a pinned install can never discover
+# mid-download that its platform was never published (ADR 0002: Linux and macOS,
+# amd64 and arm64; WSL uses the Linux binary, Windows native is unsupported).
 TARGETS=(
   "linux amd64"
+  "linux arm64"
+  "darwin amd64"
   "darwin arm64"
 )
 

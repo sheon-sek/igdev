@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/sheon-sek/igdev/internal/buildinfo"
@@ -67,13 +68,7 @@ func Notice(o Options) string {
 		o.TTL = 24 * time.Hour
 	}
 	if !haveCache || stamp.Sub(cached.CheckedAt) >= o.TTL {
-		latest, err := fetch(context.Background(), o)
-		next := Cache{CheckedAt: stamp, Latest: cached.Latest}
-		if err == nil {
-			next.Latest = latest
-		}
-		writeCache(o.CachePath, next)
-		cached = next
+		cached = refreshUnderLock(o, stamp)
 	}
 
 	if cached.Latest == "" {
@@ -93,6 +88,55 @@ func Notice(o Options) string {
 	// The cache keeps the tag as advertised; the notice shows a version.
 	return fmt.Sprintf("igdev %s is available (you have %s). Update with: %s",
 		strings.TrimPrefix(cached.Latest, "v"), o.Current, buildinfo.InstallCommand)
+}
+
+// LockFileName is the sibling lock that serialises refreshes. Parallel igdev runs
+// (many agent worktrees on one machine) must cost one release query, not one each,
+// and a slow failing writer must not overwrite a result a faster peer just stored.
+const LockFileName = "update-check.lock"
+
+// refreshUnderLock re-reads the cache while holding the lock, so the first
+// process through the door does the fetch and the rest reuse its result.
+func refreshUnderLock(o Options, stamp time.Time) Cache {
+	release, locked := lockCache(o.CachePath)
+	if locked {
+		defer release()
+	}
+	current, have := readCache(o.CachePath)
+	ttl := o.TTL
+	if have && stamp.Sub(current.CheckedAt) < ttl {
+		// Another igdev fetched it while we waited for the lock.
+		return current
+	}
+	next := Cache{CheckedAt: stamp, Latest: current.Latest}
+	if latest, err := fetch(context.Background(), o); err == nil {
+		next.Latest = latest
+	}
+	writeCache(o.CachePath, next)
+	return next
+}
+
+// lockCache takes an exclusive advisory lock on the cache directory entry. A
+// failure to lock (unwritable cache, unsupported platform) degrades to fetching
+// without serialisation rather than blocking the command.
+func lockCache(cachePath string) (func() bool, bool) {
+	dir := filepath.Dir(cachePath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return func() bool { return false }, false
+	}
+	file, err := os.OpenFile(filepath.Join(dir, LockFileName), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return func() bool { return false }, false
+	}
+	if err := flockExclusive(file); err != nil {
+		file.Close()
+		return func() bool { return false }, false
+	}
+	return func() bool {
+		err := syscall.Flock(int(file.Fd()), lockUnblock)
+		file.Close()
+		return err == nil
+	}, true
 }
 
 func fetch(ctx context.Context, o Options) (string, error) {

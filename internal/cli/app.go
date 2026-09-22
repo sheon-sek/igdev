@@ -121,10 +121,25 @@ func (a *App) flagTier() map[string]string {
 		}
 		out[strings.TrimSpace(key)] = value
 	}
-	if a.jsonFlag || a.askedJSON() {
-		out["output.format"] = "json"
+	switch {
+	case a.jsonFlag || a.askedJSON():
+		out[config.DialectKey] = "json"
+	case a.declaredTextOutput():
+		// An explicit --json=false is a flag-tier value, so it outranks a
+		// lower tier that asked for JSON.
+		out[config.DialectKey] = "text"
 	}
 	return out
+}
+
+// declaredTextOutput reports an explicit --json=false on the command line.
+func (a *App) declaredTextOutput() bool {
+	for i := 1; i < len(a.rawArgs); i++ {
+		if a.rawArgs[i] == "--json=false" {
+			return true
+		}
+	}
+	return false
 }
 
 // askedJSON reports whether --json appeared on the command line. A flag parse
@@ -143,14 +158,18 @@ func (a *App) askedJSON() bool {
 }
 
 // wantsJSON decides the dialect for a failure path, where the command never got
-// far enough to resolve config. flagTier already folds in --json, and the file
-// tiers are excluded on purpose: a broken tier must not hide the machine answer.
+// far enough to resolve the whole config. Only output.format is peeled, and a
+// tier that cannot state it is skipped: an unrelated bad setting must not stop
+// the error arriving as JSON when JSON is what was asked for.
 func (a *App) wantsJSON() bool {
-	if a.askedJSON() {
-		return true
+	in := config.Input{Flags: a.flagTier(), Environ: a.Environ}
+	if found, err := project.Discover(a.Dir); err == nil && found.InProject() {
+		in.ContractTOML = found.ContractTOML
+		in.ContractPath = found.Contract.Path
+		in.LocalTOML = found.LocalConfigTOML
+		in.LocalPath = found.LocalConfigPath
 	}
-	res, err := config.Resolve(config.Input{Flags: a.flagTier(), Environ: a.Environ})
-	return err == nil && res.IsJSON()
+	return config.DialectIsJSON(in)
 }
 
 // report writes a fault in the dialect the caller asked for. The exit level

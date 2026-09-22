@@ -1,6 +1,8 @@
 package testrig
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -98,8 +100,13 @@ func (e *Env) LocalConfig(projectDir, content string) string {
 	return path
 }
 
-// Snapshot is the set of paths present under the scratch root.
-type Snapshot map[string]bool
+// Snapshot is the content of the scratch tree: every path mapped to a
+// fingerprint — a directory marker, or the file's mode plus a hash of its bytes.
+// A set of paths cannot see a run that rewrote or deleted something, and "zero
+// leaks" has to mean both.
+type Snapshot map[string]string
+
+const dirMarker = "dir"
 
 // Snapshot records the current scratch tree.
 func (e *Env) Snapshot() Snapshot {
@@ -108,20 +115,73 @@ func (e *Env) Snapshot() Snapshot {
 		if err != nil {
 			return nil
 		}
-		if rel, relErr := filepath.Rel(e.Root, path); relErr == nil {
-			out[rel] = d.IsDir()
+		rel, relErr := filepath.Rel(e.Root, path)
+		if relErr != nil {
+			return nil
 		}
+		if d.IsDir() {
+			out[rel] = dirMarker
+			return nil
+		}
+		out[rel] = fingerprint(path, d)
 		return nil
 	})
 	return out
 }
 
+// fingerprint identifies a file by permission bits and content.
+func fingerprint(path string, d fs.DirEntry) string {
+	info, err := d.Info()
+	if err != nil {
+		return "unreadable"
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Sprintf("file:%o:unreadable", info.Mode().Perm())
+	}
+	sum := sha256.Sum256(raw)
+	return fmt.Sprintf("file:%o:%x", info.Mode().Perm(), sum[:12])
+}
+
+// Change is one difference between two snapshots.
+type Change struct {
+	Kind string // "added", "modified", or "removed"
+	Path string
+}
+
+// Changes lists how the tree differs from base, sorted by path.
+func (e *Env) Changes(base Snapshot) []Change {
+	now := e.Snapshot()
+	var changes []Change
+	for path, fp := range now {
+		before, existed := base[path]
+		switch {
+		case !existed:
+			changes = append(changes, Change{Kind: "added", Path: path})
+		case before != fp:
+			changes = append(changes, Change{Kind: "modified", Path: path})
+		}
+	}
+	for path := range base {
+		if _, still := now[path]; !still {
+			changes = append(changes, Change{Kind: "removed", Path: path})
+		}
+	}
+	sort.Slice(changes, func(i, j int) bool {
+		if changes[i].Path != changes[j].Path {
+			return changes[i].Path < changes[j].Path
+		}
+		return changes[i].Kind < changes[j].Kind
+	})
+	return changes
+}
+
 // Added lists paths that appeared since base, sorted.
 func (e *Env) Added(base Snapshot) []string {
 	var added []string
-	for _, path := range e.Snapshot().paths() {
-		if _, ok := base[path]; !ok {
-			added = append(added, path)
+	for _, c := range e.Changes(base) {
+		if c.Kind == "added" {
+			added = append(added, c.Path)
 		}
 	}
 	return added
@@ -136,9 +196,18 @@ func (s Snapshot) paths() []string {
 	return out
 }
 
-// AssertNoLeaks fails when the run left anything behind in the scratch tree, in
-// TMPDIR, or as a half-written temp file. This is the no-litter rule from the
-// spec, enforced per run against the tree as it stood at launch.
+// formatChanges renders a change list for failure messages.
+func formatChanges(changes []Change) string {
+	parts := make([]string, 0, len(changes))
+	for _, c := range changes {
+		parts = append(parts, c.Kind+" "+c.Path)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// AssertNoLeaks fails when the run changed the scratch tree at all — nothing may
+// be added, modified, or removed — or left anything in TMPDIR. This is the
+// no-litter rule from the spec, enforced per run against the tree at launch.
 func (r Result) AssertNoLeaks(t *testing.T) {
 	t.Helper()
 	if r.env == nil {
@@ -148,12 +217,12 @@ func (r Result) AssertNoLeaks(t *testing.T) {
 	r.env.AssertNoPartialWrites(t)
 }
 
-// AssertNoLeaks fails when a run left anything behind in the scratch tree beyond
-// base, or anything at all in TMPDIR.
+// AssertNoLeaks fails when anything in the scratch tree differs from base, or
+// TMPDIR holds something.
 func (e *Env) AssertNoLeaks(t *testing.T, base Snapshot) {
 	t.Helper()
-	if added := e.Added(base); len(added) > 0 {
-		t.Errorf("unexpected files left in scratch tree: %s", strings.Join(added, ", "))
+	if changes := e.Changes(base); len(changes) > 0 {
+		t.Errorf("run changed the scratch tree: %s", formatChanges(changes))
 	}
 	e.AssertTempDirEmpty(t)
 }

@@ -62,6 +62,87 @@ ignition_version = "8.1.21"
 	})
 }
 
+// A broken setting must never cost the caller the dialect it asked for: the
+// output.format tier is peeled on its own, skipping whatever else is unreadable.
+func TestDialectSurvivesConfigFailures(t *testing.T) {
+	cases := []struct {
+		name    string
+		baseEnv []string
+		files   func(env *testrig.Env, root string)
+		args    []string
+	}{
+		{
+			name:    "unrelated bad value in an env tier",
+			baseEnv: []string{"IGDEV_OUTPUT_FORMAT=json", "IGDEV_UPDATER_TIMEOUT_SECONDS=soon"},
+			args:    []string{"status"},
+		},
+		{
+			name:    "malformed local tier below a valid env dialect",
+			baseEnv: []string{"IGDEV_OUTPUT_FORMAT=json"},
+			files:   func(env *testrig.Env, root string) { env.LocalConfig(root, "[project\nname = broken\n") },
+			args:    []string{"status"},
+		},
+		{
+			name: "broken local tier above a valid contract dialect",
+			files: func(env *testrig.Env, root string) {
+				env.Project("repo", "schema = 1\noutput.format = \"json\"\n")
+				env.LocalConfig(root, "updater.enabled = 7\n")
+			},
+			args: []string{"status"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := testrig.NewEnv(t)
+			root := env.Project("repo", "schema = 1\n")
+			if tc.files != nil {
+				tc.files(env, root)
+			}
+			for _, pair := range tc.baseEnv {
+				env.SetBaseEnv(pair)
+			}
+
+			res := env.Run(testrig.Run{Args: tc.args, Dir: root})
+			if res.Exit == 0 {
+				t.Fatalf("expected a config failure, got exit 0\n%s", res.Stdout)
+			}
+			envelope := testrig.Envelope(t, res.Stdout)
+			if envelope.Ok {
+				t.Errorf("a failing command returned an ok envelope: %+v", envelope)
+			}
+			if envelope.Code != string(contract.CodeConfigInvalid) {
+				t.Errorf("code = %q, want %s", envelope.Code, contract.CodeConfigInvalid)
+			}
+			if res.Stderr != "" {
+				t.Errorf("stderr = %q, want the answer only on stdout in machine mode", res.Stderr)
+			}
+		})
+	}
+}
+
+// An explicit --json=false is a flag-tier value, so it outranks a lower tier that
+// asked for JSON.
+func TestExplicitFalseJSONOverridesLowerTier(t *testing.T) {
+	env := testrig.NewEnv(t)
+	root := env.Project("repo", "schema = 1\n")
+	env.LocalConfig(root, "output.format = \"json\"\n")
+
+	// Without the flag the local tier still selects the machine dialect.
+	jsonRun := env.RunIn(root, "status")
+	testrig.WantExit(t, jsonRun, contract.ExitOK)
+	if !strings.HasPrefix(jsonRun.Stdout, "{") {
+		t.Fatalf("the local tier did not select JSON:\\n%s", firstLines(jsonRun.Stdout, 6))
+	}
+	wantSource(t, jsonRun, "output.format", "json", "local")
+
+	textRun := env.RunIn(root, "status", "--json=false")
+	testrig.WantExit(t, textRun, contract.ExitOK)
+	if !strings.HasPrefix(textRun.Stdout, "project:   initialized") {
+		t.Errorf("--json=false did not return to the human dialect:\n%s", firstLines(textRun.Stdout, 6))
+	}
+	env.Golden(t, "json_false_overrides_local.txt", textRun.Stdout)
+}
+
 func wantSource(t *testing.T, res testrig.Result, key, value, source string) {
 	t.Helper()
 	data := testrig.Status(t, res.Stdout)
@@ -124,6 +205,43 @@ func TestConfigInvalidValueNamesTier(t *testing.T) {
 	if !strings.Contains(envelope.Message, "local") || !strings.Contains(envelope.Message, "updater.enabled") {
 		t.Errorf("message does not name the tier and key: %q", envelope.Message)
 	}
+}
+
+// A checkout-local config that exists but cannot be read must stop the run:
+// silently dropping the tier would hand the caller config nobody asked for.
+func TestUnreadableLocalTierFailsClosed(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores file permissions")
+	}
+	env := testrig.NewEnv(t)
+	root := env.Project("repo", "schema = 1\n")
+	path := env.LocalConfig("repo", "output.format = \"json\"\n")
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+
+	// The tier that cannot be read cannot state a dialect either, so machine mode
+	// has to be asked for on the command line.
+	res := env.RunIn(root, "status", "--json")
+	if res.Exit == 0 {
+		t.Fatalf("an unreadable tier was ignored:\n%s", res.Stdout)
+	}
+	envelope := testrig.Envelope(t, res.Stdout)
+	testrig.WantCode(t, envelope, contract.CodeConfigInvalid)
+	if !strings.Contains(envelope.Message, "local.toml") {
+		t.Errorf("fault does not name the unreadable file: %q", envelope.Message)
+	}
+	if len(envelope.Remediation) == 0 || !strings.Contains(envelope.Remediation[0].Command, "local.toml") {
+		t.Errorf("fault carries no usable remediation: %+v", envelope.Remediation)
+	}
+
+	human := env.RunIn(root, "status")
+	testrig.WantExit(t, human, contract.ExitFailure)
+	if !strings.Contains(human.Stderr, "local.toml") || human.Stdout != "" {
+		t.Errorf("human mode did not report the unreadable tier on stderr:\nstdout %q stderr %q",
+			human.Stdout, human.Stderr)
+	}
+	res.AssertNoLeaks(t)
 }
 
 // A contract that carries sections the resolver does not know is still readable:

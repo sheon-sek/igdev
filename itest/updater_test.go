@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -250,6 +251,77 @@ func TestUpdateNoticeHonoursXDGCacheHome(t *testing.T) {
 		t.Errorf("cache written under HOME even though XDG_CACHE_HOME was set")
 	}
 }
+
+// Parallel igdev runs on one machine must cost one release query, not one per
+// process: the refresh is serialised on a lock and each waiter re-checks
+// freshness under it.
+func TestUpdateNoticeSerialisesConcurrentRefreshes(t *testing.T) {
+	env := testrig.NewEnv(t)
+	enableNotifier(env)
+	server := testrig.ServeLatestRelease(t, "v9.9.9")
+	server.SetLatency(120 * time.Millisecond)
+	env.PointAt(server)
+
+	const racers = 5
+	start := make(chan struct{})
+	results := make([]testrig.Result, racers)
+	var wg sync.WaitGroup
+	for i := range racers {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			results[i] = env.Run(RunArgs("version"))
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	for i, res := range results {
+		if res.Err != nil {
+			t.Fatalf("racer %d: %v", i, res.Err)
+		}
+		if res.Exit != 0 {
+			t.Errorf("racer %d exited %d: %s", i, res.Exit, res.Stderr)
+		}
+		if !strings.Contains(res.Stderr, "9.9.9") {
+			t.Errorf("racer %d printed no notice: %q", i, res.Stderr)
+		}
+	}
+	if hits := server.Hits(); hits != 1 {
+		t.Errorf("%d concurrent runs queried the endpoint %d times, want 1", racers, hits)
+	}
+}
+
+// A failed refresh must not destroy a good cached answer: the notice keeps
+// advertising what was last learned, and the cache keeps it.
+func TestUpdateNoticeKeepsGoodCacheThroughFailure(t *testing.T) {
+	env := testrig.NewEnv(t)
+	enableNotifier(env)
+	server := testrig.ServeLatestRelease(t, "v9.9.9")
+	env.PointAt(server)
+
+	if res := env.MustRun("version"); !strings.Contains(res.Stderr, "9.9.9") {
+		t.Fatalf("first run did not advertise the update:\n%s", res.Stderr)
+	}
+	// Age the cache past the TTL and make the endpoint answer 404.
+	writeCache(t, env.CachePath(updater.CacheFileName), updater.Cache{
+		CheckedAt: time.Now().Add(-25 * time.Hour),
+		Latest:    "v9.9.9",
+	})
+	server.SetStatus(http.StatusNotFound)
+
+	res := env.MustRun("version")
+	if !strings.Contains(res.Stderr, "9.9.9") {
+		t.Errorf("a failed refresh dropped a known update:\n%s", res.Stderr)
+	}
+	if got := readCache(t, env.CachePath(updater.CacheFileName)); got.Latest != "v9.9.9" {
+		t.Errorf("cache latest = %q, want the previous good value v9.9.9", got.Latest)
+	}
+}
+
+// RunArgs is a readable way to ask for a sampled run.
+func RunArgs(args ...string) testrig.Run { return testrig.Run{Args: args} }
 
 func fileExists(path string) bool {
 	_, err := os.Stat(path)

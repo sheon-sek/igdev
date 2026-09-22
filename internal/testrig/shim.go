@@ -2,8 +2,10 @@ package testrig
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -13,19 +15,24 @@ const ShimDockerFile = "docker"
 
 // dockerShimScript is a POSIX sh stand-in for the docker CLI. It records every
 // invocation as one JSON object per line, so a test can assert exactly what the
-// CLI asked for, and it answers with canned stdout / a chosen exit code when the
-// environment names them — the knobs the gateway and setup tickets need.
+// CLI asked for, and it answers with canned stdout, or with a deterministic
+// synthetic container id for run/create, or with a chosen exit code — the knobs
+// the setup and gateway tickets drive.
 //
-// One JSON object per line; an argument containing a raw newline is not
-// representable, which no test does.
+// Recognition of what was created or destroyed happens in Go (DockerOrphans),
+// keeping this script dumb. One JSON object per line; an argument containing a
+// raw newline is not representable, which no test does.
 const dockerShimScript = `#!/bin/sh
 # igdev test rig docker shim: records invocations, replays canned answers.
 state="$IGDEV_SHIM_DOCKER_STATE"
 escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+n=1
+if [ -n "$state" ] && [ -f "$state" ]; then
+  mkdir -p "$(dirname "$state")"
+  n=$(( $(wc -l < "$state") + 1 ))
+fi
 if [ -n "$state" ]; then
   mkdir -p "$(dirname "$state")"
-  n=1
-  if [ -f "$state" ]; then n=$(( $(wc -l < "$state") + 1 )); fi
   argv=""
   for arg in "$@"; do
     if [ -n "$argv" ]; then argv="$argv,"; fi
@@ -33,7 +40,11 @@ if [ -n "$state" ]; then
   done
   printf '{"n":%s,"cwd":"%s","argv":[%s]}\n' "$n" "$(escape "$PWD")" "$argv" >> "$state"
 fi
-if [ -n "$IGDEV_SHIM_DOCKER_OUT" ]; then printf '%s\n' "$IGDEV_SHIM_DOCKER_OUT"; fi
+if [ -n "$IGDEV_SHIM_DOCKER_OUT" ]; then
+  printf '%s\n' "$IGDEV_SHIM_DOCKER_OUT"
+elif [ "$1" = "run" ] || [ "$1" = "create" ]; then
+  printf '%064x\n' "$n"
+fi
 exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
 `
 
@@ -87,41 +98,85 @@ func (e *Env) DockerCalls(t *testing.T) []DockerCall {
 	return calls
 }
 
-// Orphans counts docker objects the shim saw created and never removed: the
-// hygiene gate behind "zero orphan docker objects per fixture run".
+// SyntheticContainerID is the id the shim echoes for the nth run/create call, and
+// the identity an unnamed container is tracked under.
+func SyntheticContainerID(n int) string { return fmt.Sprintf("%064x", n) }
+
+// objectRef is one docker object the shim saw created.
+type objectRef struct {
+	kind string // container, network, volume
+	id   string
+}
+
+// Orphans are the docker objects the shim saw created and never removed, tracked
+// by identity rather than by count: creating one thing and removing another is
+// still one orphan. Empty lists mean a clean run.
 type Orphans struct {
-	Containers int
-	Networks   int
-	Volumes    int
+	Containers []string
+	Networks   []string
+	Volumes    []string
+	// Unmatched are removals that named nothing this run created, reported so a
+	// test can tell a typo from a real leak.
+	Unmatched []string
 }
 
 // Total is the number of leaked objects.
-func (o Orphans) Total() int { return o.Containers + o.Networks + o.Volumes }
+func (o Orphans) Total() int { return len(o.Containers) + len(o.Networks) + len(o.Volumes) }
 
-// String names the kinds that leaked, for failure messages.
+// String names the leaked objects, for failure messages.
 func (o Orphans) String() string {
-	parts := []string{}
-	if o.Containers > 0 {
-		parts = append(parts, "containers")
-	}
-	if o.Networks > 0 {
-		parts = append(parts, "networks")
-	}
-	if o.Volumes > 0 {
-		parts = append(parts, "volumes")
-	}
-	if len(parts) == 0 {
+	if o.Total() == 0 && len(o.Unmatched) == 0 {
 		return "none"
 	}
-	return strings.Join(parts, ", ")
+	groups := []struct {
+		label string
+		names []string
+	}{
+		{"containers", o.Containers},
+		{"networks", o.Networks},
+		{"volumes", o.Volumes},
+		{"unmatched removals", o.Unmatched},
+	}
+	parts := []string{}
+	for _, group := range groups {
+		if len(group.names) > 0 {
+			parts = append(parts, fmt.Sprintf("%s %s", group.label, strings.Join(group.names, ",")))
+		}
+	}
+	return strings.Join(parts, "; ")
 }
 
-// DockerOrphans computes the leak tally from the shim's call log. Recognition is
-// literal: a create-family verb adds, an rm-family verb subtracts, and the count
-// never drops below zero.
+// DockerOrphans replays the call log: a creation registers an identity, a removal
+// retires that identity. `docker run --rm` is never registered because the engine
+// removes it at exit. A removal naming something unknown is reported as unmatched
+// and retires nothing, so mismatched cleanups cannot hide a leak.
+//
+// Compose verbs (`docker compose up|down`) arrive with the gateway ticket, which
+// owns the project namespace; until then they are recorded but not tallied.
 func (e *Env) DockerOrphans(t *testing.T) Orphans {
 	t.Helper()
-	var o Orphans
+	alive := map[string]objectRef{}
+	var unmatched []string
+
+	retire := func(kind, name string, n int) {
+		key := kind + ":" + name
+		if _, ok := alive[key]; ok {
+			delete(alive, key)
+			return
+		}
+		matches := []string{}
+		for key, ref := range alive {
+			if ref.kind == kind && strings.HasPrefix(ref.id, name) {
+				matches = append(matches, key)
+			}
+		}
+		if len(matches) == 1 {
+			delete(alive, matches[0])
+			return
+		}
+		unmatched = append(unmatched, fmt.Sprintf("%s@call%d", name, n))
+	}
+
 	for _, call := range e.DockerCalls(t) {
 		argv := dropCommandName(call.Argv)
 		if len(argv) == 0 {
@@ -129,17 +184,53 @@ func (e *Env) DockerOrphans(t *testing.T) Orphans {
 		}
 		switch argv[0] {
 		case "run", "create":
-			o.Containers++
-		case "rm":
-			o.Containers = sub(o.Containers, positional(argv[1:]))
+			if hasFlag(argv, "--rm") {
+				continue
+			}
+			id := flagValue(argv, "--name")
+			if id == "" {
+				id = SyntheticContainerID(call.N)
+			}
+			alive["container:"+id] = objectRef{kind: "container", id: id}
+		case "rm", "rmi":
+			for _, name := range positional(argv[1:]) {
+				retire("container", name, call.N)
+			}
 		case "network", "volume":
-			if argv[1] == "create" {
-				o = bumpObject(o, argv[0])
-			} else if argv[1] == "rm" || argv[1] == "remove" {
-				o = removeObject(o, argv[0], positional(argv[2:]))
+			if len(argv) < 2 {
+				continue
+			}
+			switch argv[1] {
+			case "create":
+				name := firstPositional(argv[2:])
+				if name == "" {
+					name = SyntheticContainerID(call.N)
+				}
+				alive[argv[0]+":"+name] = objectRef{kind: argv[0], id: name}
+			case "rm", "remove":
+				for _, name := range positional(argv[2:]) {
+					retire(argv[0], name, call.N)
+				}
 			}
 		}
 	}
+
+	o := Orphans{Unmatched: unmatched}
+	for key, ref := range alive {
+		name := strings.TrimPrefix(key, ref.kind+":")
+		switch ref.kind {
+		case "container":
+			o.Containers = append(o.Containers, name)
+		case "network":
+			o.Networks = append(o.Networks, name)
+		case "volume":
+			o.Volumes = append(o.Volumes, name)
+		}
+	}
+	sort.Strings(o.Containers)
+	sort.Strings(o.Networks)
+	sort.Strings(o.Volumes)
+	sort.Strings(o.Unmatched)
 	return o
 }
 
@@ -147,8 +238,12 @@ func (e *Env) DockerOrphans(t *testing.T) Orphans {
 // clean up.
 func (e *Env) AssertNoDockerOrphans(t *testing.T) {
 	t.Helper()
-	if got := e.DockerOrphans(t); got.Total() > 0 {
-		t.Errorf("orphan docker objects: %d (%s)", got.Total(), got)
+	got := e.DockerOrphans(t)
+	if got.Total() > 0 {
+		t.Errorf("orphan docker objects: %s", got)
+	}
+	if len(got.Unmatched) > 0 {
+		t.Errorf("docker cleanup named objects that were never created: %s", got)
 	}
 }
 
@@ -161,24 +256,6 @@ func (e *Env) AssertNoDockerCalls(t *testing.T) {
 	}
 }
 
-func bumpObject(o Orphans, kind string) Orphans {
-	if kind == "network" {
-		o.Networks++
-	} else {
-		o.Volumes++
-	}
-	return o
-}
-
-func removeObject(o Orphans, kind string, removed int) Orphans {
-	if kind == "network" {
-		o.Networks = sub(o.Networks, removed)
-	} else {
-		o.Volumes = sub(o.Volumes, removed)
-	}
-	return o
-}
-
 func dropCommandName(argv []string) []string {
 	if len(argv) > 0 && filepath.Base(argv[0]) == ShimDockerFile {
 		return argv[1:]
@@ -186,21 +263,46 @@ func dropCommandName(argv []string) []string {
 	return argv
 }
 
-// positional counts non-flag arguments, ignoring the value of `-f`.
-func positional(argv []string) int {
-	count := 0
+// positional returns the non-flag arguments.
+func positional(argv []string) []string {
+	out := []string{}
 	for _, arg := range argv {
 		if strings.HasPrefix(arg, "-") {
 			continue
 		}
-		count++
+		out = append(out, arg)
 	}
-	return count
+	return out
 }
 
-func sub(current, removed int) int {
-	if current-removed < 0 {
-		return 0
+// firstPositional returns the first non-flag argument, or "".
+func firstPositional(argv []string) string {
+	names := positional(argv)
+	if len(names) == 0 {
+		return ""
 	}
-	return current - removed
+	return names[0]
+}
+
+// hasFlag reports a boolean flag, in either --flag or --flag=value form.
+func hasFlag(argv []string, flag string) bool {
+	for _, arg := range argv {
+		if arg == flag || strings.HasPrefix(arg, flag+"=") {
+			return true
+		}
+	}
+	return false
+}
+
+// flagValue returns the value of --flag value or --flag=value, or "".
+func flagValue(argv []string, flag string) string {
+	for i, arg := range argv {
+		if arg == flag && i+1 < len(argv) {
+			return argv[i+1]
+		}
+		if value, ok := strings.CutPrefix(arg, flag+"="); ok {
+			return value
+		}
+	}
+	return ""
 }

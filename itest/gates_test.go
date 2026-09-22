@@ -117,18 +117,16 @@ func TestGateZeroLeaksAndOrphansAcrossCommands(t *testing.T) {
 	env.AssertNoDockerCalls(t)
 }
 
-// The orphan tally in the rig is the assertion every later ticket reuses, so it
-// is itself pinned here: created-but-not-removed objects are counted, removed
-// ones are not.
+// The orphan tally is the assertion every later ticket reuses, so it is pinned
+// here: identities, not counts. Creating one object and removing another leaves
+// the first one orphaned.
 func TestGateDockerOrphanTally(t *testing.T) {
 	env := testrig.NewEnv(t)
 	env.ShimDocker()
 
 	if got := env.DockerOrphans(t); got.Total() != 0 {
-		t.Fatalf("fresh environment reports orphans: %+v", got)
+		t.Fatalf("a fresh environment reports orphans: %+v", got)
 	}
-	// Two containers created, one removed; one network created and removed; one
-	// volume created and never removed.
 	scripts := []string{
 		`docker run --name igdev-a -d alpine`,
 		`docker run --name igdev-b -d alpine`,
@@ -138,22 +136,61 @@ func TestGateDockerOrphanTally(t *testing.T) {
 		`docker volume create igdev-store`,
 	}
 	for _, script := range scripts {
-		env.RunShell(script)
+		if res := env.RunShell(script); res.Exit != 0 {
+			t.Fatalf("%s: %s", script, res.Stderr)
+		}
 	}
 	got := env.DockerOrphans(t)
-	if got.Containers != 1 || got.Networks != 0 || got.Volumes != 1 {
-		t.Errorf("orphan tally = %+v, want 1 container and 1 volume", got)
+	if strings.Join(got.Containers, ",") != "igdev-b" {
+		t.Errorf("orphaned containers = %v, want [igdev-b]", got.Containers)
+	}
+	if len(got.Networks) != 0 {
+		t.Errorf("orphaned networks = %v, want none", got.Networks)
+	}
+	if strings.Join(got.Volumes, ",") != "igdev-store" {
+		t.Errorf("orphaned volumes = %v, want [igdev-store]", got.Volumes)
 	}
 	if calls := env.DockerCalls(t); len(calls) != len(scripts) {
 		t.Errorf("shim recorded %d calls, want %d", len(calls), len(scripts))
 	}
 	// The recorded argv is what the CLI actually asked for.
 	last := env.DockerCalls(t)[len(scripts)-1]
-	joined := ""
-	for _, a := range last.Argv {
-		joined += a + " "
-	}
-	if joined != "volume create igdev-store " {
+	if joined := strings.Join(last.Argv, " "); joined != "volume create igdev-store" {
 		t.Errorf("recorded argv = %v", last.Argv)
+	}
+
+	// A cleanup naming an object this run never created retires nothing and is
+	// reported, so a typo cannot silently balance the books.
+	env.RunShell(`docker rm igdev-never-existed`)
+	got = env.DockerOrphans(t)
+	if strings.Join(got.Containers, ",") != "igdev-b" {
+		t.Errorf("an unmatched rm cleared the orphan: %v", got.Containers)
+	}
+	if len(got.Unmatched) != 1 || !strings.Contains(got.Unmatched[0], "igdev-never-existed") {
+		t.Errorf("unmatched removal not reported: %v", got.Unmatched)
+	}
+
+	// `run --rm` is cleaned by the engine, so it is never an orphan.
+	env.RunShell(`docker run --rm --name ephemeral alpine echo hi`)
+	if strings.Join(env.DockerOrphans(t).Containers, ",") != "igdev-b" {
+		t.Errorf("--rm was tallied as an orphan: %v", env.DockerOrphans(t).Containers)
+	}
+
+	// An unnamed container is tracked by the id the shim echoed, and removing it
+	// by that id (or a prefix of it) clears it.
+	echoed := env.RunShell(`docker create alpine`)
+	id := strings.TrimSpace(echoed.Stdout)
+	if len(id) != 64 {
+		t.Fatalf("shim did not echo a container id, got %q", id)
+	}
+	if n := len(env.DockerOrphans(t).Containers); n != 2 {
+		t.Errorf("containers after an unnamed create = %d, want 2 (igdev-b plus the new id)", n)
+	}
+	env.RunShell(`docker rm ` + id[:12])
+	if strings.Join(env.DockerOrphans(t).Containers, ",") != "igdev-b" {
+		t.Errorf("removing by id prefix did not clear the container: %v", env.DockerOrphans(t).Containers)
+	}
+	if unmatched := env.DockerOrphans(t).Unmatched; len(unmatched) != 1 {
+		t.Errorf("prefix removal reported as unmatched: %v", unmatched)
 	}
 }

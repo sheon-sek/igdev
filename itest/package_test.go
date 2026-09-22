@@ -70,9 +70,14 @@ func TestPackageScriptBuildsReleaseArtifacts(t *testing.T) {
 		t.Fatalf("no checksums.txt in %s: %v", dist, err)
 	}
 	lines := strings.Split(strings.TrimRight(string(checksums), "\n"), "\n")
-	pattern := regexp.MustCompile(`^[0-9a-f]{64}  igdev-` + regexp.QuoteMeta(releaseVersion) + `-(linux-amd64|darwin-arm64)\.tar\.gz$`)
-	// Both supported targets ship: Linux/amd64 and macOS/arm64 (ADR 0002).
-	targets := map[string]bool{"linux-amd64": false, "darwin-arm64": false}
+	pattern := regexp.MustCompile(`^[0-9a-f]{64}  igdev-` + regexp.QuoteMeta(releaseVersion) +
+		`-(linux|darwin)-(amd64|arm64)\.tar\.gz$`)
+	// Every target the installer accepts ships: both OSes against both
+	// architectures (ADR 0002 keeps Windows out).
+	targets := map[string]bool{
+		"linux-amd64": false, "linux-arm64": false,
+		"darwin-amd64": false, "darwin-arm64": false,
+	}
 	for _, line := range lines {
 		if !pattern.MatchString(line) {
 			t.Errorf("checksums.txt line is not `<sha256>  <artifact>`: %q", line)

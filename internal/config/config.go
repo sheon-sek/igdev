@@ -276,6 +276,59 @@ func parseEnv(schema []Key, env map[string]string) (map[string]any, error) {
 	return out, nil
 }
 
+// DialectKey is the one config key that decides how igdev talks. It is resolved
+// on its own, independently of the rest of the schema, because a failure to
+// report in machine dialect is worse than a bad unrelated setting.
+const DialectKey = "output.format"
+
+// DialectIsJSON peels the tiers for output.format only, skipping any tier whose
+// value is missing or unusable, and stops at the first tier that supplies a
+// valid one. Whole-config resolution can fail on an unrelated key; the dialect
+// the caller asked for must survive that.
+func DialectIsJSON(in Input) bool {
+	if raw, ok := in.Flags[DialectKey]; ok {
+		if v, err := parseScalar(outputFormatKey(), raw, SourceFlag); err == nil {
+			return v == "json"
+		}
+	}
+	if raw, ok := environMap(in.Environ)[outputFormatKey().Env]; ok && raw != "" {
+		if v, err := parseScalar(outputFormatKey(), raw, SourceEnv); err == nil {
+			return v == "json"
+		}
+	}
+	for _, tier := range []struct {
+		src     Source
+		path    string
+		content []byte
+	}{
+		{SourceLocal, in.LocalPath, in.LocalTOML},
+		{SourceContract, in.ContractPath, in.ContractTOML},
+	} {
+		values, err := parseTOML(string(tier.src), tier.path, tier.content)
+		if err != nil {
+			continue // a broken tier cannot state a dialect
+		}
+		raw, ok := values[DialectKey]
+		if !ok {
+			continue
+		}
+		v, err := coerce(outputFormatKey(), raw, tier.src)
+		if err != nil {
+			continue
+		}
+		return v == "json"
+	}
+	return outputFormatKey().Default == "json"
+}
+
+func outputFormatKey() Key {
+	k, ok := keyByPath(DialectKey)
+	if !ok {
+		panic("output.format is missing from the frozen schema")
+	}
+	return k
+}
+
 // NotifierDisabledEnv is the frozen kill switch for the update notice. It is
 // not a config key: it overrides every tier.
 const NotifierDisabledEnv = "IGDEV_NO_UPDATE_NOTIFIER"

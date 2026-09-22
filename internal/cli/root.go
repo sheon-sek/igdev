@@ -52,6 +52,10 @@ func (a *App) newRoot() *cobra.Command {
 	root.PersistentFlags().StringArrayVar(&a.configFlag, "config", nil,
 		"override one config key for this run, key=value (highest precedence)")
 
+	// Help is documentation, and in machine mode everything on stdout is an
+	// envelope: the rendered text becomes data instead of escaping the contract.
+	root.SetHelpFunc(a.printHelp)
+
 	root.AddCommand(a.newStatusCmd(), a.newVersionCmd())
 	completion := newCompletionCmd(root)
 	help := newHelpCmd(root)

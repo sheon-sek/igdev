@@ -61,6 +61,50 @@ func TestHelpForStatus(t *testing.T) {
 	}
 }
 
+// Help is documentation, and in machine mode stdout is still only the envelope:
+// the rendered reference arrives inside data, never as raw text.
+func TestHelpInMachineModeIsAnEnvelope(t *testing.T) {
+	env := testrig.NewEnv(t)
+	cases := []struct {
+		name   string
+		args   []string
+		golden string
+	}{
+		{"root-json", []string{"--json"}, "help_root_json.json"},
+		{"help-json", []string{"help", "--json"}, "help_list_json.json"},
+		{"help-status-json", []string{"help", "status", "--json"}, "help_status_json.json"},
+		{"status-help-json", []string{"status", "--help", "--json"}, "status_help_json.json"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := env.MustRun(tc.args...)
+			testrig.WantExit(t, res, contract.ExitOK)
+			if res.Stderr != "" {
+				t.Errorf("stderr = %q, want empty in machine mode", res.Stderr)
+			}
+			env.Golden(t, tc.golden, res.Stdout)
+
+			// The envelope carries exactly the reference a human sees.
+			humanArgs := tc.args[:len(tc.args)-1]
+			human := env.MustRun(humanArgs...)
+			testrig.WantExit(t, human, contract.ExitOK)
+			var data struct {
+				Command string `json:"command"`
+				Help    string `json:"help"`
+				Section string `json:"section"`
+			}
+			testrig.DataOf(t, res.Stdout, &data)
+			if data.Help != human.Stdout {
+				t.Errorf("envelope help differs from the human reference:\n--- envelope ---\n%s\n--- human ---\n%s",
+					firstLines(data.Help, 20), firstLines(human.Stdout, 20))
+			}
+			if data.Command == "" || data.Section == "" {
+				t.Errorf("help envelope does not say which command it is: %+v", data)
+			}
+		})
+	}
+}
+
 // Asking about a command that does not exist is a usage error, not a help dump.
 func TestHelpUnknownTopic(t *testing.T) {
 	env := testrig.NewEnv(t)

@@ -17,13 +17,25 @@ with the agent contract frozen by golden tests and the release path in CI.
 curl -fsSL https://github.com/sheon-sek/igdev/releases/latest/download/install.sh | bash
 ```
 
+It publishes and installs every target it recognises: `linux/amd64`, `linux/arm64`,
+`darwin/amd64`, `darwin/arm64` (WSL takes the Linux binary; Windows native is
+unsupported).
+
 The published `install.sh` detects OS and CPU architecture, fetches the release's
 `checksums.txt`, verifies the tarball's sha256 **before** placing anything, then
-atomically renames the binary into `~/.local/bin/igdev`. It never updates a binary
-that is already installed (ADR 0002): the CLI only *notices* that a newer release
-exists. Options are `--version`, `--prefix`, and `--base-url` (also
-`IGDEV_INSTALL_VERSION`, `IGDEV_INSTALL_PREFIX`, `IGDEV_INSTALL_BASE_URL`), which
-is what lets the suite install a locally packaged tree over loopback HTTP.
+atomically renames the binary into `~/.local/bin/igdev`. If that prefix is not on
+`PATH`, the installer registers it once in the first login profile it finds
+(`~/.bash_profile`, `~/.bash_login`, `~/.profile`, creating the last) so a brand-new
+shell runs `igdev` by name; the write is idempotent and is skipped entirely when the
+prefix is already visible. It never updates a binary that is already installed
+(ADR 0002): the CLI only *notices* that a newer release exists.
+
+Options are `--version`, `--prefix`, `--repo-url`, and `--base-url` (plus
+`IGDEV_INSTALL_*` equivalents). A pinned `--version` resolves that release's own
+`releases/download/v<version>/` directory, never the "latest" one, and the version
+token is validated before it is ever spliced into a URL or a filename. `--base-url`
+overrides the whole layout — that is what lets the suite install a locally packaged
+tree over loopback HTTP.
 
 ## Build and validate
 
@@ -59,7 +71,7 @@ and `packaging/install.sh` for real against a loopback file server.
 | `internal/xdg` | `~/.cache/igdev`, `~/.config/igdev`, `~/.local/state/igdev` |
 | `internal/testrig` | seam S1 harness: scratch HOME, PATH shims, loopback server, goldens, gates |
 | `itest` | behaviour tests and the goldens that freeze the contract |
-| `packaging` | `package.sh` (tarballs + `checksums.txt`), `install.sh` |
+| `packaging` | `package.sh` (linux/darwin x amd64/arm64 tarballs + `checksums.txt`), `install.sh` |
 | `.github/workflows/igdev-ci.yml` | build, vet, gofmt, goldens, resource gates |
 | `.github/workflows/igdev-release.yml` | tag push → checksummed GitHub Release |
 
@@ -88,6 +100,19 @@ was wrong); a value igdev read from a tier is `IGDEV_E_CONFIG_INVALID` (machine 
 project state is wrong). `contract` is the CLI Contract Version and bumps only when
 the envelope, codes, or exit levels break — never alongside release semver.
 
+`igdev help`, `igdev <command> --help`, and a bare `igdev` are documentation, and in
+machine mode they are envelopes too: the rendered reference arrives in `data.help`
+with `data.command` and `data.section`, never as raw text on a JSON stdout.
+
+`igdev help`, `igdev <command> --help`, and a bare `igdev` are documentation, and in
+machine mode they are envelopes too: the rendered reference arrives in `data.help`
+with `data.command` and `data.section`, never as raw text on a JSON stdout.
+
+An explicit `--json=false` is a flag-tier value, so it outranks a lower tier that
+asked for JSON; and because a failure report must not be lost, the dialect is peeled
+for `output.format` alone (`config.DialectIsJSON`), skipping any tier that cannot
+state it.
+
 `igdev status` is the safe first call. Outside a Project Root it reports
 `ok: true` with `initialized: false`; inside one it reports the discovered root,
 the contract's declared schema version, whether a Checkout Setup record exists, and
@@ -108,9 +133,12 @@ network and never varies between runs. The endpoint is the config key
 Asserted through the real binary in `itest/gates_test.go`, on this machine and in
 CI: non-docker startup P95 under 100 ms, peak RSS under 64 MB (read from the
 kernel's own `VmHWM` for the child), binary under 30 MB, zero temp-file leaks per
-run (the scratch tree must be unchanged and `TMPDIR` empty), zero orphan docker
-objects (the `docker` shim records every argv it was called with, and created
-objects must be removed). Measured here on an i7-13700KF: P95 2 ms, peak RSS
+run (`env.Snapshot()` fingerprints paths *with mode and content*, so adding,
+rewriting, chmod-ing, or deleting anything in the scratch tree fails the assertion,
+and `TMPDIR` must be empty), zero orphan docker objects (the `docker` shim records
+every argv, and `DockerOrphans` tallies by object identity — `--name`, or the
+synthetic container id the shim echoes — so `create leaked` plus `rm unrelated` is
+still a leak, while `run --rm` is not one). Measured here on an i7-13700KF: P95 2 ms, peak RSS
 6.4 MiB, binary 7.2 MiB.
 
 ## Working in this tree
@@ -149,7 +177,12 @@ env.SetBaseEnv("IGDEV_NO_UPDATE_NOTIFIER=")  // turn the notice on for this env 
 testrig.RunScriptIn(root, env, "packaging/package.sh", version)
 ```
 
-`Result` carries `Exit`, `Stdout`, `Stderr`, `Duration`, `PeakRSSKB`, `Samples`. The
+`Result` carries `Exit`, `Stdout`, `Stderr`, `Duration`, `PeakRSSKB`, `Samples`.
+`env.Snapshot()` fingerprints content and mode, so `AssertNoLeaks` sees additions,
+modifications (including a chmod), and removals; `env.Changes(base)` returns the
+typed diff. `env.DockerOrphans()` tallies by object identity (`--name`, or the
+container id the shim echoes), so creating one object and removing another still
+counts as a leak, and `run --rm` is not one. The
 base environment is deliberately minimal: `HOME`, `TMPDIR`, `PATH` (shim dir first,
 then the go toolchain and the system dirs), `LANG`/`LC_ALL=C`, and
 `IGDEV_NO_UPDATE_NOTIFIER=1`. XDG variables stay **unset** so runs exercise igdev's

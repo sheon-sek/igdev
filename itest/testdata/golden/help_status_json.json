@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "command": "igdev status",
+    "help": "status answers \"where am I and what is configured\" without changing anything.\nIt is the safe first call for a human or an agent, and it works before init and setup:\noutside a Project Root it reports ok with initialized false.\n\nInitialized means a Project Contract (igdev.toml) was found by searching upward from the\nworking directory. Setup reports whether this checkout has a Checkout Setup record in\n.igdev/setup.json; ticket 01 reports existence only, the Setup Stamp is validated later.\n\nThe config block shows every key igdev resolves, its value, and the tier that won:\nflag > IGDEV_* environment > .igdev/local.toml > igdev.toml > embedded defaults.\n\nUsage:\n  igdev status [flags]\n\nExamples:\n  igdev status --json\n  igdev status --config project.ignition_version=8.1.21\n\nGlobal Flags:\n      --config stringArray   override one config key for this run, key=value (highest precedence)\n      --json                 emit the JSON envelope on stdout (machine mode)\n",
+    "section": "status"
+  }
+}
