@@ -1,0 +1,6 @@
+[igdev] init wizard 1/6: the project stack
+[igdev] init wizard 2/6: the Ignition version
+[igdev] init wizard 3/6: the built-in modules
+[igdev] init wizard 4/6: the scan paths
+[igdev] init wizard 5/6: the command strings
+[igdev] init wizard 6/6: the summary

@@ -154,6 +154,10 @@ type Result struct {
 	Stdout   string
 	Stderr   string
 	Duration time.Duration
+	// Screen is what an interactive session showed, rendered as text: an
+	// interactive run puts both streams on one terminal, so the transcript is
+	// what both dialects printed. It is empty for a non-interactive run.
+	Screen string
 	// PeakRSSKB is the largest VmHWM observed for the child, in KiB. Zero means
 	// no sample was caught.
 	PeakRSSKB int64

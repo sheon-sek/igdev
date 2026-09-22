@@ -46,6 +46,7 @@ type initData struct {
 
 func (a *App) newInitCmd() *cobra.Command {
 	var (
+		wizard           wizardFlags
 		name             string
 		ignitionVersion  string
 		jythonVersion    string
@@ -77,8 +78,13 @@ is an edit: a flag overrides the value it names, everything else the contract al
 holds is preserved, and a run that changes nothing writes nothing and prints nothing.
 Pass an empty value (--modules "" or --command-check "") to clear a field.
 
-Without --json, init never prompts: an agent's fully specified invocation is the whole
-interface. The init Wizard arrives in ticket 10.
+Without --json or --yes, init never prompts an invocation that already has a contract
+to preserve: an agent's fully specified invocation is the whole interface. In a
+repository with no contract yet, a terminal gets the init Wizard — six steps that read
+the layout, pre-fill [commands] and [scan], and write the same contract the flags
+below would. --interactive runs it even when the contract already exists (every value
+is shown preselected); --yes takes the same defaults without asking; on a non-terminal
+--interactive is a usage error, because a Wizard has no way to ask.
 
 init and setup are the Gate's repair paths: they run whatever the contract says, so a
 hand-edited or future-schema contract can always be rewritten. Every other project
@@ -97,34 +103,48 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 			if err != nil {
 				return err
 			}
+			// The Wizard is a value source above this plumbing: it records what a
+			// person answered as flag values, and everything below reads them
+			// exactly as though they had been typed.
+			flagValues := func() project.Doc {
+				return project.Doc{
+					Project: project.Project{Name: name},
+					Tool:    project.Tool{MinVersion: minVersion},
+					Ignition: project.Ignition{
+						Version:       ignitionVersion,
+						JythonVersion: jythonVersion,
+						Edition:       edition,
+					},
+					Modules: project.Modules{Enabled: nonEmpty(modules)},
+					Scan:    project.Scan{Jython: nonEmpty(scanJython), Capabilities: nonEmpty(scanCapabilities)},
+					Commands: project.Commands{
+						Check: commandCheck,
+						Test:  commandTest,
+						Build: commandBuild,
+						Smoke: commandSmoke,
+					},
+					Gateway: project.Gateway{MemoryMB: gatewayMemoryMB, Timezone: gatewayTimezone},
+				}
+			}
+			// initDoc is the one merge the command and the Wizard share: the
+			// file's values, the schema defaults, and the flags, in increasing
+			// authority.
+			doc := func() project.Doc {
+				return initDoc(cmd, found, flagValues()).Filled(project.DefaultDoc())
+			}
+			if err := a.runInitWizard(cmd, found, res, wizard, doc); err != nil {
+				return err
+			}
 			root := found.Root
 			if root == "" {
 				root = a.Dir
 			}
 			contractPath := filepath.Join(root, project.ContractFile)
 
-			flagValues := project.Doc{
-				Project: project.Project{Name: name},
-				Tool:    project.Tool{MinVersion: minVersion},
-				Ignition: project.Ignition{
-					Version:       ignitionVersion,
-					JythonVersion: jythonVersion,
-					Edition:       edition,
-				},
-				Modules: project.Modules{Enabled: nonEmpty(modules)},
-				Scan:    project.Scan{Jython: nonEmpty(scanJython), Capabilities: nonEmpty(scanCapabilities)},
-				Commands: project.Commands{
-					Check: commandCheck,
-					Test:  commandTest,
-					Build: commandBuild,
-					Smoke: commandSmoke,
-				},
-				Gateway: project.Gateway{MemoryMB: gatewayMemoryMB, Timezone: gatewayTimezone},
-			}
 			// A bad value typed on the command line is the invocation, so it is
 			// a usage error; a bad value the contract already held is machine
 			// state, and Validate reports that one as IGDEV_E_CONFIG_INVALID.
-			if err := initDoc(cmd, project.Found{}, flagValues).Validate(""); err != nil {
+			if err := initDoc(cmd, project.Found{}, flagValues()).Validate(""); err != nil {
 				fault := contract.AsFault(err)
 				return contract.UsageFault(fault.Message,
 					contract.Remediation{Command: "igdev help init", Why: "show the flags init accepts"})
@@ -132,11 +152,11 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 			// Flags are applied over the file's values; the defaults fill whatever
 			// both left unset, so an empty flag resets a field instead of writing
 			// a value igdev itself would refuse to read.
-			doc := initDoc(cmd, found, flagValues).Filled(project.DefaultDoc())
-			if err := doc.Validate(contractPath); err != nil {
+			document := doc()
+			if err := document.Validate(contractPath); err != nil {
 				return err
 			}
-			rendered := doc.Render()
+			rendered := document.Render()
 
 			contractFile, err := writeTracked(contractPath, project.ContractFile,
 				found.ContractTOML, rendered, 0o644)
@@ -157,6 +177,7 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 	}
 
 	flags := cmd.Flags()
+	wizard.register(cmd)
 	flags.StringVar(&name, "name", "", "repository name recorded as [project].name")
 	flags.StringVar(&ignitionVersion, "ignition-version", "",
 		"Ignition version this checkout targets, e.g. 8.3.8 (default "+project.DefaultDoc().Ignition.Version+")")

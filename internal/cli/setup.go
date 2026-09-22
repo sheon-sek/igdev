@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -66,15 +68,21 @@ type setupData struct {
 	ConsentAccepted []string         `json:"consent_accepted"`
 	Credentials     setupCredentials `json:"credentials"`
 	Files           []setupWrite     `json:"files"`
+	// Baseline is the Baseline this run staged, and is absent unless the run was
+	// asked for one: every other setup envelope keeps its frozen key set.
+	Baseline *baselineData `json:"baseline,omitempty"`
 }
 
 func (a *App) newSetupCmd() *cobra.Command {
 	var (
+		wizard              wizardFlags
 		acceptEULA          bool
 		acceptModuleLicense bool
 		acceptModuleCert    bool
 		adminUsername       string
 		adminPassword       string
+		gatewayPort         int
+		baselinePath        string
 	)
 
 	cmd := &cobra.Command{
@@ -108,13 +116,27 @@ in either dialect: read it with ` + "`igdev gateway credentials --json`" + `.
 
 The Capacity Gate (ADR 0003) attaches where a Gateway starts, not here: setup records
 the requested heap, and ` + "`igdev gateway up`" + ` (ticket 10) compares it against the host's
-free memory.`,
+free memory.
+
+A terminal gets the setup Wizard when the checkout has not been materialized yet, when
+no admin password is on record, or when this machine has not accepted the Ignition
+EULA. Its steps are the Consent gate, the requested heap, the admin password, an
+optional Baseline, an optional port pin, the materialization, and the summary.
+--interactive runs it even when everything is already on record; --yes takes the same
+defaults without asking; --json never prompts, whatever the terminal is. The Consent
+step only shows ` + "`igdev setup --accept-eula`" + `: a Wizard answer is never an acceptance,
+and the run stops at exit level 3 until the machine record itself says otherwise.
+
+--gateway-port pins the Instance's HTTP port machine-locally: the pin is recorded in
+` + "`.igdev/local.toml`" + ` and re-used by the next setup, and the tracked Project Contract
+never carries a port (ADR 0003). --baseline stages a ` + ".gwbk" + ` as the Baseline the
+next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` applies.`,
 		Example: `  igdev setup
   igdev setup --accept-eula
   igdev setup --json
   IGDEV_GATEWAY_ADMIN_PASSWORD=... igdev setup`,
 		Args: rejectArgs("setup"),
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			found, err := project.Discover(a.Dir)
 			if err != nil {
 				return err
@@ -139,6 +161,13 @@ free memory.`,
 			// the rendered runtime describes the same environment every other command
 			// resolves.
 			doc = doc.Filled(project.DefaultDoc())
+
+			// The Wizard is a value source above the materialization: its answers
+			// arrive as flag values, and everything below runs once, unchanged.
+			wizardState, err := a.runSetupWizard(cmd, found, res, wizard, doc)
+			if err != nil {
+				return err
+			}
 
 			consentPath := consent.Path(xdg.Resolve().Config)
 			now := time.Now().UTC()
@@ -183,13 +212,25 @@ free memory.`,
 				instanceID = minted
 			}
 			triplet := previous.Ports
-			if !triplet.Free() {
+			pin, fault := a.gatewayPortPin(found, gatewayPort)
+			if fault != nil {
+				return fault
+			}
+			switch {
+			case pin > 0 && triplet.HTTP != pin:
+				// The pin moved: the triplet is re-allocated around it.
+				triplet, fault = ports.AllocateFrom(pin)
+			case triplet.Free():
+				// The recorded triplet still binds, so the Instance keeps it.
+			case pin > 0:
+				triplet, fault = ports.AllocateFrom(pin)
+			default:
 				// Bind probe, never a formula: a port another Instance took since the
 				// last setup is re-allocated rather than recorded into a collision.
 				triplet, fault = ports.Allocate()
-				if fault != nil {
-					return fault
-				}
+			}
+			if fault != nil {
+				return fault
 			}
 			createdAt := previous.CreatedAt
 			if createdAt == "" {
@@ -201,6 +242,19 @@ free memory.`,
 				return err
 			}
 
+			// A Baseline named on the command line is staged before the Setup
+			// Stamp is written: a run that dies part way leaves the old stamp, so
+			// the checkout reads as stale and setup runs again.
+			var staged *baselineData
+			if baselinePath != "" {
+				baselineState, fault := baseline.Stage(baselinePath, baseline.Dir(filepath.Join(found.Root, project.StateDir)), now)
+				if fault != nil {
+					return fault
+				}
+				rendered := baselineOf(baselineState)
+				staged = &rendered
+			}
+
 			stateDir := filepath.Join(found.Root, project.StateDir)
 			creds, source, err := a.adminCredentials(found, adminUsername, adminPassword)
 			if err != nil {
@@ -210,6 +264,15 @@ free memory.`,
 			changed, err := localconfig.Write(localPath, creds)
 			if err != nil {
 				return writeFault(localPath, err)
+			}
+			// A pin is machine-local state, so it is recorded in the
+			// checkout-local tier and never in the tracked contract (ADR 0003).
+			if pin > 0 {
+				pinned, err := localconfig.WritePort(localPath, pin)
+				if err != nil {
+					return writeFault(localPath, err)
+				}
+				changed = changed || pinned
 			}
 			writes = append(writes, setupWrite{
 				Path:   localPath,
@@ -252,13 +315,18 @@ free memory.`,
 					Username: creds.Username,
 				},
 				Files: writes,
+				// Baseline is what --baseline staged, and is absent when the run
+				// staged none, so every other run's envelope is unchanged.
+				Baseline: staged,
 			}
 			a.emit(res, data, func() { a.printSetup(data) })
+			a.summarizeSetupWizard(wizardState, data)
 			return nil
 		},
 	}
 
 	flags := cmd.Flags()
+	wizard.register(cmd)
 	flags.BoolVar(&acceptEULA, "accept-eula", false,
 		"record the Ignition EULA acceptance for this machine (human-only, ADR 0004)")
 	flags.BoolVar(&acceptModuleLicense, "accept-module-license", false,
@@ -269,8 +337,51 @@ free memory.`,
 		"Gateway admin username (default "+localconfig.DefaultUsername+")")
 	flags.StringVar(&adminPassword, "admin-password", "",
 		"Gateway admin password (default: "+localconfig.EnvPassword+" or a generated one; the value is never printed)")
+	flags.IntVar(&gatewayPort, "gateway-port", 0,
+		"pin the Gateway HTTP port for this checkout, recorded machine-locally in "+project.LocalConfig)
+	flags.StringVar(&baselinePath, "baseline", "",
+		"stage a .gwbk as this checkout's Baseline, restored by `igdev gateway reset`")
 
 	return cmd
+}
+
+// gatewayPortPin decides the machine-local Gateway HTTP port pin: the flag wins
+// over the environment, which wins over the pin this checkout already recorded.
+// A pin is a property of the machine, so the tracked Project Contract never
+// carries one (ADR 0003) and neither does any rendered output.
+func (a *App) gatewayPortPin(found project.Found, flagValue int) (int, *contract.Fault) {
+	if flagValue != 0 {
+		if flagValue < 1 || flagValue > 65535 {
+			return 0, contract.UsageFault(
+				fmt.Sprintf("--gateway-port %d is not a port between 1 and 65535", flagValue),
+				contract.Remediation{Command: "igdev setup --gateway-port 8088", Why: "pin a usable loopback port"})
+		}
+		return flagValue, nil
+	}
+	if raw := config.EnvironMap(a.Environ)[localconfig.EnvPort]; raw != "" {
+		port, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil || port < 1 || port > 65535 {
+			return 0, configValueFault(localconfig.EnvPort, raw, "a port between 1 and 65535")
+		}
+		return port, nil
+	}
+	port, err := localconfig.LoadPort(found.LocalConfigTOML)
+	if err != nil {
+		return 0, configValueFault(found.LocalConfigPath, err.Error(), "a port between 1 and 65535")
+	}
+	return port, nil
+}
+
+// configValueFault is a config tier that exists but cannot be interpreted, which
+// is IGDEV_E_CONFIG_INVALID rather than a usage error: the invocation did not
+// type it.
+func configValueFault(where, got, want string) *contract.Fault {
+	return contract.NewFault(contract.CodeConfigInvalid, contract.ExitFailure,
+		fmt.Sprintf("%s carries %s, which is not %s", where, got, want)).
+		WithRemediation(contract.Remediation{
+			Command: "igdev setup --gateway-port 8088",
+			Why:     "pin the port explicitly for one run",
+		})
 }
 
 // adminCredentials decides the Gateway admin credentials: the flag wins over the

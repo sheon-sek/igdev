@@ -30,6 +30,9 @@ const (
 	EnvUsername = "IGDEV_GATEWAY_ADMIN_USERNAME"
 	// EnvPassword overrides the generated Gateway admin password.
 	EnvPassword = "IGDEV_GATEWAY_ADMIN_PASSWORD"
+	// EnvPort pins the Gateway HTTP port for one run, overriding the pin the
+	// checkout-local tier records.
+	EnvPort = "IGDEV_GATEWAY_PORT"
 )
 
 // DefaultUsername is the Gateway admin user setup creates when nothing overrides
@@ -50,6 +53,11 @@ const gatewaySection = "gateway"
 const (
 	usernameKey = "admin_username"
 	passwordKey = "admin_password"
+	// PortKey is the machine-local Gateway HTTP port pin. It is igdev-owned
+	// because the Wizard and `igdev setup --gateway-port` record it, and because
+	// a pin has to survive the next credential write unchanged (ADR 0003: ports
+	// are a property of the machine, never of the tracked contract).
+	PortKey = "http_port"
 )
 
 // passwordAlphabet omits the characters people misread (0/O, 1/l/I) and every
@@ -124,7 +132,7 @@ func Write(path string, c Credentials) (bool, error) {
 	case readErr != nil || !parses(existing):
 		data = Render(c)
 	default:
-		data = merge(existing, c)
+		data = merge(existing, credentialKeys(c))
 		if !parses(data) {
 			// A shape the line-level merge cannot patch — an inline `gateway = {…}`
 			// table, a quoted table name — would otherwise be left duplicated and
@@ -141,17 +149,87 @@ func Write(path string, c Credentials) (bool, error) {
 	return true, nil
 }
 
+// LoadPort reads the machine-local Gateway HTTP port pin out of local.toml
+// bytes. Zero means this machine has no pin, which is the normal case: ports are
+// allocated by bind probe. Content igdev cannot parse carries no pin either,
+// because setup is the repair path for this tier and replaces it; a pin the file
+// does state but that is not a port is an error, because silently ignoring a
+// value a person wrote would hide the mistake.
+func LoadPort(raw []byte) (int, error) {
+	if len(raw) == 0 {
+		return 0, nil
+	}
+	var file struct {
+		Gateway struct {
+			HTTPPort *int `toml:"http_port"`
+		} `toml:"gateway"`
+	}
+	if err := toml.Unmarshal(raw, &file); err != nil {
+		return 0, nil
+	}
+	if file.Gateway.HTTPPort == nil {
+		return 0, nil
+	}
+	port := *file.Gateway.HTTPPort
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("http_port = %d is not a port between 1 and 65535", port)
+	}
+	return port, nil
+}
+
+// WritePort records the machine-local Gateway HTTP port pin in an existing
+// checkout-local tier, leaving every line igdev does not own exactly as it was,
+// and reports whether the file changed. The tier has to be there and has to
+// parse: setup writes the credentials into it first, so a missing or broken file
+// is a failure rather than something to paper over.
+func WritePort(path string, port int) (bool, error) {
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		return false, fmt.Errorf("read local config %s: %w", path, err)
+	}
+	if !parses(existing) {
+		return false, fmt.Errorf("local config %s is not valid TOML", path)
+	}
+	data := merge(existing, []ownedKey{{key: PortKey, line: portLine(port)}})
+	if bytes.Equal(existing, data) {
+		return false, nil
+	}
+	if err := atomicfile.Write(path, data, Mode, 0o700); err != nil {
+		return false, fmt.Errorf("write local config %s: %w", path, err)
+	}
+	return true, nil
+}
+
 func parses(raw []byte) bool {
 	var probe map[string]any
 	return toml.Unmarshal(raw, &probe) == nil
 }
 
-// merge rewrites the two credential keys inside existing content, leaving every
-// other line exactly as it was. A key the file does not carry yet is added to
-// the [gateway] table, which is created at the end when it is missing.
-func merge(existing []byte, c Credentials) []byte {
+// ownedKey is one [gateway] key igdev owns: the name it writes under and the
+// line it writes there.
+type ownedKey struct {
+	key  string
+	line string
+}
+
+// credentialKeys are the two keys every setup writes.
+func credentialKeys(c Credentials) []ownedKey {
+	return []ownedKey{
+		{key: usernameKey, line: credentialLine(usernameKey, c.Username)},
+		{key: passwordKey, line: credentialLine(passwordKey, c.Password)},
+	}
+}
+
+// merge rewrites the keys igdev owns inside existing content, leaving every other
+// line exactly as it was. A key the file does not carry yet is added to the
+// [gateway] table, which is created at the end when it is missing.
+func merge(existing []byte, owned []ownedKey) []byte {
+	byKey := make(map[string]string, len(owned))
+	for _, o := range owned {
+		byKey[o.key] = o.line
+	}
 	lines := strings.Split(strings.TrimRight(string(existing), "\n"), "\n")
-	out := make([]string, 0, len(lines)+3)
+	out := make([]string, 0, len(lines)+len(owned))
 	section := ""
 	// gatewayEnd is the index in out just past the last line of the [gateway]
 	// table, where a key the file is missing has to be inserted.
@@ -171,11 +249,9 @@ func merge(existing []byte, c Credentials) []byte {
 		case section == gatewaySection:
 			key, _, hasValue := strings.Cut(trimmed, "=")
 			if hasValue {
-				switch strings.TrimSpace(key) {
-				case usernameKey:
-					line, seen[usernameKey] = credentialLine(usernameKey, c.Username), true
-				case passwordKey:
-					line, seen[passwordKey] = credentialLine(passwordKey, c.Password), true
+				if replacement, ok := byKey[strings.TrimSpace(key)]; ok {
+					line = replacement
+					seen[strings.TrimSpace(key)] = true
 				}
 			}
 			out = append(out, line)
@@ -185,13 +261,10 @@ func merge(existing []byte, c Credentials) []byte {
 		out = append(out, line)
 	}
 
-	missing := make([]string, 0, 2)
-	for _, pair := range []struct{ key, value string }{
-		{usernameKey, c.Username},
-		{passwordKey, c.Password},
-	} {
-		if !seen[pair.key] {
-			missing = append(missing, credentialLine(pair.key, pair.value))
+	missing := make([]string, 0, len(owned))
+	for _, o := range owned {
+		if !seen[o.key] {
+			missing = append(missing, o.line)
 		}
 	}
 	switch {
@@ -211,6 +284,10 @@ func merge(existing []byte, c Credentials) []byte {
 
 func credentialLine(key, value string) string {
 	return fmt.Sprintf("%s = %s", key, tomlString(value))
+}
+
+func portLine(port int) string {
+	return fmt.Sprintf("%s = %d", PortKey, port)
 }
 
 // tomlString renders one TOML string value; the generated password alphabet and

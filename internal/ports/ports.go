@@ -60,6 +60,59 @@ func Allocate() (Triplet, *contract.Fault) {
 	return Triplet{HTTP: picked[0], HTTPS: picked[1], Debug: picked[2]}, nil
 }
 
+// AllocateFrom asks the kernel for a free loopback triplet whose HTTP port is
+// httpPort: a machine-local pin (ADR 0003) fixes the port a person reads and
+// pastes into a browser, and the other two are allocated as usual. A pinned port
+// this host refuses is a named failure — quietly moving off a pin would make the
+// pin a lie.
+func AllocateFrom(httpPort int) (Triplet, *contract.Fault) {
+	if httpPort < 1 || httpPort > 65535 {
+		return Triplet{}, pinFault(httpPort, fmt.Errorf("it is not a port between 1 and 65535"))
+	}
+	listeners := make([]net.Listener, 0, 3)
+	defer func() {
+		for _, l := range listeners {
+			l.Close()
+		}
+	}()
+	pinned, err := net.Listen("tcp", net.JoinHostPort(BindAddress, strconv.Itoa(httpPort)))
+	if err != nil {
+		return Triplet{}, pinFault(httpPort, err)
+	}
+	listeners = append(listeners, pinned)
+	picked := make([]int, 0, 2)
+	for range 2 {
+		l, err := net.Listen("tcp", BindAddress+":0")
+		if err != nil {
+			return Triplet{}, allocFault(err)
+		}
+		listeners = append(listeners, l)
+		addr, ok := l.Addr().(*net.TCPAddr)
+		if !ok {
+			return Triplet{}, allocFault(fmt.Errorf("listener reported a non-TCP address %s", l.Addr()))
+		}
+		picked = append(picked, addr.Port)
+	}
+	return Triplet{HTTP: httpPort, HTTPS: picked[0], Debug: picked[1]}, nil
+}
+
+// pinFault is a pinned port this host will not give back: the pin has to change
+// or the process holding it has to stop.
+func pinFault(httpPort int, cause error) *contract.Fault {
+	return contract.NewFault(contract.CodePortAlloc, contract.ExitFailure,
+		fmt.Sprintf("the pinned Gateway port %d cannot be bound: %v", httpPort, cause)).
+		WithCause(cause).
+		WithRemediation(
+			contract.Remediation{
+				Command: "igdev setup",
+				Why:     "allocate ports by bind probe instead of pinning one",
+			},
+			contract.Remediation{
+				Command: "igdev doctor",
+				Why:     "see which ports this machine already holds",
+			})
+}
+
 // Free reports whether every port in the triplet can still be bound on loopback.
 // It is what lets a re-setup keep a recorded triplet instead of allocating a new
 // one, and what makes a port another process took in the meantime visible.

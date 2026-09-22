@@ -10,8 +10,13 @@ is an edit: a flag overrides the value it names, everything else the contract al
 holds is preserved, and a run that changes nothing writes nothing and prints nothing.
 Pass an empty value (--modules "" or --command-check "") to clear a field.
 
-Without --json, init never prompts: an agent's fully specified invocation is the whole
-interface. The init Wizard arrives in ticket 10.
+Without --json or --yes, init never prompts an invocation that already has a contract
+to preserve: an agent's fully specified invocation is the whole interface. In a
+repository with no contract yet, a terminal gets the init Wizard — six steps that read
+the layout, pre-fill [commands] and [scan], and write the same contract the flags
+below would. --interactive runs it even when the contract already exists (every value
+is shown preselected); --yes takes the same defaults without asking; on a non-terminal
+--interactive is a usage error, because a Wizard has no way to ask.
 
 init and setup are the Gate's repair paths: they run whatever the contract says, so a
 hand-edited or future-schema contract can always be rewritten. Every other project
@@ -35,12 +40,14 @@ Flags:
       --gateway-memory-mb int       Gateway heap in MiB (default 2048)
       --gateway-timezone string     Gateway timezone, e.g. UTC (default UTC)
       --ignition-version string     Ignition version this checkout targets, e.g. 8.3.8 (default 8.3.8)
+  -i, --interactive                 run the Wizard even when every value is already supplied
       --jython-version string       Jython version the compatibility checker targets (default 2.7.4)
       --modules strings             module ids to enable, comma-separated or repeated (default: none)
       --name string                 repository name recorded as [project].name
       --scan-capabilities strings   directories scanned for capability usage, comma-separated (default src/main/python)
       --scan-jython strings         directories scanned for Jython sources, comma-separated (default src/main/python)
       --tool-min-version string     oldest igdev version this project accepts, recorded as [tool].min_version
+  -y, --yes                         take the Wizard's defaults and never prompt
 
 Global Flags:
       --config stringArray   override one config key for this run, key=value (highest precedence)

@@ -1,0 +1,7 @@
+[igdev] setup wizard 1/7: the Consent gate
+[igdev] setup wizard 2/7: the Gateway heap
+[igdev] setup wizard 3/7: the admin password
+[igdev] setup wizard 4/7: the Baseline
+[igdev] setup wizard 5/7: the port pin
+[igdev] setup wizard 6/7: the materialization
+[igdev] setup wizard 7/7: the summary

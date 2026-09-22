@@ -891,7 +891,7 @@ and description. It is immediately resolvable from every tier, reported by
 `igdev status --json`, and settable by tests through `testrig.EnvFor(path)`.
 `internal/testrig` maps the same schema, so nothing has to be kept in sync by hand.
 
-## Deliberate limits of tickets 01-05, 12, 13, 14, 15, and 20
+## Deliberate limits of tickets 01-05, 12, 13, 14, 15, 16, and 20
 
 Ticket 01: the walking skeleton — install, `status`, `version`, help, completion, the
 five-tier resolver, the Gate's discovery stage, and the resource/hygiene gates.
@@ -936,12 +936,21 @@ The verb is not part of the check pipeline and has no e2e tier of its own.
 
 `module validate` as its own verb is not part of ticket 14: what it used to mean is the
 pipeline's first stage (`module-validate`), and the oracle's REST-catalog structural
-validation is covered instead by the embedded Core Catalog's digest tests. The module
-surface is otherwise read-only: there is still no module-license or module-certificate
-acceptance path (the Consent terms exist and `setup` records them, but no command
-demands them). There is no Wizard prompt (ticket 16, which also adds
-the `module add` steps), and no
-AGENTS.md managed block. The repository is not yet dogfooding its
-own `igdev.toml`; that arrives with the conversion ticket. Until then the root
-`README.md` documents the legacy `devctl` foundation and `AGENTS.md` its command
-contract; this file is the igdev reference.
+validation is covered instead by the embedded Core Catalog's digest tests. No command
+demands the module-license or module-certificate terms yet (the Consent terms exist and
+`setup` records them), so the module surface is otherwise read-only. There is still no
+AGENTS.md managed block, and the repository is not yet dogfooding its own `igdev.toml`;
+that arrives with the conversion ticket. Until then the root `README.md` documents the
+legacy `devctl` foundation and `AGENTS.md` its command contract; this file is the igdev
+reference.
+
+Ticket 16 adds the Wizards: `init` (6 steps), `setup` (7 steps), and `module add` (4
+steps). A Wizard prompts only when a required value is missing, stdin is a terminal,
+and neither `--json` nor `--yes` was asked for; `--interactive` forces it, `--yes`
+takes the same defaults silently, and `--json` never prompts whatever the terminal is.
+Every Wizard answer becomes the flag value the silent path would have been given, so
+`init --yes`, `init` with those flags, and the Wizard's accepted defaults write
+byte-identical files. Setup's Consent step shows `igdev setup --accept-eula` and stops
+at exit level 3 until the machine record itself says the term is accepted; a prompt
+answer is never an acceptance. The Wizards are the only verbs that touch a terminal,
+and the tests drive them through a pseudo-terminal.

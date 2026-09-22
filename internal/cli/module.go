@@ -518,6 +518,12 @@ type moduleAddData struct {
 	// RuntimeDir is the build context the re-rendered runtime files live in.
 	RuntimeDir string       `json:"runtime_dir"`
 	Runtime    []setupWrite `json:"runtime"`
+	// Enable is the whitelist write `--enable` performed, and is absent when the
+	// run staged only: every other `add` envelope keeps its frozen key set.
+	Enable *moduleEnableData `json:"enable,omitempty"`
+	// SetupStale reports that this run moved the Contract Digest, which makes the
+	// Checkout Setup stale until `igdev setup` re-materializes it.
+	SetupStale bool `json:"setup_stale,omitempty"`
 }
 
 // moduleClearData is the `data` member of a successful `igdev module clear`
@@ -591,59 +597,9 @@ the Gateway mounts. That is the same rule a hand-edit of the contract follows.`,
 			if unknown := k.unknown(requested); len(unknown) > 0 {
 				return unknownModulesFault(k, unknown)
 			}
-
-			doc := k.doc.Filled(project.DefaultDoc())
-			contractPath := filepath.Join(found.Root, project.ContractFile)
-			data := moduleEnableData{
-				Added:          []string{},
-				AlreadyEnabled: []string{},
-			}
-			current := doc.Modules.Enabled
-			switch {
-			case len(current) == 0:
-				// The empty whitelist already loads every module. Writing a list
-				// here would restrict the Gateway, which is not what the caller
-				// asked for, so the run reports the state instead.
-				data.Unrestricted = true
-				data.AlreadyEnabled = requested
-				data.Whitelist = []string{}
-				data.Contract = initFile{
-					Path:   contractPath,
-					Action: "unchanged",
-					Digest: project.Digest(found.ContractTOML),
-				}
-			default:
-				added := make([]string, 0, len(requested))
-				for _, id := range requested {
-					if modules.Enabled(current, id) {
-						data.AlreadyEnabled = append(data.AlreadyEnabled, id)
-						continue
-					}
-					added = append(added, id)
-				}
-				data.Added = added
-				if len(added) == 0 {
-					data.Whitelist = append([]string{}, current...)
-					data.Contract = initFile{
-						Path:   contractPath,
-						Action: "unchanged",
-						Digest: project.Digest(found.ContractTOML),
-					}
-					break
-				}
-				doc.Modules.Enabled = append(append([]string{}, current...), added...)
-				if err := doc.Validate(contractPath); err != nil {
-					return err
-				}
-				rendered := doc.Render()
-				written, err := writeTracked(contractPath, project.ContractFile, found.ContractTOML, rendered, 0o644)
-				if err != nil {
-					return err
-				}
-				written.Digest = project.Digest(rendered)
-				data.Contract = written
-				data.Whitelist = append([]string{}, doc.Modules.Enabled...)
-				data.SetupStale = true
+			data, err := enableModules(found, k, requested)
+			if err != nil {
+				return err
 			}
 			a.emit(k.res, data, func() { a.printModuleEnable(data) })
 			return nil
@@ -651,8 +607,73 @@ the Gateway mounts. That is the same rule a hand-edit of the contract follows.`,
 	}
 }
 
+// enableModules adds the requested ids to the contract's [modules].enabled
+// whitelist and reports what the write did. It is the whole of `module enable`'s
+// logic, minus printing, and `module add --enable` runs it too, so both verbs
+// write the whitelist through one path.
+func enableModules(found project.Found, k *knowledge, requested []string) (moduleEnableData, error) {
+	doc := k.doc.Filled(project.DefaultDoc())
+	contractPath := filepath.Join(found.Root, project.ContractFile)
+	data := moduleEnableData{
+		Added:          []string{},
+		AlreadyEnabled: []string{},
+	}
+	current := doc.Modules.Enabled
+	switch {
+	case len(current) == 0:
+		// The empty whitelist already loads every module. Writing a list
+		// here would restrict the Gateway, which is not what the caller
+		// asked for, so the run reports the state instead.
+		data.Unrestricted = true
+		data.AlreadyEnabled = requested
+		data.Whitelist = []string{}
+		data.Contract = initFile{
+			Path:   contractPath,
+			Action: "unchanged",
+			Digest: project.Digest(found.ContractTOML),
+		}
+	default:
+		added := make([]string, 0, len(requested))
+		for _, id := range requested {
+			if modules.Enabled(current, id) {
+				data.AlreadyEnabled = append(data.AlreadyEnabled, id)
+				continue
+			}
+			added = append(added, id)
+		}
+		data.Added = added
+		if len(added) == 0 {
+			data.Whitelist = append([]string{}, current...)
+			data.Contract = initFile{
+				Path:   contractPath,
+				Action: "unchanged",
+				Digest: project.Digest(found.ContractTOML),
+			}
+			break
+		}
+		doc.Modules.Enabled = append(append([]string{}, current...), added...)
+		if err := doc.Validate(contractPath); err != nil {
+			return data, err
+		}
+		rendered := doc.Render()
+		written, err := writeTracked(contractPath, project.ContractFile, found.ContractTOML, rendered, 0o644)
+		if err != nil {
+			return data, err
+		}
+		written.Digest = project.Digest(rendered)
+		data.Contract = written
+		data.Whitelist = append([]string{}, doc.Modules.Enabled...)
+		data.SetupStale = true
+	}
+	return data, nil
+}
+
 func (a *App) newModuleAddCmd() *cobra.Command {
-	return &cobra.Command{
+	var (
+		wizard wizardFlags
+		enable bool
+	)
+	cmd := &cobra.Command{
 		Use:   "add <file.modl>",
 		Short: "Stage a private module artifact in the checkout",
 		Long: `add stages a private ` + "`.modl`" + ` in the Checkout Setup, re-renders the runtime, and
@@ -674,28 +695,55 @@ stays current — what changed is what is staged, not what the contract asked fo
 ` + "`igdev module enable <id>`" + ` to add the module to the whitelist as well.
 
 Adding an artifact whose file name is already staged replaces it, which is how a
-newer build of the same module is staged.`,
+newer build of the same module is staged.
+
+Without --json or --yes, add never prompts an invocation that named its file: an
+agent's fully specified invocation is the whole interface. A terminal that names no
+file gets the module add Wizard — four steps that ask for the archive, show what it
+declares, state what igdev does not verify, confirm the copy, and offer to whitelist
+the module. --interactive runs it even when the file was named; --yes takes the same
+defaults without asking; on a non-terminal --interactive is a usage error, because a
+Wizard has no way to ask.`,
 		Example: `  igdev module add ~/Downloads/com.acme.vision.modl
-  igdev module add /mnt/vendor/acme-vision-1.2.3.modl --json`,
+  igdev module add /mnt/vendor/acme-vision-1.2.3.modl --enable --json`,
 		Args: func(_ *cobra.Command, args []string) error {
-			switch len(args) {
-			case 0:
+			if len(args) > 1 {
+				return extraArguments("module add", 1, args)
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var file string
+			if len(args) == 1 {
+				file = args[0]
+			}
+			// The artifact comes before the Gate: an invocation that named none
+			// gets the same fault in a repository that was never set up as in one
+			// that was, which is what an agent's missing-argument handling sees.
+			run, err := a.decide("module add", wizard, a.wantsJSON(), file == "")
+			if err != nil {
+				return err
+			}
+			file, err = a.setupModuleAddWizard(cmd, run, file)
+			if err != nil {
+				return err
+			}
+			if file == "" {
 				return missingArgument("module add", "file",
 					"igdev module add ~/Downloads/com.acme.vision.modl",
 					"name the module archive to stage in this checkout")
-			case 1:
-				return nil
-			default:
-				return extraArguments("module add", 1, args)
 			}
-		},
-		RunE: func(_ *cobra.Command, args []string) error {
 			found, k, err := a.projectWrite()
 			if err != nil {
 				return err
 			}
+			// Steps 2-4 need the Gate's verdict: they name the checkout the
+			// artifact reaches and the whitelist it would join.
+			if err := a.moduleAddWizardSteps(cmd, run, file); err != nil {
+				return err
+			}
 			dir := modules.Dir(found.Root)
-			staged, fault := modules.Stage(dir, args[0])
+			staged, fault := modules.Stage(dir, file)
 			if fault != nil {
 				return fault
 			}
@@ -715,7 +763,7 @@ newer build of the same module is staged.`,
 				ID:         staged.ID,
 				Name:       staged.Name,
 				Version:    staged.Version,
-				Source:     args[0],
+				Source:     file,
 				Artifact:   staged.Artifact,
 				Path:       staged.Path,
 				Action:     action,
@@ -726,10 +774,29 @@ newer build of the same module is staged.`,
 				RuntimeDir: setupPaths(found.Root).runtime,
 				Runtime:    runtime,
 			}
+			// The whitelist write runs after the staging, so the knowledge it
+			// checks against includes the artifact that just arrived.
+			if enable {
+				fresh, updated, err := a.projectWrite()
+				if err != nil {
+					return err
+				}
+				enabled, err := enableModules(fresh, updated, []string{staged.ID})
+				if err != nil {
+					return err
+				}
+				data.Enable = &enabled
+				data.SetupStale = enabled.SetupStale
+			}
 			a.emit(k.res, data, func() { a.printModuleAdd(data) })
 			return nil
 		},
 	}
+	flags := cmd.Flags()
+	wizard.register(cmd)
+	flags.BoolVar(&enable, "enable", false,
+		"also add the staged module to the contract's [modules].enabled whitelist")
+	return cmd
 }
 
 func (a *App) newModuleCachePathCmd() *cobra.Command {
@@ -947,6 +1014,9 @@ func (a *App) printModuleAdd(data moduleAddData) {
 	fmt.Fprintf(a.Stdout, "artifact:  %s (%s, %d bytes)\n", data.Path, data.Action, data.Bytes)
 	fmt.Fprintf(a.Stdout, "staged:    %s\n", stagedLine(data.Count, data.ModulesDir))
 	fmt.Fprintf(a.Stdout, "runtime:   re-materialized (%s)\n", data.RuntimeDir)
+	if data.Enable != nil {
+		a.printModuleEnable(*data.Enable)
+	}
 }
 
 // printModuleClear shows a human what left the staging directory.

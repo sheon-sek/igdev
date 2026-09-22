@@ -25,8 +25,11 @@ import (
 // App is one CLI invocation with its surroundings injected, so a test can run
 // the same tree against a scratch environment.
 type App struct {
-	Stdout  io.Writer
-	Stderr  io.Writer
+	Stdout io.Writer
+	Stderr io.Writer
+	// Stdin is the terminal the Wizard reads: an interactive run is the only
+	// thing it is used for, and a Wizard exists only when it is a terminal.
+	Stdin   *os.File
 	Environ []string
 	Dir     string
 
@@ -47,7 +50,7 @@ func New(stdout, stderr io.Writer, environ []string) *App {
 	if err != nil {
 		dir = string(filepath.Separator)
 	}
-	return &App{Stdout: stdout, Stderr: stderr, Environ: environ, Dir: dir}
+	return &App{Stdout: stdout, Stderr: stderr, Stdin: os.Stdin, Environ: environ, Dir: dir}
 }
 
 // Execute runs args (argv including argv[0]) and returns the exit level.
