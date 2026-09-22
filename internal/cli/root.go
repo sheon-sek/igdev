@@ -24,11 +24,6 @@ Lifecycle verbs: init creates the Project Contract, setup materializes this chec
 Every project command first passes the Gate: discover Project Root, validate contract
 schema, validate Setup Stamp, check command prerequisites.
 
-Agent usage: pass --json for the machine contract. stdout is then a single JSON
-envelope {ok, contract, code, message, remediation, data}; progress and notices go to
-stderr. Exit levels are 0 success, 1 command failure, 2 usage error, 3 human action
-required. With every argument supplied igdev runs in Silent Mode: it never prompts.
-
 Contract: ` + contract.Version + ``
 
 // newRoot builds the command tree for one invocation.
@@ -85,6 +80,9 @@ func newHelpCmd(root *cobra.Command) *cobra.Command {
 		Use:   "help [command]",
 		Short: "Show help for a command",
 		Long:  "Usage:\n  igdev help            show every command\n  igdev help status     show one command with its flags and examples",
+		Example: `  igdev help
+  igdev help status
+  igdev help status --json`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return contract.UsageFault(fmt.Sprintf("igdev help takes one <command> argument, got %d", len(args)),

@@ -6,12 +6,15 @@ Lifecycle verbs: init creates the Project Contract, setup materializes this chec
 Every project command first passes the Gate: discover Project Root, validate contract
 schema, validate Setup Stamp, check command prerequisites.
 
-Agent usage: pass --json for the machine contract. stdout is then a single JSON
-envelope {ok, contract, code, message, remediation, data}; progress and notices go to
-stderr. Exit levels are 0 success, 1 command failure, 2 usage error, 3 human action
-required. With every argument supplied igdev runs in Silent Mode: it never prompts.
-
 Contract: 1
+
+Agent usage: pass --json for the machine contract. stdout is then a single JSON envelope
+{ok, contract, code, message, remediation, data}; progress and notices go to stderr.
+Exit levels are 0 success, 1 command failure, 2 usage error, 3 human action required:
+exit 3 means a person must act (Consent, the Capacity Gate) and Remediation names the
+exact command. With every argument supplied igdev runs in Silent Mode and never prompts.
+Orient before acting: igdev status --json works everywhere, and igdev agent context
+--json answers the whole orientation in one call.
 
 Usage:
   igdev [flags]

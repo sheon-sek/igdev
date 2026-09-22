@@ -144,6 +144,68 @@ type agentCommands struct {
 	CILocal  bool `json:"ci_local"`
 }
 
+// AgentContextField documents one member of the `igdev agent context --json`
+// data object: the JSON key, its shape, and what a reader does with it.
+type AgentContextField struct {
+	// Name is the JSON key, exactly as the envelope spells it. A nested member
+	// is written as its path from the data root, e.g. lifecycle.setup_state.
+	Name string
+	// Type is the JSON shape: string, bool, int, object, array, or null.
+	Type string
+	// Description is what the member means and how to use it.
+	Description string
+}
+
+// AgentContextFields is the frozen shape of `igdev agent context --json`, member
+// by member: the source `docs/reference/agent-context.md` is generated from, so
+// the documented field list cannot drift from the envelope. TestAgentContextFields
+// checks every name against the JSON tags of the agentContextData struct, which
+// is the compile-time definition.
+var AgentContextFields = []AgentContextField{
+	{"project_root", "string", "Absolute path of the Project Root, or empty when the working directory is outside one."},
+	{"lifecycle", "object", "Where the checkout sits in the lifecycle and what this machine has accepted."},
+	{"lifecycle.initialized", "bool", "A Project Contract (igdev.toml) was found by searching upward."},
+	{"lifecycle.setup_state", "string", "none, required, stale, or current: none is no contract at all; the other three are the Gate's Setup Stamp verdicts. Only current admits the project verbs."},
+	{"lifecycle.consent", "object", "Per-term machine Consent. It is reported here, never enforced: creating it is a human action (ADR 0004)."},
+	{"lifecycle.consent.ignition_eula", "bool", "The Ignition EULA is accepted on this machine."},
+	{"lifecycle.consent.module_license", "bool", "The module licenses are accepted on this machine."},
+	{"lifecycle.consent.module_certificate", "bool", "The third-party module certificates are accepted on this machine."},
+	{"versions", "object", "The version quartet to reason about compatibility with."},
+	{"versions.cli", "string", "The release semver of this binary."},
+	{"versions.cli_contract", "string", "The CLI Contract Version the envelope, the IGDEV_E_* codes, and the exit levels are frozen against."},
+	{"versions.ignition", "string", "The Ignition version this checkout targets, after config precedence."},
+	{"versions.jython", "string", "The Jython version the compatibility checker targets."},
+	{"instance", "object", "The recorded Instance identity and allocated ports; null before setup."},
+	{"instance.id", "string", "The Instance UUID minted at first setup, stable across directory moves."},
+	{"instance.namespace", "string", "The Docker namespace igdev-<short-id> this Instance's resources use."},
+	{"instance.ports", "object", "The allocated loopback ports: http, https, and debug. Always read these; never assume 8088 (ADR 0003)."},
+	{"gateway", "object", "Whether the Gateway is running and its recorded URL; null when there is no Instance. Context never starts anything."},
+	{"gateway.running", "bool", "The container engine reports this Instance's Gateway running."},
+	{"gateway.url", "string", "The recorded Gateway URL, built from the Instance's allocated HTTP port."},
+	{"modules", "object", "The private module artifacts this checkout stages."},
+	{"modules.count", "int", "How many artifacts are staged in .igdev/modules/."},
+	{"modules.staged", "array", "The module ids those artifacts declare."},
+	{"catalog", "object", "The Effective Catalog's identity."},
+	{"catalog.core_digest", "string", "sha256 of the Core Catalog embedded in this binary, for this Ignition version."},
+	{"catalog.overlay", "object", "This repository's tracked Project Overlay layer."},
+	{"catalog.overlay.present", "bool", "The contract declares overlay files that resolved."},
+	{"catalog.overlay.digest", "string", "sha256 over the declared overlay files; the empty-input digest when none resolved."},
+	{"catalog.overlay.paths", "array", "The overlay files, in contract declaration order."},
+	{"capabilities", "object", "The Effective Catalog's shape. The counts are for a reader; the digests are the integrity."},
+	{"capabilities.native_functions", "int", "Gateway-scope system.* functions the Effective Catalog resolves."},
+	{"capabilities.rest_operations", "int", "REST operations the Effective Catalog resolves."},
+	{"capabilities.overlay_rows", "int", "Rows the Project Overlay contributes across every plane."},
+	{"commands", "object", "Per project verb, whether it can do anything in this checkout. The pipeline stages are project-declared, so false says the contract does not wire that stage up."},
+	{"commands.check", "bool", "The contract declares [commands].check."},
+	{"commands.test", "bool", "The contract declares [commands].test."},
+	{"commands.build", "bool", "The contract declares [commands].build."},
+	{"commands.verify", "bool", "Always true: verify is provided by this binary."},
+	{"commands.gateway", "bool", "Always true: the gateway verbs are provided by this binary."},
+	{"commands.module", "bool", "Always true: the capability verbs are provided by this binary."},
+	{"commands.baseline", "bool", "Always true: the baseline verbs are provided by this binary."},
+	{"commands.ci_local", "bool", "Always true: ci-local is provided by this binary."},
+}
+
 func (a *App) newAgentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agent",

@@ -1,5 +1,10 @@
 # Architecture
 
+> This file documents the legacy bash foundation (`./devctl`), which is retired by
+> ticket #19. The igdev command reference is generated from the command definitions and
+> lives in [`docs/reference/`](reference/README.md); the igdev design notes are in
+> [`IGDEV.md`](IGDEV.md).
+
 The repository deliberately separates the fast agent loop from runtime integration.
 
 ```text

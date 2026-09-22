@@ -101,7 +101,7 @@ var Schema = []Key{
 	},
 	{
 		Path: "act.offline", Env: "IGDEV_ACT_OFFLINE", Kind: KindBool, Default: false,
-		Desc: "Run `igdev ci-local` offline: act is handed --pull=false --action-offline-mode (Project Contract: [act].offline).",
+		Desc: "Run `igdev ci-local` offline: act is handed --pull=false --action-offline-mode. Settable from the flag, IGDEV_ACT_OFFLINE, or the checkout-local tier; the tracked Project Contract cannot carry it (no [act] section).",
 	},
 }
 

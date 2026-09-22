@@ -1,5 +1,11 @@
 # Troubleshooting
 
+> This file covers the legacy bash foundation (`./devctl`), retired by ticket #19. For
+> igdev, start from the generated reference's index
+> ([`docs/reference/`](reference/README.md)) and
+> [`IGDEV.md`](IGDEV.md); `igdev gateway logs --tail 300` and `igdev gateway status`
+> are the igdev equivalents of the first two commands below.
+
 ## Gateway does not start
 
 Run:

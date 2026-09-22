@@ -107,9 +107,10 @@ fails CI.
 
 The event act runs is ` + "`pull_request`" + ` unless --event says otherwise, and the job is
 selected with the required --job flag. ` + "`--offline`" + ` runs without network access —
-act is handed ` + "`--pull=false --action-offline-mode`" + ` — and is equally settable from
-the environment or a config tier as ` + "`IGDEV_ACT_OFFLINE=1`" + `/` + "`act.offline`" + `; the flag
-wins when the tiers disagree.
+act is handed ` + "`--pull=false --action-offline-mode`" + ` — and is settable from the flag, the
+environment (` + "`IGDEV_ACT_OFFLINE=1`" + `), or the checkout-local tier; the flag wins when they
+disagree. The tracked Project Contract cannot carry it: its schema has no ` + "`[act]`" + `
+section.
 
 Arguments act should receive go after ` + "`--`" + `: everything after it reaches act verbatim
 and in order, so an act flag igdev does not know (` + "`--reuse`" + `,
@@ -119,14 +120,7 @@ flag-shaped needs no ` + "`--`" + `; flag-shaped passthrough is what it is for.
 act is an optional ` + "`igdev doctor`" + ` prerequisite: when it is not installed,
 ` + "`ci-local`" + ` fails with IGDEV_E_ACT_MISSING and the install commands, and no
 subprocess is attempted. The verb passes the Gate (a current Checkout Setup) but
-not Consent: it starts no Gateway.
-
-Agent usage: pass --json for the machine contract. ` + "`data`" + ` carries the exact
-invocation (event, job, argv, Project Root), act's exit code, and the tail of its
-output. act's own output streams to stderr in both dialects, so a human reads the
-workflow run and an agent reads the envelope. A run act cannot complete is
-IGDEV_E_ACT_FAILED at act's own exit code; a host without act is
-IGDEV_E_ACT_MISSING with the install commands in Remediation.`,
+not Consent: it starts no Gateway.`,
 		Example: `  igdev ci-local --job foundation
   igdev ci-local --event push --job foundation --offline
   igdev ci-local --job foundation --json

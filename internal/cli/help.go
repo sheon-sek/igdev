@@ -34,7 +34,9 @@ func (a *App) printHelp(cmd *cobra.Command, _ []string) {
 }
 
 // helpText reproduces cobra's default help template: the long description (or
-// short one) followed by the usage block, which carries flags and examples.
+// short one), the Agent usage section, then the usage block, which carries flags
+// and examples. The machine-facing section is rendered from the one table in
+// agentusage.go, so --help and the generated reference cannot disagree.
 func helpText(cmd *cobra.Command) string {
 	var b strings.Builder
 	body := strings.TrimRight(cmd.Long, " \t\r\n")
@@ -43,6 +45,11 @@ func helpText(cmd *cobra.Command) string {
 	}
 	if body != "" {
 		b.WriteString(body)
+		b.WriteString("\n\n")
+	}
+	if usage := AgentUsage(cmd); usage != "" {
+		b.WriteString("Agent usage: ")
+		b.WriteString(usage)
 		b.WriteString("\n\n")
 	}
 	b.WriteString(strings.TrimRight(cmd.UsageString(), " \t\r\n"))

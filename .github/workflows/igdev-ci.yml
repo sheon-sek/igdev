@@ -9,11 +9,9 @@ on:
     branches: [main]
     paths-ignore:
       - "README.zh-CN.md"
-      - "docs/**"
   pull_request:
     paths-ignore:
       - "README.zh-CN.md"
-      - "docs/**"
   workflow_dispatch:
 
 permissions:
@@ -55,6 +53,12 @@ jobs:
 
       - name: Build
         run: go build -trimpath -ldflags "-s -w" -o bin/igdev ./cmd/igdev
+
+      # The public reference is generated from the command definitions, so a
+      # definition changed without regenerating docs/reference/ fails here (the
+      # same check runs inside `go test ./...`, as internal/docsgen's drift test).
+      - name: Reference docs up to date
+        run: go run ./cmd/igdev-docs -check
 
       # go test ./... includes itest: the golden suite and the startup P95,
       # peak RSS, binary size, temp-file leak, and docker orphan gates.

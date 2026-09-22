@@ -57,6 +57,8 @@ make test-quick   # behaviour only: skips TestGate, TestPackage, TestInstaller
 make gates        # prints the measured startup P95, peak RSS, binary size
 make package      # dist/<version>/*.tar.gz + checksums.txt
 make goldens      # rewrite goldens after an intentional contract change
+make reference    # regenerate docs/reference/ from the command definitions
+make reference-check  # CI's drift check: committed reference == generated reference
 ```
 
 `go test ./...` is hermetic: it needs no network and no docker. The rig builds the
@@ -68,7 +70,9 @@ and `packaging/install.sh` for real against a loopback file server.
 | Path | What lives there |
 | --- | --- |
 | `cmd/igdev` | main; three lines that call `cli.Execute` |
-| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping, `init`, `setup`, `doctor`, the `gateway` verbs, the `baseline` verbs, the `module` and `catalog` knowledge verbs, the pipeline verbs, and `ci-local` |
+| `cmd/igdev-docs` | writes the generated command reference (`docs/reference/`); `-check` is the drift check |
+| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping, `init`, `setup`, `doctor`, the `gateway` verbs, the `baseline` verbs, the `module` and `catalog` knowledge verbs, the pipeline verbs, and `ci-local`; `agentusage.go` holds the Agent usage section of every command |
+| `internal/docsgen` | renders `docs/reference/` from the cobra definitions and the agent-context field table, and fails when the committed copy is not what they render |
 | `internal/contract` | frozen envelope, `IGDEV_E_*` codes, exit levels, CLI Contract Version |
 | `internal/config` | five-tier resolver (flags > `IGDEV_*` > `.igdev/local.toml` > `igdev.toml` > defaults) |
 | `internal/baseline` | the staged Baseline: copy, streamed digest, provenance record, restore arguments, mount point |
@@ -722,8 +726,9 @@ mode both land on stderr, because stdout is the envelope.
 
 `--event` defaults to `pull_request`. `--offline` hands act `--pull=false
 --action-offline-mode`; it is a resolved setting like any other, so `IGDEV_ACT_OFFLINE=1`
-(the legacy knob), `[act]` `offline = true` in the Project Contract, or the
-checkout-local tier has the same effect, and the flag wins when the tiers disagree.
+and the checkout-local `.igdev/local.toml` tier have the same effect, and the flag wins
+when the tiers disagree. The tracked Project Contract cannot carry it: its schema has no
+`[act]` section, so `act.offline` is deliberately machine-local (as ports are, ADR 0003).
 Arguments after `--` reach act verbatim and in order, so an act flag igdev does not
 model (`--reuse`, `--container-architecture`) still gets through.
 
@@ -869,11 +874,29 @@ finish with `a.emit(res, data, humanPrinter)` so dialect selection, envelope
 rendering, and the update notice stay in one place. Exit levels come only from the
 fault: never call `os.Exit` and never write to stdout from a helper.
 
+Also give it a `Long` description, at least one `Example`, and an entry in
+`internal/cli/agentusage.go`: the Agent usage section is the machine-facing half of the
+reference (the `--json` data shape and the remediation flows), and
+`TestEveryCommandHasAgentUsage` fails without one. Then `make reference` and commit the
+result.
+
 A command that reads or mutates project state calls `gate.Require(a.gateInput(found))`
 first and returns the fault unchanged; `init` and `setup` are the repair paths and do
 not. The `gateway` verbs are the first enforcing consumers: `a.gatewayContext()`
 passes the Gate and the Consent check once for every verb, and freezes its refusals in
 `itest/gateway_test.go` (`gate_test.go` still pins the Gate's own envelopes).
+
+### Regenerating the reference
+
+`docs/reference/` is generated, never hand-edited: `cmd/igdev-docs` renders one page per
+command (plus the index and the `agent context` field table) from the cobra definitions
+and the agent-usage table, so the reference, `--help`, and the goldens are three views of
+one definition. `internal/docsgen`'s drift test compares the committed pages against a
+fresh render on every `go test ./...`, and the `igdev-ci` "Reference docs up to date"
+step runs `go run ./cmd/igdev-docs -check`; both fail when a command definition changed
+without `make reference`. Because the reference is generated from the definitions, a
+command's help is the only thing to write — there is no hand-maintained command table
+anywhere.
 
 ### Adding an Ignition version to the Core Catalog
 
@@ -891,7 +914,7 @@ and description. It is immediately resolvable from every tier, reported by
 `igdev status --json`, and settable by tests through `testrig.EnvFor(path)`.
 `internal/testrig` maps the same schema, so nothing has to be kept in sync by hand.
 
-## Deliberate limits of tickets 01-05, 12, 13, 14, 15, 16, 17, and 20
+## Deliberate limits of tickets 01-05, 12, 13, 14, 15, 16, 17, 18, and 20
 
 Ticket 01: the walking skeleton — install, `status`, `version`, help, completion, the
 five-tier resolver, the Gate's discovery stage, and the resource/hygiene gates.
@@ -941,8 +964,9 @@ demands the module-license or module-certificate terms yet (the Consent terms ex
 `setup` records them), so the module surface is otherwise read-only. The AGENTS.md
 managed block exists as of ticket 17, but this repository is not yet dogfooding its own
 `igdev.toml`; that arrives with the conversion ticket. Until then the root `README.md`
-documents the legacy `devctl` foundation and `AGENTS.md` its command contract; this
-file is the igdev reference.
+leads with the igdev lifecycle and keeps the legacy `devctl` foundation in an appendix,
+`AGENTS.md` carries the managed command block, and the public command reference is the
+generated `docs/reference/`; this file is the design and development notes.
 
 Ticket 16 adds the Wizards: `init` (6 steps), `setup` (7 steps), and `module add` (4
 steps). A Wizard prompts only when a required value is missing, stdin is a terminal,
@@ -961,11 +985,30 @@ versions (CLI, CLI Contract, Ignition, Jython), the recorded Instance and its po
 Gateway's running state and URL, the staged modules, the Core Catalog and Project
 Overlay digests, the Effective Catalog's row counts, and which project verbs are
 available — as a frozen envelope that works before `init` and `setup`. Its field list is
-frozen by `itest/testdata/golden/agent_context_*.json`; #18 documents it. `agent
-skill-install` writes the embedded Agent Skill (`internal/agentskill/SKILL.md`,
+frozen by `itest/testdata/golden/agent_context_*.json` and documented field by field in
+the generated `docs/reference/agent-context.md`, which is rendered from the
+`AgentContextFields` table in `internal/cli/agent.go` (a test checks that table against
+the envelope's own struct tags). `agent skill-install` writes the embedded Agent Skill
+(`internal/agentskill/SKILL.md`,
 frontmatter carrying the CLI Contract Version) globally at `~/.agents/skills/igdev/` by
 default, or into the repository's `.agents/skills/igdev/` with `--scope repo`; it is
 idempotent and updates an install left by an older binary in place. `init` now also
 maintains a minimal, version-free managed block in `AGENTS.md`: created when absent,
 replaced in place when present, never duplicated, and reported with the same diff as its
 other tracked writes. Neither agent verb ever prompts.
+
+Ticket 18 is the documentation pass. Every command's help carries its description, its
+options, at least one example, and an Agent usage section stating the `--json` data shape
+and the remediation flows; the sections live in `internal/cli/agentusage.go`, so `--help`
+and the generated reference render the same text, and a test fails when a command has no
+entry. `cmd/igdev-docs` renders `docs/reference/` — one page per command, an index, and
+the field table for `agent context --json` — from those definitions; `internal/docsgen`'s
+drift test and the `igdev-ci` step both fail when the committed reference is not what the
+definitions render, so CLI behaviour and docs cannot drift. The root `README.md` became
+install + lifecycle + agent-workflow narrative with no hand-maintained command tables,
+and `README.zh-CN.md` shrank to an onboarding guide that carries none either (the public
+reference is English-only by decision). The legacy `devctl` documentation stays in the
+README's appendix until ticket 19 retires the bash tree; `docs/TROUBLESHOOTING.md` and
+`docs/ARCHITECTURE.md` point at the generated reference from their heads. Deferred: a
+rendered docs site (v0.1 publishes Markdown), and any command-table content in the zh-CN
+guide.
