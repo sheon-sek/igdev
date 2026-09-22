@@ -1,10 +1,13 @@
 project:   initialized
 root:      <ROOT>/repo
 contract:  <ROOT>/repo/igdev.toml (schema 1)
+digest:    sha256:3d567280e5e4165cf2effc952fcb60417d4384b3500f93ce373b8a35c093f94c
+schema:    supported
 setup:     missing (<ROOT>/repo/.igdev/setup.json)
+stamp:     required
 config:
+  ignition.version          8.3.8                                                         [default]
   output.format             text                                                          [default]
-  project.ignition_version  8.3.8                                                         [default]
   updater.cache_ttl_hours   24                                                            [default]
   updater.enabled           true                                                          [default]
   updater.releases_api_url  https://api.github.com/repos/sheon-sek/igdev/releases/latest  [default]

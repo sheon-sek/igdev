@@ -1,0 +1,17 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED",
+  "message": "project contract <ROOT>/repo/igdev.toml declares schema 2; this igdev speaks schema 1 and will not read the file partially",
+  "remediation": [
+    {
+      "command": "igdev init",
+      "why": "rewrite igdev.toml at the supported schema layout (the diff shows what changes)"
+    },
+    {
+      "command": "curl -fsSL https://github.com/sheon-sek/igdev/releases/latest/download/install.sh | bash",
+      "why": "or install a newer igdev that speaks this contract schema"
+    }
+  ],
+  "data": {}
+}

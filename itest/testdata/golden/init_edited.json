@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "contract": {
+      "path": "<ROOT>/repo/igdev.toml",
+      "action": "updated",
+      "digest": "sha256:510b429ce70766a77d313865ce58f17aeee03fc78938157b77ee340571e614af",
+      "diff": "--- a/igdev.toml\n+++ b/igdev.toml\n@@ -7,17 +7,20 @@\n schema = 1\n \n [ignition]\n-version = \"8.3.8\"\n+version = \"8.1.21\"\n jython_version = \"2.7.4\"\n edition = \"standard\"\n \n [modules]\n-enabled = []\n+enabled = [\"com.inductiveautomation.perspective\", \"com.inductiveautomation.opcua\"]\n \n [scan]\n jython = [\"src/main/python\"]\n capabilities = [\"src/main/python\"]\n \n+[commands]\n+check = \"./gradlew check\"\n+\n [gateway]\n memory_mb = 2048\n timezone = \"UTC\"\n"
+    },
+    "gitignore": {
+      "path": "<ROOT>/repo/.gitignore",
+      "action": "unchanged",
+      "diff": ""
+    }
+  }
+}

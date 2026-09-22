@@ -91,13 +91,16 @@ type StatusData struct {
 	ProjectRoot string `json:"project_root"`
 	WorkingDir  string `json:"working_dir"`
 	Contract    struct {
-		Path          string `json:"path"`
-		Present       bool   `json:"present"`
-		SchemaVersion int    `json:"schema_version"`
+		Path            string `json:"path"`
+		Present         bool   `json:"present"`
+		SchemaVersion   int    `json:"schema_version"`
+		SchemaSupported bool   `json:"schema_supported"`
+		Digest          string `json:"digest"`
 	} `json:"contract"`
 	Setup struct {
-		Present bool   `json:"present"`
-		Path    string `json:"path"`
+		Present    bool   `json:"present"`
+		Path       string `json:"path"`
+		StampState string `json:"stamp_state"`
 	} `json:"setup"`
 	Config struct {
 		TierFiles map[string]string `json:"tier_files"`

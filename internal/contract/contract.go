@@ -50,6 +50,23 @@ const (
 	CodeConfigInvalid Code = "IGDEV_E_CONFIG_INVALID"
 	// CodeInternal covers an unexpected failure with no more specific code.
 	CodeInternal Code = "IGDEV_E_INTERNAL"
+	// CodeNotInitialized covers a project command run where no Project
+	// Contract was found: there is no repository to act on yet.
+	CodeNotInitialized Code = "IGDEV_E_NOT_INITIALIZED"
+	// CodeSetupRequired covers a Project Contract that exists while the
+	// Checkout Setup does not: the checkout has not been materialized.
+	CodeSetupRequired Code = "IGDEV_E_SETUP_REQUIRED"
+	// CodeSetupStale covers a Checkout Setup that no longer matches its
+	// Project Contract (Contract Digest, schema, or CLI Contract Version).
+	// Re-materializing the checkout is `igdev setup`; ticket 09 owns it.
+	CodeSetupStale Code = "IGDEV_E_SETUP_STALE"
+	// CodeContractSchemaUnsupported covers a Project Contract declaring a
+	// schema version this binary does not speak. It fails closed: the file is
+	// never partially parsed and never auto-downgraded.
+	CodeContractSchemaUnsupported Code = "IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED"
+	// CodeVersionUnsupported covers a Project Contract requiring a newer igdev
+	// than the one running: `[tool].min_version` is above this binary.
+	CodeVersionUnsupported Code = "IGDEV_E_VERSION_UNSUPPORTED"
 )
 
 // Remediation is a machine-readable next step: the exact command that clears

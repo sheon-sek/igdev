@@ -11,24 +11,27 @@
     "contract": {
       "path": "",
       "present": false,
-      "schema_version": 0
+      "schema_version": 0,
+      "schema_supported": false,
+      "digest": ""
     },
     "setup": {
       "present": false,
-      "path": ".igdev/setup.json"
+      "path": ".igdev/setup.json",
+      "stamp_state": "required"
     },
     "config": {
       "tier_files": {},
       "resolved": [
         {
+          "key": "ignition.version",
+          "value": "8.3.8",
+          "source": "default"
+        },
+        {
           "key": "output.format",
           "value": "json",
           "source": "flag"
-        },
-        {
-          "key": "project.ignition_version",
-          "value": "8.3.8",
-          "source": "default"
         },
         {
           "key": "updater.cache_ttl_hours",

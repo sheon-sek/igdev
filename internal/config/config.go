@@ -71,8 +71,8 @@ var Schema = []Key{
 		Desc:  "Output dialect: text for humans, json for agents (set by --json).",
 	},
 	{
-		Path: "project.ignition_version", Env: "IGDEV_PROJECT_IGNITION_VERSION", Kind: KindString, Default: IgnitionTarget,
-		Desc: "Ignition version this checkout targets; selects the Core Catalog.",
+		Path: "ignition.version", Env: "IGDEV_IGNITION_VERSION", Kind: KindString, Default: IgnitionTarget,
+		Desc: "Ignition version this checkout targets; selects the Core Catalog (Project Contract: [ignition].version).",
 	},
 	{
 		Path: "updater.enabled", Env: "IGDEV_UPDATER_ENABLED", Kind: KindBool, Default: true,

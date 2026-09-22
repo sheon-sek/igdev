@@ -1,0 +1,17 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_VERSION_UNSUPPORTED",
+  "message": "this project requires igdev >= 99.0.0; this binary is 0.1.0",
+  "remediation": [
+    {
+      "command": "curl -fsSL https://github.com/sheon-sek/igdev/releases/latest/download/install.sh | bash",
+      "why": "install a newer igdev"
+    },
+    {
+      "command": "igdev version",
+      "why": "report the CLI version this checkout is running"
+    }
+  ],
+  "data": {}
+}

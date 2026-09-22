@@ -1,0 +1,47 @@
+init writes the Project Contract: the tracked declaration of how this repository
+uses igdev. It is the only command that mutates tracked files, and every write prints
+a unified diff — on stderr for humans, inside data for agents — so contract changes
+stay reviewable.
+
+The first run in a repository writes igdev.toml with the schema v1 defaults:
+Ignition 8.3.8, Jython 2.7.4, edition standard, 2048 MiB of Gateway heap, timezone UTC,
+sample scan paths. It also adds the managed .igdev/ entry to .gitignore. A later run
+is an edit: a flag overrides the value it names, everything else the contract already
+holds is preserved, and a run that changes nothing writes nothing and prints nothing.
+Pass an empty value (--modules "" or --command-check "") to clear a field.
+
+Without --json, init never prompts: an agent's fully specified invocation is the whole
+interface. The init Wizard arrives in ticket 10.
+
+init and setup are the Gate's repair paths: they run whatever the contract says, so a
+hand-edited or future-schema contract can always be rewritten. Every other project
+command passes the Gate first and refuses to run on a missing or stale Checkout Setup.
+
+Usage:
+  igdev init [flags]
+
+Examples:
+  igdev init
+  igdev init --ignition-version 8.1.21 --modules com.inductiveautomation.perspective
+  igdev init --command-check "./gradlew check" --command-test "./gradlew test"
+  igdev init --json
+
+Flags:
+      --command-build string        command igdev build runs for this project
+      --command-check string        command igdev check runs for this project
+      --command-smoke string        command igdev smoke runs after a Gateway starts
+      --command-test string         command igdev test runs for this project
+      --edition string              Ignition module edition (default standard)
+      --gateway-memory-mb int       Gateway heap in MiB (default 2048)
+      --gateway-timezone string     Gateway timezone, e.g. UTC (default UTC)
+      --ignition-version string     Ignition version this checkout targets, e.g. 8.3.8 (default 8.3.8)
+      --jython-version string       Jython version the compatibility checker targets (default 2.7.4)
+      --modules strings             module ids to enable, comma-separated or repeated (default: none)
+      --name string                 repository name recorded as [project].name
+      --scan-capabilities strings   directories scanned for capability usage, comma-separated (default src/main/python)
+      --scan-jython strings         directories scanned for Jython sources, comma-separated (default src/main/python)
+      --tool-min-version string     oldest igdev version this project accepts, recorded as [tool].min_version
+
+Global Flags:
+      --config stringArray   override one config key for this run, key=value (highest precedence)
+      --json                 emit the JSON envelope on stdout (machine mode)

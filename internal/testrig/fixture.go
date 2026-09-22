@@ -9,6 +9,10 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/sheon-sek/igdev/internal/contract"
+	"github.com/sheon-sek/igdev/internal/gate"
+	"github.com/sheon-sek/igdev/internal/project"
 )
 
 // MinimalContract is the smallest valid Project Contract a fixture can carry.
@@ -84,6 +88,29 @@ func (e *Env) SetupRecord(projectDir, content string) string {
 		e.T.Fatalf("write setup record: %v", err)
 	}
 	return path
+}
+
+// SetupStamp writes a Checkout Setup record whose Setup Stamp matches the
+// Project Contract at contractPath, and returns the record's path. It stands in
+// for `igdev setup`, which owns the real writer in ticket 09; ticket 08 needs the
+// shape to exercise the Gate against a current checkout.
+func (e *Env) SetupStamp(projectDir, contractPath string) string {
+	e.T.Helper()
+	raw, err := os.ReadFile(contractPath)
+	if err != nil {
+		e.T.Fatalf("read contract for its digest: %v", err)
+	}
+	stamp := gate.Stamp{
+		Schema:         gate.StampSchema,
+		ContractDigest: project.Digest(raw),
+		ContractSchema: project.DeclaredSchema(raw),
+		CLIContract:    contract.Version,
+	}
+	encoded, err := stamp.Encode()
+	if err != nil {
+		e.T.Fatalf("encode setup stamp: %v", err)
+	}
+	return e.SetupRecord(projectDir, string(encoded))
 }
 
 // LocalConfig writes the checkout-local config tier, .igdev/local.toml.

@@ -11,7 +11,7 @@ import (
 // Precedence is a pure function, so the tiers that the golden suite can only
 // show one at a time are pinned exhaustively here.
 func TestResolvePrecedence(t *testing.T) {
-	const key = "project.ignition_version"
+	const key = "ignition.version"
 	cases := []struct {
 		name       string
 		in         Input
@@ -26,15 +26,15 @@ func TestResolvePrecedence(t *testing.T) {
 		},
 		{
 			name:       "contract is the lowest file tier",
-			in:         Input{ContractTOML: []byte("[project]\nignition_version = \"8.1.21\"\n"), ContractPath: "/p/igdev.toml"},
+			in:         Input{ContractTOML: []byte("[ignition]\nversion = \"8.1.21\"\n"), ContractPath: "/p/igdev.toml"},
 			wantValue:  "8.1.21",
 			wantSource: SourceContract,
 		},
 		{
 			name: "local config outranks the contract",
 			in: Input{
-				ContractTOML: []byte("[project]\nignition_version = \"8.1.21\"\n"), ContractPath: "/p/igdev.toml",
-				LocalTOML: []byte("project.ignition_version = \"8.2.0\"\n"), LocalPath: "/p/.igdev/local.toml",
+				ContractTOML: []byte("[ignition]\nversion = \"8.1.21\"\n"), ContractPath: "/p/igdev.toml",
+				LocalTOML: []byte("ignition.version = \"8.2.0\"\n"), LocalPath: "/p/.igdev/local.toml",
 			},
 			wantValue:  "8.2.0",
 			wantSource: SourceLocal,
@@ -42,9 +42,9 @@ func TestResolvePrecedence(t *testing.T) {
 		{
 			name: "environment outranks local config",
 			in: Input{
-				ContractTOML: []byte("[project]\nignition_version = \"8.1.21\"\n"), ContractPath: "/p/igdev.toml",
-				LocalTOML: []byte("project.ignition_version = \"8.2.0\"\n"), LocalPath: "/p/.igdev/local.toml",
-				Environ: []string{"IGDEV_PROJECT_IGNITION_VERSION=8.3.2"},
+				ContractTOML: []byte("[ignition]\nversion = \"8.1.21\"\n"), ContractPath: "/p/igdev.toml",
+				LocalTOML: []byte("ignition.version = \"8.2.0\"\n"), LocalPath: "/p/.igdev/local.toml",
+				Environ: []string{"IGDEV_IGNITION_VERSION=8.3.2"},
 			},
 			wantValue:  "8.3.2",
 			wantSource: SourceEnv,
@@ -53,14 +53,14 @@ func TestResolvePrecedence(t *testing.T) {
 			name: "flag outranks the environment",
 			in: Input{
 				Flags:   map[string]string{key: "9.9.9"},
-				Environ: []string{"IGDEV_PROJECT_IGNITION_VERSION=8.3.2"},
+				Environ: []string{"IGDEV_IGNITION_VERSION=8.3.2"},
 			},
 			wantValue:  "9.9.9",
 			wantSource: SourceFlag,
 		},
 		{
 			name:       "flat dotted keys work as well as tables",
-			in:         Input{ContractTOML: []byte("project.ignition_version = \"8.1.26\"\n"), ContractPath: "/p/igdev.toml"},
+			in:         Input{ContractTOML: []byte("ignition.version = \"8.1.26\"\n"), ContractPath: "/p/igdev.toml"},
 			wantValue:  "8.1.26",
 			wantSource: SourceContract,
 		},
@@ -182,13 +182,13 @@ func TestParseEnvValues(t *testing.T) {
 // the empty string, which is how a caller clears a contract-declared version.
 func TestFlagTierEmptyValueIsDeliberate(t *testing.T) {
 	res, err := Resolve(Input{
-		Flags:        map[string]string{"project.ignition_version": ""},
-		ContractTOML: []byte("[project]\nignition_version = \"8.1.21\"\n"), ContractPath: "/p/igdev.toml",
+		Flags:        map[string]string{"ignition.version": ""},
+		ContractTOML: []byte("[ignition]\nversion = \"8.1.21\"\n"), ContractPath: "/p/igdev.toml",
 	})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	got := res.Get("project.ignition_version")
+	got := res.Get("ignition.version")
 	if got.Source != SourceFlag || got.Value != "" {
 		t.Errorf("resolved %q from %s, want the empty value from the flag tier", got.Value, got.Source)
 	}
@@ -201,7 +201,7 @@ func TestResolveIgnoresUnknownFileKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if res.String("project.ignition_version") != IgnitionTarget {
+	if res.String("ignition.version") != IgnitionTarget {
 		t.Errorf("unknown contract sections changed a resolved default")
 	}
 }

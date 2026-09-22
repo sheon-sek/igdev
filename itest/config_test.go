@@ -14,15 +14,17 @@ import (
 // key, so the rule is observable rather than merely documented.
 func TestConfigPrecedenceTiers(t *testing.T) {
 	env := testrig.NewEnv(t)
-	const key = "project.ignition_version"
+	const key = "ignition.version"
 
 	root := env.Project("repo", `schema = 1
 
 [project]
 name = "precedence"
-ignition_version = "8.1.21"
+
+[ignition]
+version = "8.1.21"
 `)
-	env.LocalConfig("repo", "project.ignition_version = \"8.2.0\"\n")
+	env.LocalConfig("repo", "ignition.version = \"8.2.0\"\n")
 	envTier := testrig.EnvFor(key) + "=8.3.2"
 	flagTier := "--config=" + key + "=9.9.9"
 
@@ -175,12 +177,12 @@ func TestConfigFileTierSelectsDialect(t *testing.T) {
 // The Project Contract may also carry the key; the local tier still outranks it.
 func TestConfigContractAndLocalCoexist(t *testing.T) {
 	env := testrig.NewEnv(t)
-	root := env.Project("repo", "schema = 1\n\n[project]\nignition_version = \"8.1.21\"\n")
-	env.LocalConfig("repo", "[project]\nignition_version = \"8.2.0\"\n")
+	root := env.Project("repo", "schema = 1\n\n[ignition]\nversion = \"8.1.21\"\n")
+	env.LocalConfig("repo", "[ignition]\nversion = \"8.2.0\"\n")
 
 	res := env.RunIn(root, "status", "--json")
 	testrig.WantExit(t, res, contract.ExitOK)
-	wantSource(t, res, "project.ignition_version", "8.2.0", "local")
+	wantSource(t, res, "ignition.version", "8.2.0", "local")
 
 	data := testrig.Status(t, res.Stdout)
 	if _, ok := data.Config.TierFiles["contract"]; !ok {

@@ -1,0 +1,13 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_SETUP_REQUIRED",
+  "message": "no Checkout Setup for this project root: <ROOT>/repo/.igdev/setup.json does not exist",
+  "remediation": [
+    {
+      "command": "igdev setup",
+      "why": "materialize this checkout from the Project Contract"
+    }
+  ],
+  "data": {}
+}

@@ -24,9 +24,9 @@ const (
 	CurrentSchema = LatestSchema
 )
 
-// Contract is what discovery knows about a Project Contract file. Schema
-// validation is a later Gate stage; discovery only reports the declared
-// schema version and the raw bytes.
+// Contract is what discovery knows about a Project Contract file: where it is,
+// that it is there, and the schema version it declares. Validating that schema
+// and the file's contents is the Gate's job (internal/gate).
 type Contract struct {
 	Path          string `json:"path"`
 	Present       bool   `json:"present"`
@@ -42,11 +42,16 @@ type Found struct {
 	// Searched lists each directory visited, nearest first (diagnostics).
 	Searched []string
 	Contract Contract
-	// Setup reports whether a Checkout Setup record exists. Ticket 01 checks
-	// existence only; the Setup Stamp is validated by ticket 02.
+	// Setup reports whether a Checkout Setup record exists. The Gate compares
+	// the record's Setup Stamp against the contract; discovery only reads it.
 	Setup bool
 	// SetupPath is the expected path of the Checkout Setup record.
 	SetupPath string
+	// SetupRaw is the record's bytes, nil when it is absent or unreadable.
+	SetupRaw []byte
+	// SetupReadError names why an existing record could not be read; empty
+	// otherwise. The Gate reports it as a stale Setup, not as a crash.
+	SetupReadError string
 	// LocalConfigPath and LocalConfigTOML are the checkout-local tier; the path
 	// is empty when the file does not exist.
 	LocalConfigPath string
@@ -84,11 +89,19 @@ func Discover(dir string) (Found, error) {
 					fmt.Sprintf("project contract %s cannot be read: %v", candidate, readErr)).WithCause(readErr)
 			}
 			found.Root = current
-			found.Contract = Contract{Path: candidate, Present: true, SchemaVersion: declaredSchema(candidate, raw)}
+			found.Contract = Contract{Path: candidate, Present: true, SchemaVersion: DeclaredSchema(raw)}
 			found.ContractTOML = raw
 			found.SetupPath = filepath.Join(current, StateDir, SetupRecord)
 			if _, statErr := os.Stat(found.SetupPath); statErr == nil {
 				found.Setup = true
+				// A record that cannot be read is a stale Setup the caller can
+				// repair with `igdev setup`, not a reason to refuse to report
+				// where the project is.
+				if raw, readErr := os.ReadFile(found.SetupPath); readErr == nil {
+					found.SetupRaw = raw
+				} else {
+					found.SetupReadError = readErr.Error()
+				}
 			}
 			local := filepath.Join(current, StateDir, LocalConfig)
 			localRaw, localErr := os.ReadFile(local)
@@ -124,10 +137,10 @@ func Discover(dir string) (Found, error) {
 	}
 }
 
-// declaredSchema reads the top-level `schema` key leniently. A file that does
-// not parse reports 0 and fails later in the config resolver, which owns the
-// error contract for malformed tiers.
-func declaredSchema(path string, raw []byte) int {
+// DeclaredSchema reads the top-level `schema` key leniently. A file that does
+// not parse reports 0 and fails later in the Gate, which owns the error contract
+// for a contract igdev cannot read.
+func DeclaredSchema(raw []byte) int {
 	var head struct {
 		Schema *int `toml:"schema"`
 	}

@@ -1,6 +1,8 @@
 package itest
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -40,7 +42,9 @@ func TestStatusInsideProjectJSON(t *testing.T) {
 
 [project]
 name = "fixture"
-ignition_version = "8.1.21"
+
+[ignition]
+version = "8.1.21"
 `)
 	nested := env.Mkdir("repo/src/main/python")
 
@@ -68,8 +72,9 @@ ignition_version = "8.1.21"
 	}
 }
 
-// A Checkout Setup record is reported as present by existence alone in ticket
-// 01; stamp validation belongs to ticket 02.
+// A Checkout Setup record is reported by presence and by its Setup Stamp verdict.
+// A record without a stamp — the shape ticket 01 accepted on existence alone — is
+// stale, because nothing in it proves which contract it was made from.
 func TestStatusReportsSetupPresence(t *testing.T) {
 	env := testrig.NewEnv(t)
 	root := env.Project("repo", testrig.MinimalContract)
@@ -85,6 +90,56 @@ func TestStatusReportsSetupPresence(t *testing.T) {
 	if got := env.Normalize(data.Setup.Path); got != "<ROOT>/repo/.igdev/setup.json" {
 		t.Errorf("setup.path = %s, want the .igdev/setup.json path", got)
 	}
+	if data.Setup.StampState != "stale" {
+		t.Errorf("stamp_state = %q, want stale for a record carrying no Setup Stamp", data.Setup.StampState)
+	}
+}
+
+// The three stamp states are visible in status, which is the surface an agent
+// reads before deciding whether to run setup: required before any setup, current
+// when the stamp matches the contract, stale after the contract moves.
+func TestStatusReportsStampState(t *testing.T) {
+	env := testrig.NewEnv(t)
+	dir := env.Mkdir("repo")
+	testrig.WantExit(t, env.RunIn(dir, "init"), contract.ExitOK)
+
+	read := func(t *testing.T) testrig.StatusData {
+		t.Helper()
+		res := env.RunIn(dir, "status", "--json")
+		testrig.WantExit(t, res, contract.ExitOK)
+		return testrig.Status(t, res.Stdout)
+	}
+
+	before := read(t)
+	if before.Setup.StampState != "required" {
+		t.Errorf("stamp_state = %q, want required before setup", before.Setup.StampState)
+	}
+	if !before.Contract.SchemaSupported {
+		t.Error("schema_supported = false for a contract init just wrote")
+	}
+	if !strings.HasPrefix(before.Contract.Digest, "sha256:") {
+		t.Errorf("digest = %q, want the Contract Digest", before.Contract.Digest)
+	}
+
+	env.SetupStamp("repo", env.Path("repo", "igdev.toml"))
+	if got := read(t).Setup.StampState; got != "current" {
+		t.Errorf("stamp_state = %q, want current after a matching stamp", got)
+	}
+
+	// A hand-edit, exactly as a reviewer would make it.
+	env.Write("repo/igdev.toml", string(beforeContract(t, env, dir))+"\n[commands]\ncheck = \"./check.sh\"\n")
+	if got := read(t).Setup.StampState; got != "stale" {
+		t.Errorf("stamp_state = %q, want stale after the contract was hand-edited", got)
+	}
+}
+
+func beforeContract(t *testing.T, env *testrig.Env, dir string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, "igdev.toml"))
+	if err != nil {
+		t.Fatalf("read contract: %v", err)
+	}
+	return raw
 }
 
 // A contract with no declared schema version reports 0 rather than guessing.

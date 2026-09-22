@@ -16,6 +16,7 @@ import (
 
 	"github.com/sheon-sek/igdev/internal/config"
 	"github.com/sheon-sek/igdev/internal/contract"
+	"github.com/sheon-sek/igdev/internal/gate"
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/updater"
 	"github.com/sheon-sek/igdev/internal/xdg"
@@ -87,14 +88,24 @@ func classify(cmd *cobra.Command, err error) *contract.Fault {
 	return contract.NewFault(contract.CodeInternal, contract.ExitFailure, path+": "+message).WithCause(err)
 }
 
-// gate is the discovery stage of the Gate plus config resolution. Ticket 01
-// stops here: contract schema validation and Setup Stamp checks arrive in
-// ticket 02.
+// gate is the discovery stage of the Gate plus config resolution. Contract
+// schema and Setup Stamp validation live in internal/gate, which this command
+// tree feeds through gateInput; `igdev status` reports that verdict, and every
+// command that does project work refuses to run on a fault from gate.Require.
 func (a *App) gate() (project.Found, *config.Resolution, error) {
 	found, err := project.Discover(a.Dir)
 	if err != nil {
 		return found, nil, err
 	}
+	res, err := config.Resolve(a.configInput(found))
+	if err != nil {
+		return found, nil, err
+	}
+	return found, res, nil
+}
+
+// configInput collects the raw tiers of one resolution.
+func (a *App) configInput(found project.Found) config.Input {
 	in := config.Input{Flags: a.flagTier(), Environ: a.Environ}
 	if found.InProject() {
 		in.ContractTOML = found.ContractTOML
@@ -102,11 +113,38 @@ func (a *App) gate() (project.Found, *config.Resolution, error) {
 		in.LocalTOML = found.LocalConfigTOML
 		in.LocalPath = found.LocalConfigPath
 	}
+	return in
+}
+
+// resolvedForInit resolves the config tiers for `igdev init`. init is the repair
+// path for a Project Contract igdev cannot read, so a contract tier that fails
+// to parse is dropped for this resolution and rewritten by the command itself; a
+// broken checkout-local tier still fails, because init does not own that file.
+func (a *App) resolvedForInit(found project.Found) (*config.Resolution, error) {
+	in := a.configInput(found)
 	res, err := config.Resolve(in)
-	if err != nil {
-		return found, nil, err
+	if err == nil || len(in.ContractTOML) == 0 {
+		return res, err
 	}
-	return found, res, nil
+	in.ContractTOML, in.ContractPath = nil, ""
+	return config.Resolve(in)
+}
+
+// gateInput assembles the Gate's input from what discovery already read, so a
+// command pays for reading the contract and the Checkout Setup record once.
+func (a *App) gateInput(found project.Found) gate.Input {
+	return gate.Input{
+		InProject:      found.InProject(),
+		StartDir:       found.StartDir,
+		ContractPath:   found.Contract.Path,
+		ContractRaw:    found.ContractTOML,
+		SetupPresent:   found.Setup,
+		SetupPath:      found.SetupPath,
+		SetupRaw:       found.SetupRaw,
+		SetupReadError: found.SetupReadError,
+		CLIVersion:     Version(),
+		CLIContract:    contract.Version,
+	}
 }
 
 // flagTier converts the reserved flags into flag-tier config values.

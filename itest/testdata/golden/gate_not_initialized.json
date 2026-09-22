@@ -1,0 +1,13 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_NOT_INITIALIZED",
+  "message": "no Project Contract (igdev.toml) at or above <ROOT>/plain",
+  "remediation": [
+    {
+      "command": "igdev init",
+      "why": "write the Project Contract for this repository"
+    }
+  ],
+  "data": {}
+}

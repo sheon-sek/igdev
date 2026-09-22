@@ -11,11 +11,14 @@
     "contract": {
       "path": "<ROOT>/repo/igdev.toml",
       "present": true,
-      "schema_version": 1
+      "schema_version": 1,
+      "schema_supported": true,
+      "digest": "sha256:458a3729c8b187819574f016a30fbc73665845a341b9f709c36c1e8186c88e4c"
     },
     "setup": {
       "present": false,
-      "path": "<ROOT>/repo/.igdev/setup.json"
+      "path": "<ROOT>/repo/.igdev/setup.json",
+      "stamp_state": "required"
     },
     "config": {
       "tier_files": {
@@ -24,13 +27,13 @@
       },
       "resolved": [
         {
-          "key": "output.format",
-          "value": "json",
+          "key": "ignition.version",
+          "value": "9.9.9",
           "source": "flag"
         },
         {
-          "key": "project.ignition_version",
-          "value": "9.9.9",
+          "key": "output.format",
+          "value": "json",
           "source": "flag"
         },
         {

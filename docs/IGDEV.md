@@ -10,6 +10,9 @@ Go CLI is built here under `cmd/` and `internal/`. Vocabulary lives in
 
 Ticket 01 (issue #7) delivered the walking skeleton: install → `igdev status --json`,
 with the agent contract frozen by golden tests and the release path in CI.
+Ticket 02 (issue #8) delivered the Project Contract: `igdev init` writes and edits
+`igdev.toml`, every write prints a unified diff, and the Gate validates the contract
+schema and the Checkout Setup's Setup Stamp before any project command does work.
 
 ## Install
 
@@ -62,10 +65,12 @@ and `packaging/install.sh` for real against a loopback file server.
 | Path | What lives there |
 | --- | --- |
 | `cmd/igdev` | main; three lines that call `cli.Execute` |
-| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping |
+| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping, `init` |
 | `internal/contract` | frozen envelope, `IGDEV_E_*` codes, exit levels, CLI Contract Version |
 | `internal/config` | five-tier resolver (flags > `IGDEV_*` > `.igdev/local.toml` > `igdev.toml` > defaults) |
-| `internal/project` | Project Root discovery (`igdev.toml` search, setup presence) |
+| `internal/project` | Project Root discovery, the `igdev.toml` schema v1 model: parse, validate, render, Contract Digest |
+| `internal/gate` | the Gate: contract schema, Setup Stamp, `[tool].min_version` — `Evaluate` / `Require` |
+| `internal/textdiff` | the unified diff every tracked write prints |
 | `internal/updater` | notice-only update check with a 24 h XDG cache |
 | `internal/semver` | version ordering used by the notice |
 | `internal/xdg` | `~/.cache/igdev`, `~/.config/igdev`, `~/.local/state/igdev` |
@@ -93,12 +98,15 @@ errors on stderr.
 ```
 
 Exit levels: `0` success, `1` command failure (the `code` says how), `2` usage
-error, `3` human action required. Codes are namespaced `IGDEV_E_*`; ticket 01
-emits `IGDEV_E_USAGE`, `IGDEV_E_MISSING_ARGUMENT`, `IGDEV_E_CONFIG_INVALID`, and
-`IGDEV_E_INTERNAL`. A typo in a `--config` flag is a usage error (the invocation
-was wrong); a value igdev read from a tier is `IGDEV_E_CONFIG_INVALID` (machine or
-project state is wrong). `contract` is the CLI Contract Version and bumps only when
-the envelope, codes, or exit levels break — never alongside release semver.
+error, `3` human action required. Codes are namespaced `IGDEV_E_*`; `igdev` emits
+`IGDEV_E_USAGE`, `IGDEV_E_MISSING_ARGUMENT`, `IGDEV_E_CONFIG_INVALID`,
+`IGDEV_E_INTERNAL` (ticket 01) and, from the Gate (ticket 02),
+`IGDEV_E_NOT_INITIALIZED`, `IGDEV_E_SETUP_REQUIRED`, `IGDEV_E_SETUP_STALE`,
+`IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED`, `IGDEV_E_VERSION_UNSUPPORTED`. A typo in a
+`--config` flag is a usage error (the invocation was wrong); a value igdev read from
+a tier is `IGDEV_E_CONFIG_INVALID` (machine or project state is wrong). `contract` is
+the CLI Contract Version and bumps only when the envelope, codes, or exit levels
+break — never alongside release semver.
 
 `igdev help`, `igdev <command> --help`, and a bare `igdev` are documentation, and in
 machine mode they are envelopes too: the rendered reference arrives in `data.help`
@@ -114,9 +122,41 @@ for `output.format` alone (`config.DialectIsJSON`), skipping any tier that canno
 state it.
 
 `igdev status` is the safe first call. Outside a Project Root it reports
-`ok: true` with `initialized: false`; inside one it reports the discovered root,
-the contract's declared schema version, whether a Checkout Setup record exists, and
-every config key with the tier that won. Setup *stamp* validation is ticket 02.
+`ok: true` with `initialized: false`; inside one it reports the discovered root, the
+contract's declared schema version, whether this CLI supports that schema
+(`contract.schema_supported`), the Contract Digest, and the Checkout Setup's
+`setup.stamp_state` (`required` / `current` / `stale`) — plus every config key with
+the tier that won. status reports the Gate's verdict, it never enforces it.
+
+## The Project Contract and the Gate
+
+`igdev init` is the only writer of tracked files. It writes `igdev.toml` and the
+managed `.igdev/` entry in `.gitignore` atomically (temp file plus rename in the
+target directory, never a `.bak`), and prints a unified diff of every change — on
+stderr for humans, inside `data.contract.diff` / `data.gitignore.diff` for agents,
+each with its `action` (`created` / `updated` / `unchanged`) and, for the contract,
+the new `digest`. A run that changes nothing writes nothing and prints nothing.
+
+The schema v1 layout is closed and version-checked: `schema = 1`, then `[project]
+name`, `[tool] min_version`, `[ignition] version|jython_version|edition`,
+`[modules] enabled`, `[scan] jython|capabilities`, `[commands] check|test|build|smoke`
+(omitted when empty), `[gateway] memory_mb|timezone`. A key igdev does not know is
+refused, and a version-like field holds a version. Fields the file leaves out fall
+back to the embedded defaults, so a minimal `schema = 1` contract is valid. `init`
+merges: a flag overrides the value it names and everything else the file holds is
+preserved; an empty value (`--modules ""`) clears a field.
+
+The Contract Digest is `sha256:` over the contract bytes. `.igdev/setup.json` holds
+the Setup Stamp — the digest, the contract schema version, the CLI Contract Version —
+and the Gate compares it before any project command does work: no record is
+`IGDEV_E_SETUP_REQUIRED`, a moved digest or stamp field is `IGDEV_E_SETUP_STALE`
+(both remediate with `igdev setup`, which materializes the checkout in ticket 09),
+a schema above v1 is `IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED` (never partially parsed,
+never auto-downgraded), and a contract requiring a newer igdev than the running one
+is `IGDEV_E_VERSION_UNSUPPORTED`. `init` and `setup` are the repair paths and run
+whatever the contract says, so re-running `init` always brings a hand-edited,
+malformed, or future-schema contract back into a shape igdev speaks — with the diff
+as the review of what that cost.
 
 ## Update notice
 
@@ -148,9 +188,10 @@ still a leak, while `run --rm` is not one). Measured here on an i7-13700KF: P95 
 S1 is the compiled binary's process boundary. Behaviour tests live in `itest/` and
 run the real `igdev` through `internal/testrig`; they never import `internal/cli`
 and call it in-process. The only in-process unit tests are for pure functions
-(`internal/config`, `internal/contract`, `internal/semver`). Do not add a new seam:
-if a behaviour cannot be observed from argv, exit level, stdout, stderr, the
-filesystem, or the shim's call log, it is not yet a testable requirement.
+(`internal/config`, `internal/contract`, `internal/project`, `internal/gate`,
+`internal/semver`, `internal/textdiff`). Do not add a new seam: if a behaviour cannot
+be observed from argv, exit level, stdout, stderr, the filesystem, or the shim's call
+log, it is not yet a testable requirement.
 
 ### Rig entry points
 
@@ -159,6 +200,7 @@ env := testrig.NewEnv(t)              // scratch root: HOME, TMPDIR, shim PATH; 
 root := env.Project("repo", contract) // writes repo/igdev.toml, returns the absolute dir
 env.LocalConfig(root, "…")            // .igdev/local.toml tier
 env.SetupRecord(root, "…")            // .igdev/setup.json record
+env.SetupStamp("repo", contractPath)  // a Setup Stamp current for that contract (ticket 09 owns the real writer)
 env.ShimDocker()                      // PATH shim; returns nothing, records to state/docker-calls.jsonl
 res := env.RunIn(root, "status", "--json")
 res := env.Run(testrig.Run{Args: …, Dir: …, Env: []string{"K=V"}, SampleRSS: true, Stdin: "…"})
@@ -219,6 +261,11 @@ finish with `a.emit(res, data, humanPrinter)` so dialect selection, envelope
 rendering, and the update notice stay in one place. Exit levels come only from the
 fault: never call `os.Exit` and never write to stdout from a helper.
 
+A command that reads or mutates project state calls `gate.Require(a.gateInput(found))`
+first and returns the fault unchanged; `init` and `setup` are the repair paths and do
+not. Ticket 08 exercises `Require` in `internal/gate` and freezes its refusal
+envelopes in `itest/gate_test.go`; ticket 09 wires the first consumer.
+
 ### Adding a config key
 
 Add a `config.Key` to `config.Schema` with its path, `IGDEV_*` name, kind, default,
@@ -226,11 +273,19 @@ and description. It is immediately resolvable from every tier, reported by
 `igdev status --json`, and settable by tests through `testrig.EnvFor(path)`.
 `internal/testrig` maps the same schema, so nothing has to be kept in sync by hand.
 
-## Deliberate limits of ticket 01
+## Deliberate limits of tickets 01-02
 
-No `init`/`setup` (tickets 02, 03), no contract *validation* beyond reading the
-declared schema version, no Setup Stamp check, no catalogs, no gateway control, no
-prompts, no config writes, no Agent Skill. The repository is not yet dogfooding its
-own `igdev.toml`; that arrives with the conversion in ticket 13. Until then the root
+Ticket 01: the walking skeleton — install, `status`, `version`, help, completion, the
+five-tier resolver, the Gate's discovery stage, and the resource/hygiene gates.
+Ticket 02: the Project Contract (`init` reads, validates, renders, and diffs
+`igdev.toml`; the Gate checks schema and Setup Stamp).
+
+No `setup` and no Checkout Setup materialization (ticket 09), no Consent (ticket 03),
+no ports, no Capacity Gate, no Docker, no gateway control (ticket 04), no Wizard
+prompts (ticket 10), no AGENTS.md managed block, no catalogs, and no gated verb yet:
+ticket 08 exercises the Gate's enforcement through `internal/gate` and freezes its
+refusal envelopes in `itest/gate_test.go`, because the first commands that must pass
+it arrive with those later tickets. The repository is not yet dogfooding its own
+`igdev.toml`; that arrives with the conversion in ticket 13. Until then the root
 `README.md` documents the legacy `devctl` foundation and `AGENTS.md` its command
 contract; this file is the igdev reference.

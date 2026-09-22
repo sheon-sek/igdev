@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "contract": {
+      "path": "<ROOT>/repo/igdev.toml",
+      "action": "created",
+      "digest": "sha256:a32217ae0353d26ea41813462a40a4811c8136a42ef0947c14b370c8214c719c",
+      "diff": "--- /dev/null\n+++ b/igdev.toml\n@@ -0,0 +1,23 @@\n+# igdev Project Contract (schema 1).\n+#\n+# Written by `igdev init`; every igdev write prints a unified diff, so tracked\n+# changes stay reviewable. Hand-editing this file makes the Checkout Setup stale:\n+# run `igdev setup` afterwards.\n+\n+schema = 1\n+\n+[ignition]\n+version = \"8.3.8\"\n+jython_version = \"2.7.4\"\n+edition = \"standard\"\n+\n+[modules]\n+enabled = []\n+\n+[scan]\n+jython = [\"src/main/python\"]\n+capabilities = [\"src/main/python\"]\n+\n+[gateway]\n+memory_mb = 2048\n+timezone = \"UTC\"\n"
+    },
+    "gitignore": {
+      "path": "<ROOT>/repo/.gitignore",
+      "action": "created",
+      "diff": "--- /dev/null\n+++ b/.gitignore\n@@ -0,0 +1,2 @@\n+# igdev: disposable checkout state (managed entry, do not edit)\n+.igdev/\n"
+    }
+  }
+}
