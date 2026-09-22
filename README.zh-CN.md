@@ -156,8 +156,10 @@ cd ignition-devenv-automation
 - 从 `.env.example` 生成 Git ignored 的 `.env`。
 - 下载当前配置的 Jython standalone checker。
 - 创建 `.runtime/`。
-- staging 当前 Ignition 版本对应的私有 modules。
+- 把当前 Ignition 版本对应的私有 modules staging 到生成态的 `.runtime/docker/modules/`。
 - 生成 worktree-specific Compose runtime config。
+
+`modules/private/` 是 checkout-local 的私有 module source of truth；`.runtime/` 则全部属于可删除、可重建的生成态。
 
 如果不想让命令自动记录 EULA acceptance：
 
@@ -167,6 +169,20 @@ cp .env.example .env
 ./devctl bootstrap
 ```
 
+### Private module source 与 Docker staging
+
+私有 module 在 repo 内只有一个用户需要直接管理的位置：
+
+```text
+modules/private/                 # 用户提供的 checkout-local source
+~/.cache/ignition-devenv/modules/<version>/   # 可选的全局复用 source
+        ↓ ./devctl bootstrap / gateway up
+.runtime/docker/modules/         # 自动生成、可删除的 Docker build staging
+        ↓ docker build
+/usr/local/bin/ignition/user-lib/modules/
+```
+
+`docker/ignition/` 现在只保存 Docker build definition，不再保存生成出来的 `.modl` 副本。Docker build context 虽然改为 repo root，但 `.dockerignore` 会严格限制实际送入 build 的内容，只保留 Dockerfile 与 `.runtime/docker/modules/`。
 ### 4. 添加 MCP EA module
 
 MCP `.modl` 不提交 Git：

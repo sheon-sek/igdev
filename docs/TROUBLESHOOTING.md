@@ -43,7 +43,6 @@ Using `auto` is recommended for parallel agent worktrees.
 ```bash
 ./devctl gateway down --volumes
 rm -rf .runtime
-rm -f docker/ignition/modules/*.modl
 ```
 
-Private source modules in `modules/private/` are intentionally not removed by this sequence.
+Private source modules in `modules/private/` and the version-scoped global module cache are intentionally not removed. Docker module staging is regenerated under `.runtime/docker/modules/` on the next bootstrap/build.

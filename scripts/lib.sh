@@ -3,7 +3,7 @@
 
 RUNTIME_DIR="$ROOT_DIR/.runtime"
 RUNTIME_ENV="$RUNTIME_DIR/compose.env"
-MODULE_STAGE_DIR="$ROOT_DIR/docker/ignition/modules"
+MODULE_STAGE_DIR="$RUNTIME_DIR/docker/modules"
 PRIVATE_MODULE_DIR="$ROOT_DIR/modules/private"
 RESTORE_DIR="$RUNTIME_DIR/restore"
 
@@ -121,7 +121,8 @@ module_cache_path() {
 stage_modules() {
   load_config
   mkdir -p "$MODULE_STAGE_DIR" "$PRIVATE_MODULE_DIR"
-  find "$MODULE_STAGE_DIR" -maxdepth 1 -type f -name '*.modl' -delete
+  find "$MODULE_STAGE_DIR" -maxdepth 1 -type f -delete
+  : > "$MODULE_STAGE_DIR/.stage-ready"
   local cache f count=0
   cache="$(module_cache_path)"; mkdir -p "$cache"
   shopt -s nullglob
