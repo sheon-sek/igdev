@@ -274,76 +274,57 @@ Standalone Jython checker 通过，**不代表** `system.tag.*`、`system.opc.*`
 
 ## Module 能力预检查
 
-大量 Ignition 错误应该在 **Gateway 启动之前**就被挡住。现在 native scripting 检查不再只是 namespace/prefix 推测，而是 exact function 检查：
+大量 Ignition 错误应该在**启动真实 Gateway 之前**被挡住。现在 preflight 有两份相互独立的事实来源：
 
-- [`config/native-system-functions.tsv`](config/native-system-functions.tsv) 是 `devctl` 使用的 Ignition **8.3 Gateway scope** 原生函数 source of truth。当前收录官方 8.3 System Functions 文档中的 **37 个 `system.*` namespace、392 个展开后的 exact native function**。
-- 每个函数明确分类为 `platform`、`module` 或 `conditional`；需要额外 module 时同时记录完整 module ID。
-- 扫描到的 `system.*` 如果不在 Gateway catalog 中会直接报错，**不会再静默跳过**。因此拼写错误、非 Gateway scope 函数、目标版本不匹配都会更早暴露。
-- `/data/api/v1/resources/...` 仍可从路径中的 `com.*` segment 动态识别 module ID。
-- [`config/capability-modules.tsv`](config/capability-modules.tsv) 只保留给项目自定义的非 `system.*` capability alias，避免 native dependency 出现两份 source of truth。
+- `config/native-system-functions.tsv`：Ignition **8.3 Gateway scope** 的 exact native Jython inventory，共 **37 个 `system.*` namespace / 392 个函数**；每个函数明确分类为 `platform`、`module` 或 `conditional`。
+- 版本化 REST catalog，例如 `config/rest-endpoints-8.3.8.tsv`：直接由真实 Gateway 的 `/openapi.json` 生成。当前 8.3.8 snapshot 包含 **593 个 path template / 694 个公开 HTTP operation**，并记录 Platform、module 与 private-module ownership。
 
-手动检查示例：
+未知 native function、未知 REST path、错误的 REST METHOD/path 组合都会 fail closed，不再静默跳过。
 
 ```bash
-# Platform function：函数有效，不需要额外可选 module
 ./devctl module require system.tag.readBlocking
-
-# 由 module 提供的 native functions
 ./devctl module require system.report.executeReport
 ./devctl module require system.security.validateUser
 ./devctl module require system.roster.getRosters
-
-# Conditional device API：先检查 OPC UA 基础 module；
-# 实际 device type 可能还需要具体 Driver module，单凭函数名无法静态推断
 ./devctl module require system.device.addDevice
-
-# Resource API：module ID 直接嵌在路径中
 ./devctl module require '/data/api/v1/resources/names/com.inductiveautomation.opcua/device'
-
-# 项目特殊 requirement 的显式 escape hatch
+./devctl module require 'GET /data/reporting/api/v1/reports/current'
+./devctl module require 'GET /data/api/v1/gateway-info'
 ./devctl module require module:com.inductiveautomation.reporting
 ```
 
-拼错函数名或使用非 Gateway scope 函数现在会明确失败：
+对于 native Jython，Platform function 不要求额外 optional module；module-owned function 继续检查 `GATEWAY_MODULES_ENABLED`，private/third-party module 还会检查本地 `.modl`。像 `system.device.*` 这样的 conditional function 会检查静态可确定的基础 module，并提示具体 runtime device type 仍可能需要额外 driver。
 
-```text
-[module-preflight] ERROR: unknown or non-Gateway Ignition 8.3 native function: system.tag.readBlokcing
-[module-preflight] Check the function name, Gateway scope, and target Ignition version.
-```
-
-如果所需 module 没有出现在 `GATEWAY_MODULES_ENABLED`，仍会给出直接修复命令：
-
-```text
-[module-preflight] ERROR: system.report.executeReport requires com.inductiveautomation.reporting (not enabled by GATEWAY_MODULES_ENABLED)
-[module-preflight] Fix: ./devctl module enable com.inductiveautomation.reporting
-```
-
-对于不属于 built-in Docker image catalog 的私有/可选 module，preflight 还会要求本地存在匹配的 `.modl` artifact。例如 OPC HDA (`com.inductiveautomation.opccom`)、Twilio (`com.inductiveautomation.twilio`) 与 SECS/GEM (`com.inductiveautomation.secsgem`)。Module ID 从 `.modl` 根目录的 `module.xml` 读取。
-
-检查整个 module 配置：
+对于 REST，concrete path 会匹配 OpenAPI path template。Platform endpoint 不要求额外 module；module-owned endpoint 会检查其 module ID。Catalog 同时覆盖 Resource API 与 `/data/eam/...`、`/data/opc-ua/...`、`/data/perspective/...`、`/data/reporting/...`、`/data/sfc/...`、`/data/vision/...`、`/data/event-stream/...`、`/data/fsql/...`、`/data/alarm-notification/...` 等直接 module REST root。对于 OpenAPI resource namespace 与 Docker module ID 不同的情况支持 alias，例如 `com.inductiveautomation.sip-notification -> com.inductiveautomation.phone-notification`。
 
 ```bash
 ./devctl module validate
-```
-
-扫描源码中的 native `system.*` 与 `/data/api/v1/resources/...`：
-
-```bash
 ./devctl module scan src/ignition src/fastmcp
 ```
 
-scanner 现在也能识别 `system.historian.types.dataPoint` 这种多层 native function；每一个扫描到的 native call 都先做 exact Gateway catalog validation，再做 module requirement validation。
-
-要自动接入日常检查，在 `.env` 配置：
+scanner 会识别 `system.historian.types.dataPoint` 这类 nested native API，以及所有 literal `/data/...` path。源码出现 literal `METHOD /data/...` 时会验证精确 operation；只有 path 没有 method 时，则验证该 path 已注册的 operation ownership。
 
 ```dotenv
 MODULE_REQUIREMENT_PATHS=src/ignition:src/fastmcp
 JYTHON_SOURCE_PATHS=scripts/mcp
 ```
 
-`./devctl check` 会先执行 `module validate`，再扫描 `MODULE_REQUIREMENT_PATHS` + `JYTHON_SOURCE_PATHS`，然后才进入项目检查与 Jython compilation。`./devctl self-test` 还会验证 catalog 的函数数量、37 个 namespace、重复项、classification、代表性 module mapping、nested-call scanner，以及 unknown-function rejection。
+`./devctl check` 会先完成 module/catalog validation 与 capability scan，再进入项目 check 和 Jython compilation。
 
-这仍然属于 **pre-Gateway 静态检查**：它证明目标 Ignition 8.3 Gateway native API inventory 与当前 module/artifact 配置相符，但不证明运行中的 Gateway 已成功加载 module，也无法仅从函数名判断所有 runtime 参数（例如具体 device driver）。最终 runtime verification 仍由 `./devctl gateway smoke` 和项目自己的 Gateway/OpenAPI assertions 完成。
+### 重新生成 REST catalog
+
+REST catalog 与 Ignition 版本绑定。使用目标 Gateway 的真实 OpenAPI snapshot：
+
+```bash
+python3 scripts/generate-rest-catalog.py \
+  /path/to/openapi.json \
+  --ignition-version 8.3.8 \
+  --output config/rest-endpoints-8.3.8.tsv
+```
+
+生成文件会记录原始 OpenAPI SHA-256。默认按 `config/rest-endpoints-${IGNITION_VERSION}.tsv` 选择；只有项目明确需要其他 catalog 时才设置 `REST_ENDPOINT_CATALOG`。如果目标版本没有 catalog，源码里的 REST reference 会 fail closed，而不会套用错误版本。
+
+这些仍属于 **pre-Gateway 静态验证**。真实 module loading、authentication、参数有效性和 runtime behavior 仍由 `./devctl gateway smoke` 与项目自己的 Gateway assertion 验证。
 
 ## 确定性的 `.gwbk` baseline
 
