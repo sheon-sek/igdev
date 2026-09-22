@@ -125,7 +125,34 @@ cmd_self_test() {
   if cap_modules system.tag.readBlokcing >/dev/null 2>&1; then
     die 'Unknown native functions must not pass capability lookup'
   fi
+  local rest_catalog rest_count saved_ignition_version saved_rest_catalog
+  saved_ignition_version="${IGNITION_VERSION:-}"
+  saved_rest_catalog="${REST_ENDPOINT_CATALOG:-}"
+  IGNITION_VERSION=8.3.8
+  REST_ENDPOINT_CATALOG="$ROOT_DIR/config/rest-endpoints-8.3.8.tsv"
+  rest_catalog="$(rest_catalog_file)"
+  [[ -s "$rest_catalog" ]] || die "REST endpoint catalog is missing: $rest_catalog"
+  rest_count="$(awk -F '\t' '!/^#/ && NF>=4{n++} END{print n+0}' "$rest_catalog")"
+  [[ "$rest_count" == 694 ]] || die "Ignition 8.3.8 REST catalog expected 694 operations, found $rest_count"
   [[ "$(cap_modules '/data/api/v1/resources/names/com.inductiveautomation.opcua/device')" == "com.inductiveautomation.opcua" ]] || die 'Resource API capability mapping is invalid'
+  [[ "$(cap_modules 'GET /data/reporting/api/v1/reports/current')" == "com.inductiveautomation.reporting" ]] || die 'Reporting REST ownership mapping is invalid'
+  [[ "$(cap_modules 'get /data/api/v1/gateway-info')" == "@platform" ]] || die 'Platform REST ownership mapping is invalid'
+  [[ "$(cap_modules 'PUT /data/api/v1/resources/com.inductiveautomation.sip-notification/script-settings')" == "com.inductiveautomation.phone-notification" ]] || die 'Voice Notification REST alias mapping is invalid'
+  [[ "$(cap_modules 'GET /data/perspective/api/v1/sessions/')" == "com.inductiveautomation.perspective" ]] || die 'Trailing-slash REST path mapping is invalid'
+  if cap_modules 'POST /data/api/v1/gateway-info' >/dev/null 2>&1; then die 'REST method validation accepted an invalid method'; fi
+  if cap_modules '/data/api/v1/not-a-real-endpoint' >/dev/null 2>&1; then die 'REST path validation accepted an unknown endpoint'; fi
+
+  local rest_scan_dir rest_scan_out
+  rest_scan_dir="$(mktemp -d)"; rest_scan_out="$rest_scan_dir/out"
+  printf '%s\n' 'GET /data/reporting/api/v1/reports/current' '/data/perspective/api/v1/sessions/' > "$rest_scan_dir/test.py"
+  scan_file_capabilities "$rest_scan_dir/test.py" "$rest_scan_out"
+  grep -Fxq 'GET /data/reporting/api/v1/reports/current' "$rest_scan_out" || { rm -rf "$rest_scan_dir"; die 'REST method/path scan is invalid'; }
+  grep -Fxq '/data/perspective/api/v1/sessions/' "$rest_scan_out" || { rm -rf "$rest_scan_dir"; die 'REST trailing-slash scan is invalid'; }
+  rm -rf "$rest_scan_dir"
+  log 'REST operation catalog coverage OK (694 operations)'
+
+  if [[ -n "$saved_ignition_version" ]]; then IGNITION_VERSION="$saved_ignition_version"; else unset IGNITION_VERSION; fi
+  if [[ -n "$saved_rest_catalog" ]]; then REST_ENDPOINT_CATALOG="$saved_rest_catalog"; else unset REST_ENDPOINT_CATALOG; fi
 
   local native_scan_dir native_scan_out
   native_scan_dir="$(mktemp -d)"; native_scan_out="$native_scan_dir/out"
