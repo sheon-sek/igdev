@@ -5,7 +5,7 @@ consent:     accepted [ignition-eula]
 materialized:
   dir  created   0755  <ROOT>/repo/.igdev/runtime
   dir  created   0755  <ROOT>/repo/.igdev/modules
-  dir  created   0755  <ROOT>/repo/.igdev/restore
+  dir  created   0755  <ROOT>/repo/.igdev/baseline
   file created   0644  <ROOT>/repo/.igdev/runtime/compose.yaml
   file created   0644  <ROOT>/repo/.igdev/runtime/compose.env
   file created   0644  <ROOT>/repo/.igdev/runtime/Dockerfile

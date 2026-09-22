@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sheon-sek/igdev/internal/baseline"
 	"github.com/sheon-sek/igdev/internal/capacity"
 	"github.com/sheon-sek/igdev/internal/config"
 	"github.com/sheon-sek/igdev/internal/consent"
@@ -216,6 +217,14 @@ func (a *App) gatewayContext() (*gateway, error) {
 	}
 
 	runtimeDir := filepath.Join(found.Root, project.StateDir, "runtime")
+	// A staged Baseline rides with every verb: the Compose file's command
+	// interpolates the restore arguments, and the same variable is empty when
+	// nothing is staged, so `reset` restores from the staged file and `up` after
+	// `baseline clear` restores nothing — the staged file is the state.
+	restoreArgs := ""
+	if baseline.Read(baseline.Dir(filepath.Join(found.Root, project.StateDir))).Staged {
+		restoreArgs = baseline.Args()
+	}
 	return &gateway{
 		found: found, res: res, doc: doc, stamp: stamp,
 		username: username, password: password, passwordSource: source,
@@ -224,11 +233,14 @@ func (a *App) gatewayContext() (*gateway, error) {
 			File:      filepath.Join(runtimeDir, runtimeassets.ComposeFileName),
 			EnvFile:   filepath.Join(runtimeDir, runtimeassets.EnvFileName),
 			Dir:       found.Root,
-			// The credentials reach Compose from the process environment, which is
-			// why no rendered file carries a secret.
+			// The credentials and the Baseline restore arguments reach Compose
+			// from the process environment, which is why no rendered file carries
+			// a secret and no rendered file has to be rewritten when the staged
+			// Baseline changes.
 			Env: []string{
 				"GATEWAY_ADMIN_USERNAME=" + username,
 				"GATEWAY_ADMIN_PASSWORD=" + password,
+				"GATEWAY_RESTORE_ARGS=" + restoreArgs,
 			},
 		},
 	}, nil

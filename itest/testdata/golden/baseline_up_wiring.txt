@@ -1,0 +1,3 @@
+argv:         compose --project-name igdev-<SHORT_ID> --file <ROOT>/repo/.igdev/runtime/compose.yaml --env-file <ROOT>/repo/.igdev/runtime/compose.env up --detach --build gateway
+restore args: -r /restore/restore.gwbk
+mount:        <ROOT>/repo/.igdev/baseline:/restore:ro

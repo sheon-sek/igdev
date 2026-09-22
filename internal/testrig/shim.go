@@ -54,7 +54,17 @@ if [ -n "$state" ]; then
     if [ -n "$argv" ]; then argv="$argv,"; fi
     argv="$argv\"$(escape "$arg")\""
   done
-  printf '{"n":%s,"cwd":"%s","argv":[%s]}\n' "$n" "$(escape "$PWD")" "$argv" >> "$state"
+  # The GATEWAY_* variables igdev hands the engine: the rendered Compose file
+  # interpolates them, so the call log has to carry them for a test to assert the
+  # wiring — a service command has no compose CLI flag, and a credential or a
+  # restore argument is only observable where the engine receives it.
+  vars=""
+  for name in GATEWAY_ADMIN_USERNAME GATEWAY_ADMIN_PASSWORD GATEWAY_RESTORE_ARGS; do
+    eval "value=\${$name}"
+    if [ -n "$vars" ]; then vars="$vars,"; fi
+    vars="$vars\"$name\":\"$(escape "$value")\""
+  done
+  printf '{"n":%s,"cwd":"%s","argv":[%s],"env":{%s}}\n' "$n" "$(escape "$PWD")" "$argv" "$vars" >> "$state"
 fi
 if [ -n "$IGDEV_SHIM_DOCKER_OUT" ]; then
   printf '%s\n' "$IGDEV_SHIM_DOCKER_OUT"
@@ -172,12 +182,20 @@ func (e *Env) ShimDocker() string {
 	return state
 }
 
-// DockerCall is one recorded docker invocation.
+// DockerCall is one recorded docker invocation. Env is the GATEWAY_* variable
+// set igdev handed the engine: the variables the rendered Compose file
+// interpolates, which is how a test observes the Baseline restore wiring the
+// engine actually received.
 type DockerCall struct {
-	N    int      `json:"n"`
-	CWD  string   `json:"cwd"`
-	Argv []string `json:"argv"`
+	N    int               `json:"n"`
+	CWD  string            `json:"cwd"`
+	Argv []string          `json:"argv"`
+	Env  map[string]string `json:"env"`
 }
+
+// GatewayEnv returns the value of one GATEWAY_* variable the engine received.
+// An empty string means igdev supplied it empty.
+func (c DockerCall) GatewayEnv(name string) string { return c.Env[name] }
 
 // DockerCalls returns the shim's call log, oldest first. An absent log means no
 // docker was ever invoked.

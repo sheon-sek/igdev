@@ -18,6 +18,7 @@ Usage:
   igdev [command]
 
 Available Commands:
+  baseline    Stage and report the Gateway backup this checkout restores from
   completion  Print the shell completion script for igdev
   doctor      Audit the host prerequisites igdev's runtime work depends on
   gateway     Control this Instance's Ignition Gateway

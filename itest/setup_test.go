@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sheon-sek/igdev/internal/baseline"
 	"github.com/sheon-sek/igdev/internal/consent"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/gate"
@@ -364,9 +365,9 @@ func TestSetupWritesExactlyTheCheckoutSetup(t *testing.T) {
 		"home/.config/igdev",
 		"home/.config/igdev/accepted.toml",
 		"repo/.igdev",
+		"repo/.igdev/baseline",
 		"repo/.igdev/local.toml",
 		"repo/.igdev/modules",
-		"repo/.igdev/restore",
 		"repo/.igdev/runtime",
 		"repo/.igdev/runtime/Dockerfile",
 		"repo/.igdev/runtime/compose.env",
@@ -688,7 +689,7 @@ func TestSetupRendersRuntimeFilesTheDockerShimAccepts(t *testing.T) {
 		labelOf(t, stamp),
 		fmt.Sprintf(`"%s:%d:8088"`, ports.BindAddress, stamp.Ports.HTTP),
 		filepath.Join(dir, ".igdev", "modules") + ":/usr/local/bin/ignition/user-lib/modules",
-		filepath.Join(dir, ".igdev", "restore") + ":/restore:ro",
+		filepath.Join(dir, ".igdev", baseline.DirName) + ":" + baseline.MountPoint + ":ro",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the Compose file does not carry %q:\n%s", want, body)

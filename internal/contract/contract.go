@@ -86,6 +86,12 @@ const (
 	// CodeDocker covers a container-engine call that failed: the engine is
 	// missing, is not compose v2, or refused the work.
 	CodeDocker Code = "IGDEV_E_DOCKER"
+	// CodeBaselineMissing covers a `baseline set` source path that does not
+	// exist: there is nothing to stage. The remediation names the argument.
+	CodeBaselineMissing Code = "IGDEV_E_BASELINE_MISSING"
+	// CodeBaselineInvalid covers a `baseline set` source that exists but cannot
+	// be staged as a backup file: a directory, or a path that cannot be read.
+	CodeBaselineInvalid Code = "IGDEV_E_BASELINE_INVALID"
 )
 
 // Remediation is a machine-readable next step: the exact command that clears

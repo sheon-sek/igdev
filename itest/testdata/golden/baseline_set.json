@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "staged": true,
+    "path": "<ROOT>/repo/.igdev/baseline/restore.gwbk",
+    "bytes": 21,
+    "source": "<SOURCE>",
+    "sha256": "ed99e5f33a58784ff72d1f110f7cb4ed5a2c2fba73b6fa6873880c399039d616",
+    "staged_at": "<STAGED_AT>",
+    "restore_args": "-r /restore/restore.gwbk"
+  }
+}

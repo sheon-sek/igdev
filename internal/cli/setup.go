@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sheon-sek/igdev/internal/atomicfile"
+	"github.com/sheon-sek/igdev/internal/baseline"
 	"github.com/sheon-sek/igdev/internal/config"
 	"github.com/sheon-sek/igdev/internal/consent"
 	"github.com/sheon-sek/igdev/internal/contract"
@@ -197,7 +198,10 @@ free memory.`,
 			stateDir := filepath.Join(found.Root, project.StateDir)
 			runtimeDir := filepath.Join(stateDir, "runtime")
 			modulesDir := filepath.Join(stateDir, "modules")
-			restoreDir := filepath.Join(stateDir, "restore")
+			// The Baseline directory is the mount point the rendered Compose file
+			// names. setup creates it and never touches what is staged inside it:
+			// a staged Baseline is user state that outlives a re-materialization.
+			baselineDir := baseline.Dir(stateDir)
 
 			rendered := runtimeassets.Input{
 				InstanceID:      instanceID,
@@ -211,7 +215,7 @@ free memory.`,
 				Ports:           triplet,
 				RuntimeDir:      runtimeDir,
 				ModulesDir:      modulesDir,
-				RestoreDir:      restoreDir,
+				BaselineDir:     baselineDir,
 			}
 			files, err := runtimeassets.Materialize(rendered)
 			if err != nil {
@@ -220,7 +224,7 @@ free memory.`,
 			}
 
 			writes := make([]setupWrite, 0, 8)
-			for _, dir := range []string{runtimeDir, modulesDir, restoreDir} {
+			for _, dir := range []string{runtimeDir, modulesDir, baselineDir} {
 				write, err := materializeDir(dir)
 				if err != nil {
 					return err

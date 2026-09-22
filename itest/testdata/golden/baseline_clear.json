@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "removed": [
+      "<ROOT>/repo/.igdev/baseline/restore.gwbk",
+      "<ROOT>/repo/.igdev/baseline/baseline.json"
+    ]
+  }
+}

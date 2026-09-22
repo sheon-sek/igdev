@@ -1,0 +1,2 @@
+baseline: none staged
+stage one: igdev baseline set <file.gwbk>

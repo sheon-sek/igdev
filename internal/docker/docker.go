@@ -35,9 +35,11 @@ type Compose struct {
 	EnvFile string
 	// Dir is the working directory compose runs in: the Project Root.
 	Dir string
-	// Env carries the environment entries the Compose file interpolates. The
-	// Gateway admin credentials travel here, not in a rendered file, which is what
-	// keeps compose.env safe to diff and golden.
+	// Env carries the environment entries the Compose file interpolates: the
+	// Gateway admin credentials, and the staged Baseline's restore arguments
+	// (empty when nothing is staged). They travel here, not in a rendered file,
+	// which is what keeps compose.env safe to diff and golden and keeps the
+	// rendered Compose file identical whether or not a Baseline is staged.
 	Env []string
 }
 

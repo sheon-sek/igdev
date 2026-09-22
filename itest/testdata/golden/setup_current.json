@@ -33,7 +33,7 @@
         "mode": "0755"
       },
       {
-        "path": "<ROOT>/repo/.igdev/restore",
+        "path": "<ROOT>/repo/.igdev/baseline",
         "kind": "dir",
         "action": "unchanged",
         "mode": "0755"

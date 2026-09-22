@@ -68,9 +68,10 @@ and `packaging/install.sh` for real against a loopback file server.
 | Path | What lives there |
 | --- | --- |
 | `cmd/igdev` | main; three lines that call `cli.Execute` |
-| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping, `init`, `setup`, `doctor`, the `gateway` verbs |
+| `internal/cli` | cobra tree, the Gate's discovery call, envelope/exit mapping, `init`, `setup`, `doctor`, the `gateway` verbs, the `baseline` verbs |
 | `internal/contract` | frozen envelope, `IGDEV_E_*` codes, exit levels, CLI Contract Version |
 | `internal/config` | five-tier resolver (flags > `IGDEV_*` > `.igdev/local.toml` > `igdev.toml` > defaults) |
+| `internal/baseline` | the staged Baseline: copy, streamed digest, provenance record, restore arguments, mount point |
 | `internal/project` | Project Root discovery, the `igdev.toml` schema v1 model: parse, validate, render, Contract Digest |
 | `internal/gate` | the Gate: contract schema, Setup Stamp (digest, schema, CLI Contract, Instance identity and ports), `[tool].min_version` — `Evaluate` / `Require` / `Decode` |
 | `internal/instance` | the Instance identity: UUID minting, validation, and the `igdev-<short-id>` namespace |
@@ -122,7 +123,9 @@ Gateway suite adds `IGDEV_E_CAPACITY` (exit 3: the Capacity Gate refused to star
 Gateway and a person frees memory or passes `--force`), `IGDEV_E_GATEWAY_UNHEALTHY`
 (a Gateway did not answer before the deadline, or answered a smoke check with an error
 status) and `IGDEV_E_DOCKER` (a container-engine call failed, or the engine is not
-installed). A typo in
+installed). The Baseline commands add `IGDEV_E_BASELINE_MISSING` (the `baseline set`
+source path is not there) and `IGDEV_E_BASELINE_INVALID` (the source exists but cannot
+be staged as a backup file); a source that is not a `.gwbk` is a usage error. A typo in
 a `--config` flag is a usage error (the invocation was wrong); a value igdev read from
 a tier is `IGDEV_E_CONFIG_INVALID` (machine or project state is wrong). `contract` is
 the CLI Contract Version and bumps only when the envelope, codes, or exit levels
@@ -201,7 +204,7 @@ leaves the old stamp and setup simply runs again.
     compose.env         the environment docker compose reads with --env-file
     Dockerfile          the Instance image, FROM the Ignition version in the contract
   modules/              staged Private Modules, mounted into the Gateway
-  restore/              Baseline restore path, mounted read-only
+  baseline/             the staged Baseline (.gwbk), mounted read-only at /restore
 ```
 
 **Instance identity.** `instance_id` is a random UUID v4 minted at first setup from
@@ -225,9 +228,11 @@ from templates embedded in the binary (`internal/runtimeassets`), rendered into
 and the contract: no timestamp, no random value, and no path outside that input reaches
 a rendered file, so identical inputs are byte-identical and a second setup on a current
 checkout re-materializes nothing. Every referenced host path is absolute, the build
-context is `.igdev/runtime/` itself, and staged modules and the Baseline restore
-directory are mounted — so the repository contributes no Docker input of its own and
-never needs a `.dockerignore`.
+context is `.igdev/runtime/` itself, and staged modules and the Baseline directory are
+mounted — so the repository contributes no Docker input of its own and never needs a
+`.dockerignore`. The rendered Compose file is the same whether or not a Baseline is
+staged: the restore argument reaches the Gateway through the process environment, not
+through a rendered file.
 
 **Credentials.** setup generates the Gateway admin password (24 characters from a
 printable, quote-safe alphabet, `crypto/rand`) or takes `IGDEV_GATEWAY_ADMIN_PASSWORD`
@@ -276,8 +281,9 @@ igdev gateway credentials --json    {username, password}; human mode never print
 
 Every engine call is `docker compose --project-name igdev-<instance> --file
 <runtime>/compose.yaml --env-file <runtime>/compose.env <verb>`, with the admin
-credentials supplied from the process environment — so a parallel worktree's Instance
-can never be addressed by mistake, and no rendered file carries a secret.
+credentials and the staged Baseline's restore arguments supplied from the process
+environment — so a parallel worktree's Instance can never be addressed by mistake, and
+no rendered file carries a secret.
 
 `wait` accepts bare seconds (`--timeout 240`) or a Go duration (`--timeout 3m`);
 180 s is the default, 60 s for `smoke`. A failed wait reports the last 50 log lines on
@@ -294,6 +300,46 @@ free memory cannot be read (no `MemAvailable`, another platform) is not refused:
 is no evidence of a shortage, and the warning on stderr records that the guard did not
 apply. The rig points the gate at a fixture through `capacity.MeminfoEnv`
 (`IGDEV_SHIM_MEMINFO`), which is what makes the refusal reachable in a hermetic test.
+
+## The Baseline
+
+```
+igdev baseline set <file.gwbk>      validate a Gateway backup and stage it here
+igdev baseline status               report staged-or-empty, with the restore wiring
+igdev baseline clear                remove the staged backup
+```
+
+A Baseline is the `.gwbk` a disposable Gateway is seeded from. `set` requires an existing
+`.gwbk` (`IGDEV_E_BASELINE_MISSING` when the path is not there, `IGDEV_E_BASELINE_INVALID`
+when it is a directory or cannot be read, a usage error when it is not a `.gwbk` at all),
+streams the copy through one `sha256` into `.igdev/baseline/restore.gwbk`, and records
+where it came from in `.igdev/baseline/baseline.json`. The copy is the Baseline: the
+original is free to move or disappear afterwards. Staging a second time replaces the
+staged file — checkout-local user state, so there is no tracked file to diff and nothing
+to confirm.
+
+`.igdev/baseline/` is deliberately not `.igdev/runtime/`, which setup owns and
+re-renders: re-running setup — including the run that repairs a stale Setup Stamp after
+a contract edit — keeps the Baseline staged. setup creates the directory as the mount
+point and never touches what is inside it.
+
+Ignition applies a restore only on a fresh Gateway launch, so the wiring is what makes
+a Baseline matter to `igdev gateway reset`. Whenever `restore.gwbk` is staged, every
+Gateway verb hands Compose `GATEWAY_RESTORE_ARGS=-r /restore/restore.gwbk`; the rendered
+Compose file's launcher command interpolates `${GATEWAY_RESTORE_ARGS:-}`, and the
+Baseline directory is mounted at `/restore` read-only. The value travels in the process
+environment, the way the admin credentials do, so the rendered Compose file is
+byte-identical whether or not a Baseline is staged, and neither staging nor clearing one
+re-renders anything (a Compose service command has no CLI override, so the variable is
+the only seam that keeps this state out of generated files). `clear` removes the staged
+file and its record, so the next launch restores nothing.
+
+`status` reports `{staged, path, bytes, source, sha256, staged_at, restore_args}`, or
+`{staged: false}`. The staged file is the state and the record is only a note about it:
+a record that is missing, unreadable, or no longer describes the file (a different size)
+leaves the Baseline staged without provenance instead of failing. No Baseline verb
+touches the container engine, and all three pass the Gate first — a Baseline needs a
+materialized checkout — but not Consent: staging a backup is not running a Gateway.
 
 ## Host prerequisites
 
@@ -352,6 +398,8 @@ env.LocalConfig(root, "…")            // .igdev/local.toml tier
 env.SetupRecord(root, "…")            // .igdev/setup.json record
 env.SetupStamp("repo", contractPath)  // a Setup Stamp current for that contract (the CLI writes the real one)
 env.ShimDocker()                      // PATH shim; returns the call-log path, records to state/docker-calls.jsonl
+env.DockerCalls(t)                    // each recorded call: argv, cwd, and the GATEWAY_* env the engine received
+call.GatewayEnv("GATEWAY_RESTORE_ARGS")  // the Baseline restore wiring, as the engine received it
 res := env.RunIn(root, "status", "--json")
 res := env.Run(testrig.Run{Args: …, Dir: …, Env: []string{"K=V"}, SampleRSS: true, Stdin: "…"})
 env.MustRun("version")                // fails the test if the process could not launch
@@ -430,7 +478,7 @@ and description. It is immediately resolvable from every tier, reported by
 `igdev status --json`, and settable by tests through `testrig.EnvFor(path)`.
 `internal/testrig` maps the same schema, so nothing has to be kept in sync by hand.
 
-## Deliberate limits of tickets 01-04
+## Deliberate limits of tickets 01-05
 
 Ticket 01: the walking skeleton — install, `status`, `version`, help, completion, the
 five-tier resolver, the Gate's discovery stage, and the resource/hygiene gates.
@@ -444,8 +492,11 @@ drives the Instance's compose project through the Gate, the Consent record, and 
 Capacity Gate, and `gateway credentials --json` is the one readable home of the admin
 password). Its non-hermetic half is `.github/workflows/igdev-gateway-e2e.yml`, which
 boots a real Ignition image: dispatched or nightly, never a PR check.
+Ticket 05: the Baseline (`baseline set|status|clear` stages a `.gwbk` into the Checkout
+Setup and wires the restore argument into every Gateway launch, so `gateway reset`
+seeds the Gateway from it).
 
-No Baseline commands (ticket 11), no module commands and therefore no module-license or
+No module commands and therefore no module-license or
 module-certificate acceptance path (ticket 12), no Jython download (setup materializes
 state only), no Wizard prompts (ticket 16), no AGENTS.md managed block, no catalogs, and
 no pipeline verbs — `check|test|build|verify` — so the declared `[commands]` stages are

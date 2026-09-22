@@ -1,0 +1,13 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_USAGE",
+  "message": "a Baseline must be a .gwbk Gateway backup, got \"<SOURCE>\"",
+  "remediation": [
+    {
+      "command": "igdev baseline set <file.gwbk>",
+      "why": "stage an Ignition Gateway backup"
+    }
+  ],
+  "data": {}
+}

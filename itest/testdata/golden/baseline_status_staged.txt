@@ -1,0 +1,5 @@
+baseline: <ROOT>/repo/.igdev/baseline/restore.gwbk
+source:   <SOURCE>
+staged:   <STAGED_AT>
+backup:   21 bytes, sha256 ed99e5f33a58784ff72d1f110f7cb4ed5a2c2fba73b6fa6873880c399039d616
+restore:  -r /restore/restore.gwbk on the next fresh launch (igdev gateway reset)

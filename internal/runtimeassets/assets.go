@@ -62,8 +62,8 @@ type Input struct {
 	// ModulesDir is the absolute staged-modules path, mounted into the Gateway.
 	// The staging content is later tickets; setup creates the mount point.
 	ModulesDir string
-	// RestoreDir is the absolute Baseline restore path, mounted read-only.
-	RestoreDir string
+	// BaselineDir is the absolute Baseline restore path, mounted read-only.
+	BaselineDir string
 }
 
 // view is what a template sees: Input plus the derived strings that would

@@ -9,7 +9,9 @@
 # nothing but the Dockerfile: the repository's own files never enter the image and
 # no .dockerignore is ever edited. Secrets are absent on purpose — the Gateway
 # admin credentials live in .igdev/local.toml (mode 0600) and reach Compose from
-# the igdev process environment, so this file holds nothing worth leaking.
+# the igdev process environment, so this file holds nothing worth leaking. The
+# staged Baseline's restore arguments (GATEWAY_RESTORE_ARGS) arrive the same way,
+# which is why this file is byte-identical whether or not a backup is staged.
 name: {{ .Namespace }}
 
 services:
@@ -26,7 +28,7 @@ services:
       - "{{ .BindAddress }}:{{ .Ports.Debug }}:8000"
     volumes:
       - {{ .ModulesDir }}:/usr/local/bin/ignition/user-lib/modules
-      - {{ .RestoreDir }}:/restore:ro
+      - {{ .BaselineDir }}:/restore:ro
       - gateway-data:/usr/local/bin/ignition/data
     environment:
       ACCEPT_IGNITION_EULA: ${ACCEPT_IGNITION_EULA:-Y}
@@ -43,6 +45,7 @@ services:
       -a localhost
       -h 8088
       -s 8043
+      ${GATEWAY_RESTORE_ARGS:-}
       --
       -Dignition.allowunsignedmodules=${IGNITION_ALLOW_UNSIGNED_MODULES:-false}
     restart: unless-stopped
