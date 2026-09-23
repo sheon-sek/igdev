@@ -149,6 +149,53 @@ func TestCheckReportsTheExactHumanCommand(t *testing.T) {
 	}
 }
 
+// CheckAll names every term a gate needs at once, so a person records them in one
+// pass instead of meeting them one retry at a time.
+func TestCheckAllNamesEveryMissingTerm(t *testing.T) {
+	path := recordPath(t)
+
+	fault := CheckAll(path, ModuleLicense, ModuleCert)
+	if fault == nil {
+		t.Fatal("CheckAll passed with no record at all")
+	}
+	if fault.Code != contract.CodeConsentRequired || fault.Exit != contract.ExitHumanAction {
+		t.Errorf("fault = %s at %d, want %s at %d", fault.Code, fault.Exit,
+			contract.CodeConsentRequired, contract.ExitHumanAction)
+	}
+	if !strings.Contains(fault.Message, ModuleLicense.Title) ||
+		!strings.Contains(fault.Message, ModuleCert.Title) {
+		t.Errorf("message does not name both terms: %q", fault.Message)
+	}
+	if len(fault.Remediation) != 2 {
+		t.Fatalf("remediation = %+v, want one per missing term", fault.Remediation)
+	}
+	for i, term := range []Term{ModuleLicense, ModuleCert} {
+		if fault.Remediation[i].Command != "igdev setup "+term.Flag {
+			t.Errorf("remediation[%d] = %q, want igdev setup %s", i, fault.Remediation[i].Command, term.Flag)
+		}
+	}
+
+	// One of the two accepted: the fault shrinks to the term still missing.
+	if _, err := Accept(path, ModuleLicense, acceptedAt, "0.1.0"); err != nil {
+		t.Fatalf("Accept: %v", err)
+	}
+	fault = CheckAll(path, ModuleLicense, ModuleCert)
+	if fault == nil || len(fault.Remediation) != 1 ||
+		fault.Remediation[0].Command != "igdev setup "+ModuleCert.Flag {
+		t.Errorf("fault = %+v, want the remaining term alone", fault)
+	}
+
+	if _, err := Accept(path, ModuleCert, acceptedAt, "0.1.0"); err != nil {
+		t.Fatalf("Accept: %v", err)
+	}
+	if fault := CheckAll(path, ModuleLicense, ModuleCert); fault != nil {
+		t.Errorf("CheckAll refused accepted terms: %v", fault)
+	}
+	if fault := CheckAll(path); fault != nil {
+		t.Errorf("CheckAll with nothing required = %v, want nil", fault)
+	}
+}
+
 // An unreadable record proves nothing: it is reported as missing consent, which
 // is what a person then repairs with the accept command.
 func TestUnreadableRecordIsNotConsent(t *testing.T) {

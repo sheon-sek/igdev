@@ -101,7 +101,7 @@ type agentGateway struct {
 }
 
 // agentModules reports the private module artifacts this checkout stages, and
-// what the contract lets the Gateway load.
+// what the contract lets the Gateway load and accept.
 type agentModules struct {
 	Count  int      `json:"count"`
 	Staged []string `json:"staged"`
@@ -110,6 +110,14 @@ type agentModules struct {
 	// carries no valid signature. It is a contract value, so it is reported in
 	// every lifecycle state, initialized or not.
 	AllowUnsignedModules bool `json:"allow_unsigned_modules"`
+	// AutoAccepted lists the staged private module ids igdev passes to the Gateway
+	// as ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS without a human step
+	// (ADR 0006). It is empty when the contract requires private-module Consent:
+	// there, the ids are passed only after a person recorded the terms.
+	AutoAccepted []string `json:"auto_accepted"`
+	// RequirePrivateModuleConsent is the effective
+	// [modules] require_private_module_consent, which is why AutoAccepted is empty.
+	RequirePrivateModuleConsent bool `json:"require_private_module_consent"`
 }
 
 // agentCatalog is the Effective Catalog's identity: the Core Catalog digest and
@@ -194,6 +202,8 @@ var AgentContextFields = []AgentContextField{
 	{"modules.count", "int", "How many artifacts are staged in .igdev/modules/."},
 	{"modules.staged", "array", "The module ids those artifacts declare."},
 	{"modules.allow_unsigned_modules", "bool", "The effective [gateway] allow_unsigned_modules: true means the Gateway loads a module artifact that carries no valid signature. A contract value, so it is reported whether or not this checkout was set up."},
+	{"modules.auto_accepted", "array", "The staged private module ids igdev passes to the Gateway as ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS without a human step. Empty when the contract requires private-module Consent."},
+	{"modules.require_private_module_consent", "bool", "The effective [modules] require_private_module_consent: true means those ids are passed only after a human recorded the module-license and module-cert terms (ADR 0006)."},
 	{"catalog", "object", "The Effective Catalog's identity."},
 	{"catalog.core_digest", "string", "sha256 of the Core Catalog embedded in this binary, for this Ignition version."},
 	{"catalog.overlay", "object", "This repository's tracked Project Overlay layer."},
@@ -358,10 +368,16 @@ func agentConsentState() agentConsent {
 // state it is describing.
 func agentModulesOf(found project.Found, doc project.Doc) agentModules {
 	staged := modulesStatus(found)
+	autoAccepted := []string{}
+	if !doc.Modules.RequirePrivateModuleConsent {
+		autoAccepted = append(autoAccepted, staged.Staged...)
+	}
 	return agentModules{
-		Count:                staged.Count,
-		Staged:               staged.Staged,
-		AllowUnsignedModules: doc.Gateway.AllowUnsignedModules,
+		Count:                       staged.Count,
+		Staged:                      staged.Staged,
+		AllowUnsignedModules:        doc.Gateway.AllowUnsignedModules,
+		AutoAccepted:                autoAccepted,
+		RequirePrivateModuleConsent: doc.Modules.RequirePrivateModuleConsent,
 	}
 }
 

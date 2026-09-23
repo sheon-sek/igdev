@@ -16,7 +16,10 @@ preserved, and a run that changes nothing writes nothing and prints nothing.
 Pass an empty value (--modules "" or --command-check "") to clear a field.
 A module repository can also declare what its own build produces —
 --modules-artifacts 'build/libs/*.modl' — and igdev build then stages every match,
-so the build command never has to chain igdev module add itself.
+so the build command never has to chain igdev module add itself. A checkout that wants
+the strict Consent gate for its private modules states
+--require-private-module-consent: the machine-global module-license and module-cert
+terms are then required before a staged module's id is accepted (ADR 0006).
 
 Without --json or --yes, init never prompts an invocation that already has a contract
 to preserve: an agent's fully specified invocation is the whole interface. In a
@@ -48,25 +51,26 @@ igdev init [flags]
 ## Options
 
 ```text
-      --allow-unsigned-modules      let the Gateway load a module artifact that carries no valid signature (default false)
-      --command-build string        command igdev build runs for this project
-      --command-check string        command igdev check runs for this project
-      --command-smoke string        command igdev smoke runs after a Gateway starts
-      --command-test string         command igdev test runs for this project
-      --edition string              Ignition module edition (default standard)
-      --gateway-memory-mb int       Gateway heap in MiB (default 2048)
-      --gateway-timezone string     Gateway timezone, e.g. UTC (default UTC)
-  -h, --help                        help for init
-      --ignition-version string     Ignition version this checkout targets, e.g. 8.3.8 (default 8.3.8)
-  -i, --interactive                 run the Wizard even when every value is already supplied
-      --jython-version string       Jython version the compatibility checker targets (default 2.7.4)
-      --modules strings             module ids to enable, comma-separated or repeated (default: none)
-      --modules-artifacts strings   globs of the module artifacts the build produces, repository-relative, comma-separated (default: none)
-      --name string                 repository name recorded as [project].name
-      --scan-capabilities strings   directories scanned for capability usage, comma-separated (default src/main/python)
-      --scan-jython strings         directories scanned for Jython sources, comma-separated (default src/main/python)
-      --tool-min-version string     oldest igdev version this project accepts, recorded as [tool].min_version
-  -y, --yes                         take the Wizard's defaults and never prompt
+      --allow-unsigned-modules           let the Gateway load a module artifact that carries no valid signature (default false)
+      --command-build string             command igdev build runs for this project
+      --command-check string             command igdev check runs for this project
+      --command-smoke string             command igdev smoke runs after a Gateway starts
+      --command-test string              command igdev test runs for this project
+      --edition string                   Ignition module edition (default standard)
+      --gateway-memory-mb int            Gateway heap in MiB (default 2048)
+      --gateway-timezone string          Gateway timezone, e.g. UTC (default UTC)
+  -h, --help                             help for init
+      --ignition-version string          Ignition version this checkout targets, e.g. 8.3.8 (default 8.3.8)
+  -i, --interactive                      run the Wizard even when every value is already supplied
+      --jython-version string            Jython version the compatibility checker targets (default 2.7.4)
+      --modules strings                  module ids to enable, comma-separated or repeated (default: none)
+      --modules-artifacts strings        globs of the module artifacts the build produces, repository-relative, comma-separated (default: none)
+      --name string                      repository name recorded as [project].name
+      --require-private-module-consent   require the machine-global module-license and module-cert terms before a staged private module's id is accepted (default false)
+      --scan-capabilities strings        directories scanned for capability usage, comma-separated (default src/main/python)
+      --scan-jython strings              directories scanned for Jython sources, comma-separated (default src/main/python)
+      --tool-min-version string          oldest igdev version this project accepts, recorded as [tool].min_version
+  -y, --yes                              take the Wizard's defaults and never prompt
 ```
 
 ## Global options

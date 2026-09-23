@@ -12,6 +12,14 @@ Capacity Gate: when the host's free memory is below the requested heap plus 512 
 headroom, starting another Gateway is refused with IGDEV_E_CAPACITY at exit level 3
 until memory is freed or `--force` accepts the risk.
 
+The private modules this checkout stages are accepted as part of starting it: their ids
+reach the Gateway as ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS, so a staged
+`.modl` that declares a license or carries a self-signed certificate loads without a
+human step (ADR 0006). `[modules] require_private_module_consent = true` puts the
+machine-global module-license and module-cert terms back in front of that: without them
+the run stops with IGDEV_E_CONSENT_REQUIRED at exit level 3, naming the commands that
+record them.
+
 The container engine is only ever addressed through this Instance's project:
 `docker compose` is given the project name, the Compose file `igdev setup`
 rendered, and that file's environment file (`--project-name`, `--file`,
@@ -72,4 +80,8 @@ the Checkout Setup, so an agent never assumes a port. up and reset add capacity
 adds state and services; down adds volumes_removed; logs carries the log text;
 credentials carries the password. Every verb needs recorded Consent (exit 3,
 IGDEV_E_CONSENT_REQUIRED) and a current Checkout Setup, and up/reset also pass the
-Capacity Gate (IGDEV_E_CAPACITY, exit 3).
+Capacity Gate (IGDEV_E_CAPACITY, exit 3). Starting a Gateway accepts the private
+modules this checkout staged, by module id (ACCEPT_MODULE_LICENSES and
+ACCEPT_MODULE_CERTS); a contract with [modules] require_private_module_consent = true
+instead requires the machine-global module-license and module-cert terms, and without
+them the run stops at exit 3 (ADR 0006).

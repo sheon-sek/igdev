@@ -69,38 +69,54 @@ func TestAllowUnsignedModulesIsAdditive(t *testing.T) {
 	}
 }
 
-// [modules] artifacts is additive to schema v1 the same way: a contract that does
-// not state it renders no key and leaves `igdev build` staging nothing on its own,
-// and a stated list round-trips.
-func TestModuleArtifactsAreAdditive(t *testing.T) {
+// The [modules] keys added after schema v1 are additive the same way: a contract
+// that does not state them renders no key and keeps the permissive default, and a
+// stated value round-trips.
+func TestModuleKeysAreAdditive(t *testing.T) {
 	absent, err := ParseDoc([]byte("schema = 1\n\n[modules]\nenabled = []\n"), "igdev.toml")
 	if err != nil {
-		t.Fatalf("ParseDoc without the key: %v", err)
+		t.Fatalf("ParseDoc without the keys: %v", err)
 	}
 	if !absent.Modules.ArtifactsEmpty() {
 		t.Errorf("artifacts = %v, want none declared", absent.Modules.Artifacts)
 	}
-	if rendered := string(absent.Render()); strings.Contains(rendered, "artifacts") {
-		t.Errorf("render emitted an empty artifacts key:\n%s", rendered)
+	if absent.Modules.RequirePrivateModuleConsent {
+		t.Error("a contract that does not state the opt-in demands private-module Consent")
+	}
+	if rendered := string(absent.Render()); strings.Contains(rendered, "artifacts") ||
+		strings.Contains(rendered, "require_private_module_consent") {
+		t.Errorf("render emitted an optional key at its default:\n%s", rendered)
 	}
 
-	stated, err := ParseDoc([]byte("schema = 1\n\n[modules]\nenabled = []\nartifacts = [\"build/*.modl\"]\n"), "igdev.toml")
+	stated, err := ParseDoc([]byte("schema = 1\n\n[modules]\nenabled = []\nartifacts = [\"build/*.modl\"]\nrequire_private_module_consent = true\n"), "igdev.toml")
 	if err != nil {
-		t.Fatalf("ParseDoc with the key: %v", err)
+		t.Fatalf("ParseDoc with the keys: %v", err)
 	}
 	if got := strings.Join(stated.Modules.Artifacts, ","); got != "build/*.modl" {
 		t.Errorf("artifacts = %q, want the declared glob", got)
+	}
+	if !stated.Modules.RequirePrivateModuleConsent {
+		t.Error("the stated opt-in did not parse")
 	}
 	filled := stated.Filled(DefaultDoc())
 	if got := strings.Join(filled.Modules.Artifacts, ","); got != "build/*.modl" {
 		t.Errorf("Filled changed the declared globs to %q", got)
 	}
-	rendered := string(filled.Render())
-	if !strings.Contains(rendered, `artifacts = ["build/*.modl"]`) {
-		t.Errorf("render dropped the declared globs:\n%s", rendered)
+	if !filled.Modules.RequirePrivateModuleConsent {
+		t.Error("Filled cleared the stated opt-in")
 	}
-	if again, err := ParseDoc([]byte(rendered), "igdev.toml"); err != nil || again.Modules.ArtifactsEmpty() {
-		t.Errorf("round trip lost the globs: %v", err)
+	rendered := string(filled.Render())
+	for _, want := range []string{`artifacts = ["build/*.modl"]`, "require_private_module_consent = true"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("render dropped %s:\n%s", want, rendered)
+		}
+	}
+	again, err := ParseDoc([]byte(rendered), "igdev.toml")
+	if err != nil {
+		t.Fatalf("round trip: %v", err)
+	}
+	if again.Modules.ArtifactsEmpty() || !again.Modules.RequirePrivateModuleConsent {
+		t.Errorf("round trip lost the stated keys: %+v", again.Modules)
 	}
 }
 

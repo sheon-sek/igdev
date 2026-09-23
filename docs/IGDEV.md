@@ -190,16 +190,19 @@ the new `digest`. A run that changes nothing writes nothing and prints nothing.
 
 The schema v1 layout is closed and version-checked: `schema = 1`, then `[project]
 name`, `[tool] min_version`, `[ignition] version|jython_version|edition`,
-`[modules] enabled`, `[scan] jython|capabilities`, `[catalog] overlay_paths`
+`[modules] enabled|artifacts|require_private_module_consent`, `[scan] jython|capabilities`,
+`[catalog] overlay_paths`
 (omitted when empty), `[commands] check|test|build|smoke`
 (omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints|allow_unsigned_modules`.
 A key igdev does not know is refused, and a version-like field holds a version. Fields
 the file leaves out fall back to the embedded defaults, so a minimal `schema = 1`
-contract is valid. Three keys are optional and omitted from the rendered contract while
+contract is valid. Four keys are optional and omitted from the rendered contract while
 they hold the schema default: `smoke_endpoints` (a checkout that does not state it smokes
 the root document alone), `modules.artifacts` (a contract that does not state it has
-`igdev build` stage nothing on its own), and `gateway.allow_unsigned_modules` (default
-false: the Gateway loads only signed module artifacts). Optional means additive — a
+`igdev build` stage nothing on its own), `gateway.allow_unsigned_modules` (default false:
+the Gateway loads only signed module artifacts), and
+`modules.require_private_module_consent` (default false: the private modules the checkout
+staged are accepted as part of starting the Gateway, ADR 0006). Optional means additive — a
 contract written before either key existed parses, renders, and behaves exactly as it
 did, and stating an optional key is an edit of a tracked file, so it goes through
 `igdev init` and makes the Checkout Setup stale until `igdev setup` re-materializes it.
@@ -302,6 +305,20 @@ anything is written, so a refused setup leaves the tree untouched. Re-accepting 
 machine that already consented is a successful no-op: the first acceptance is the
 legal fact, so its timestamp does not move.
 
+**Private module acceptance.** The private modules a checkout stages are its own
+artifacts — in a module repository the developer is their author — so starting a Gateway
+accepts them without a human step: `gateway up`/`reset` hand the module id of every
+staged artifact to the container as `ACCEPT_MODULE_LICENSES` and `ACCEPT_MODULE_CERTS`
+(comma-separated, the way the image reads them), which is what lets a `.modl` that
+declares a license or carries a self-signed certificate load. Built-in modules are never
+named, because only the checkout's own staging directory is read. A contract that wants
+the strict gate states `[modules] require_private_module_consent = true`: the
+machine-global `module-license` and `module-cert` terms are then required before any id
+is passed, and a checkout without them stops at exit level 3 naming
+`igdev setup --accept-module-license` and `--accept-module-certificate`. `agent context`
+reports the ids igdev would pass (`modules.auto_accepted`) and whether the opt-in is in
+force, so an unattended run knows which behaviour it gets (ADR 0006).
+
 ## The Gateway lifecycle
 
 `igdev gateway` drives the Ignition container the Checkout Setup describes. Every verb
@@ -330,9 +347,10 @@ igdev gateway credentials --json    {username, password}; human mode never print
 
 Every engine call is `docker compose --project-name igdev-<instance> --file
 <runtime>/compose.yaml --env-file <runtime>/compose.env <verb>`, with the admin
-credentials and the staged Baseline's restore arguments supplied from the process
-environment — so a parallel worktree's Instance can never be addressed by mistake, and
-no rendered file carries a secret.
+credentials, the staged Baseline's restore arguments, and the accepted private module
+ids supplied from the process environment — so a parallel worktree's Instance can never
+be addressed by mistake, and no rendered file carries a secret or has to be rewritten
+when the staged set changes.
 
 `wait` accepts bare seconds (`--timeout 240`) or a Go duration (`--timeout 3m`);
 180 s is the default, 60 s for `smoke`. A failed wait reports the last 50 log lines on
@@ -990,9 +1008,11 @@ The verb is not part of the check pipeline and has no e2e tier of its own.
 
 `module validate` as its own verb is not part of ticket 14: what it used to mean is the
 pipeline's first stage (`module-validate`), and the predecessor's REST-catalog structural
-validation is covered instead by the embedded Core Catalog's digest tests. No command
-demands the module-license or module-certificate terms yet (the Consent terms exist and
-`setup` records them), so the module surface is otherwise read-only.
+validation is covered instead by the embedded Core Catalog's digest tests. The
+module-license and module-certificate Consent terms are demanded only where a contract
+opts in with `[modules] require_private_module_consent = true`; by default igdev accepts
+the private modules a checkout staged itself when it starts a Gateway (ADR 0006), and the
+module surface is otherwise read-only.
 
 Ticket 19 is the cutover, and the "not yet dogfooding" state above is gone: this
 repository carries its own Project Contract and runs on the installed binary. `igdev.toml`

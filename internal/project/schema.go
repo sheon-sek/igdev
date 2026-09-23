@@ -88,6 +88,14 @@ type Modules struct {
 	// is omitted from the rendered contract while it is empty, and a contract that
 	// does not state it has `igdev build` stage nothing on its own.
 	Artifacts []string `toml:"artifacts"`
+	// RequirePrivateModuleConsent restores the strict Consent gate for the private
+	// modules this checkout stages: their ids reach the Gateway as
+	// ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS only after a human recorded
+	// the machine-global `module-license` and `module-cert` terms (ADR 0004,
+	// ADR 0006). Additive to schema v1 and optional: it is omitted from the
+	// rendered contract while it holds the default false, in which case igdev
+	// accepts the license and certificate of what the checkout itself staged.
+	RequirePrivateModuleConsent bool `toml:"require_private_module_consent"`
 }
 
 // Empty reports whether the section declares no artifact globs.
@@ -357,6 +365,9 @@ func (d Doc) Render() []byte {
 	fmt.Fprintf(&b, "enabled = %s\n", tomlStrings(d.Modules.Enabled))
 	if !d.Modules.ArtifactsEmpty() {
 		fmt.Fprintf(&b, "artifacts = %s\n", tomlStrings(d.Modules.Artifacts))
+	}
+	if d.Modules.RequirePrivateModuleConsent {
+		fmt.Fprintf(&b, "require_private_module_consent = %t\n", d.Modules.RequirePrivateModuleConsent)
 	}
 
 	b.WriteString("\n[scan]\n")

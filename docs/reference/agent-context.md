@@ -79,6 +79,8 @@ no Instance before `setup`).
 | `modules.count` | `int` | How many artifacts are staged in .igdev/modules/. |
 | `modules.staged` | `array` | The module ids those artifacts declare. |
 | `modules.allow_unsigned_modules` | `bool` | The effective [gateway] allow_unsigned_modules: true means the Gateway loads a module artifact that carries no valid signature. A contract value, so it is reported whether or not this checkout was set up. |
+| `modules.auto_accepted` | `array` | The staged private module ids igdev passes to the Gateway as ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS without a human step. Empty when the contract requires private-module Consent. |
+| `modules.require_private_module_consent` | `bool` | The effective [modules] require_private_module_consent: true means those ids are passed only after a human recorded the module-license and module-cert terms (ADR 0006). |
 | `catalog` | `object` | The Effective Catalog's identity. |
 | `catalog.core_digest` | `string` | sha256 of the Core Catalog embedded in this binary, for this Ignition version. |
 | `catalog.overlay` | `object` | This repository's tracked Project Overlay layer. |
@@ -103,7 +105,8 @@ no Instance before `setup`).
 
 agent context --json is the orientation entry point. data.project_root,
 data.lifecycle (initialized, setup_state, consent), data.versions, data.instance,
-data.gateway, data.modules (staged ids plus allow_unsigned_modules), data.catalog,
+data.gateway, data.modules (staged ids, allow_unsigned_modules, auto_accepted,
+require_private_module_consent), data.catalog,
 data.capabilities, and data.commands are all reported in every lifecycle state,
 initialized or not, so one call replaces reading files. Never mutate on its word: run
 the verb whose state it reports, or the Remediation of the fault a verb returned. The

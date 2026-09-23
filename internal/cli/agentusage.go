@@ -159,13 +159,20 @@ the Checkout Setup, so an agent never assumes a port. up and reset add capacity
 adds state and services; down adds volumes_removed; logs carries the log text;
 credentials carries the password. Every verb needs recorded Consent (exit 3,
 IGDEV_E_CONSENT_REQUIRED) and a current Checkout Setup, and up/reset also pass the
-Capacity Gate (IGDEV_E_CAPACITY, exit 3).`,
+Capacity Gate (IGDEV_E_CAPACITY, exit 3). Starting a Gateway accepts the private
+modules this checkout staged, by module id (ACCEPT_MODULE_LICENSES and
+ACCEPT_MODULE_CERTS); a contract with [modules] require_private_module_consent = true
+instead requires the machine-global module-license and module-cert terms, and without
+them the run stops at exit 3 (ADR 0006).`,
 	"igdev gateway up": `pass --json for the machine contract. data carries instance_id, namespace,
 url, ports, and capacity (measured, available_mb, required_mb, headroom_mb, forced). up
 returns as soon as the container is started: follow it with igdev gateway wait or igdev
 gateway smoke, and never assume the URL from the address block is answering yet. A
 refusal is IGDEV_E_CAPACITY at exit 3 — a human frees memory or passes --force — and a
-machine that was never set up is IGDEV_E_SETUP_REQUIRED, repaired with igdev setup.`,
+machine that was never set up is IGDEV_E_SETUP_REQUIRED, repaired with igdev setup. The
+staged private modules are accepted by module id as part of starting (ADR 0006); with
+[modules] require_private_module_consent the run stops at exit 3 until the
+module-license and module-cert terms are recorded.`,
 	"igdev gateway down": `pass --json for the machine contract. data carries instance_id, namespace,
 and volumes_removed. Stopping an Instance that is already stopped succeeds. --volumes
 discards the Gateway's data, which with a staged Baseline is reproduced by the next
@@ -244,7 +251,8 @@ state the envelope reports. agent skill-install writes the workflow document thi
 ships, so the guidance an agent follows can never be out of date with the tool.`,
 	"igdev agent context": `agent context --json is the orientation entry point. data.project_root,
 data.lifecycle (initialized, setup_state, consent), data.versions, data.instance,
-data.gateway, data.modules (staged ids plus allow_unsigned_modules), data.catalog,
+data.gateway, data.modules (staged ids, allow_unsigned_modules, auto_accepted,
+require_private_module_consent), data.catalog,
 data.capabilities, and data.commands are all reported in every lifecycle state,
 initialized or not, so one call replaces reading files. Never mutate on its word: run
 the verb whose state it reports, or the Remediation of the fault a verb returned. The
