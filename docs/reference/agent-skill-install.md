@@ -11,9 +11,11 @@ With `--scope repo` it goes into the repository instead, at
 `.agents/skills/igdev/`, where it can be committed and reviewed.
 
 The entry's frontmatter carries the CLI Contract Version this binary speaks, so the
-guidance can never disagree with the tool. igdev owns the whole skill directory:
-installation writes every embedded file and removes files the embedded skill no
-longer carries. It is idempotent: files that already match are left untouched.
+guidance can never disagree with the tool. igdev owns SKILL.md and references/:
+installation writes every embedded file and removes pages from references/ that the
+embedded skill no longer carries. Other files beside them are left alone, and a
+symlinked skill directory or references/ is written through, never replaced. It is
+idempotent: files that already match are left untouched.
 
 ## Usage
 
@@ -48,6 +50,8 @@ igdev agent skill-install [flags]
 pass --json for the machine contract. data carries scope, path (the
 installed SKILL.md), action (created, updated, or unchanged), and version (the CLI
 Contract Version the installed frontmatter records). Installation is idempotent: identical
-files are left untouched, so a re-install never moves their mtimes, and files the
-embedded skill no longer carries are removed. --scope repo requires a Project Root
+files are left untouched, so a re-install never moves their mtimes, and pages in
+references/ the embedded skill no longer carries are removed. igdev owns SKILL.md and
+references/; other files beside them are left alone, and a symlinked skill directory or
+references/ is written through, never replaced. --scope repo requires a Project Root
 (IGDEV_E_NOT_INITIALIZED otherwise) and writes .agents/skills/igdev/ into it.

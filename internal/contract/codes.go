@@ -79,7 +79,7 @@ var CodeDocs = []CodeDoc{
 		"Pass paths that exist."},
 	{CodeJythonSyntax, "1", "The batched Jython compile rejected files. The message names each path and line.",
 		"Fix those lines, then rerun `igdev check`."},
-	{CodeCommandFailed, "the stage's exit code", "A declared project stage (`[commands].check`, `.test`, `.build`) exited non-zero.",
+	{CodeCommandFailed, "the stage's exit code (1 if bash is missing)", "A declared project stage (`[commands].check`, `.test`, `.build`) exited non-zero.",
 		"Read the stage output and fix the project code."},
 	{CodeActMissing, "1", "`ci-local` found no `act` on PATH.",
 		"Ask a person to install act, as the Remediation says."},

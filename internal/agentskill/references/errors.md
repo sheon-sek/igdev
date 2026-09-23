@@ -40,6 +40,6 @@ human action required. At exit 3 an agent stops and hands the Remediation to a p
 | `IGDEV_E_CHECKSUM_MISMATCH` | 1 | A downloaded artifact failed its sha256 pin after one retry. | Stop and report it. The artifact is never used. |
 | `IGDEV_E_JYTHON_PATH_MISSING` | 1 | A `jython check` path does not exist. | Pass paths that exist. |
 | `IGDEV_E_JYTHON_SYNTAX` | 1 | The batched Jython compile rejected files. The message names each path and line. | Fix those lines, then rerun `igdev check`. |
-| `IGDEV_E_COMMAND_FAILED` | the stage's exit code | A declared project stage (`[commands].check`, `.test`, `.build`) exited non-zero. | Read the stage output and fix the project code. |
+| `IGDEV_E_COMMAND_FAILED` | the stage's exit code (1 if bash is missing) | A declared project stage (`[commands].check`, `.test`, `.build`) exited non-zero. | Read the stage output and fix the project code. |
 | `IGDEV_E_ACT_MISSING` | 1 | `ci-local` found no `act` on PATH. | Ask a person to install act, as the Remediation says. |
 | `IGDEV_E_ACT_FAILED` | act's exit code | An act run exited non-zero or could not start. `data` carries the invocation and output tail. | Read the output tail in `data` and fix the failing workflow step. |

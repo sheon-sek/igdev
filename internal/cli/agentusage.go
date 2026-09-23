@@ -245,8 +245,10 @@ docs/reference/agent-context.md.`,
 	"igdev agent skill-install": `pass --json for the machine contract. data carries scope, path (the
 installed SKILL.md), action (created, updated, or unchanged), and version (the CLI
 Contract Version the installed frontmatter records). Installation is idempotent: identical
-files are left untouched, so a re-install never moves their mtimes, and files the
-embedded skill no longer carries are removed. --scope repo requires a Project Root
+files are left untouched, so a re-install never moves their mtimes, and pages in
+references/ the embedded skill no longer carries are removed. igdev owns SKILL.md and
+references/; other files beside them are left alone, and a symlinked skill directory or
+references/ is written through, never replaced. --scope repo requires a Project Root
 (IGDEV_E_NOT_INITIALIZED otherwise) and writes .agents/skills/igdev/ into it.`,
 	"igdev ci-local": `pass --json for the machine contract. data carries the exact invocation
 (event, job, offline, command, args, workdir), act's exit code, and the tail of its

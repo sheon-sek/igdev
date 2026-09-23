@@ -31,6 +31,9 @@ const (
 	Dir = Name
 	// FileName is the skill document's file name.
 	FileName = "SKILL.md"
+	// ReferencesDir is the directory beside SKILL.md that holds the reference
+	// pages.
+	ReferencesDir = "references"
 )
 
 // Version is the CLI Contract Version the installed skill's frontmatter must

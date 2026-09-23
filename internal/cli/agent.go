@@ -501,9 +501,11 @@ With ` + "`--scope repo`" + ` it goes into the repository instead, at
 ` + "`.agents/skills/igdev/`" + `, where it can be committed and reviewed.
 
 The entry's frontmatter carries the CLI Contract Version this binary speaks, so the
-guidance can never disagree with the tool. igdev owns the whole skill directory:
-installation writes every embedded file and removes files the embedded skill no
-longer carries. It is idempotent: files that already match are left untouched.`,
+guidance can never disagree with the tool. igdev owns SKILL.md and references/:
+installation writes every embedded file and removes pages from references/ that the
+embedded skill no longer carries. Other files beside them are left alone, and a
+symlinked skill directory or references/ is written through, never replaced. It is
+idempotent: files that already match are left untouched.`,
 		Example: `  igdev agent skill-install
   igdev agent skill-install --scope repo
   igdev agent skill-install --json`,
@@ -552,9 +554,10 @@ func installAgentSkill(found project.Found, scope string) (agentSkillInstallData
 	return writeAgentSkill(dir, scope)
 }
 
-// writeAgentSkill writes the embedded skill into dir and removes every file
-// there that the embedded skill does not carry, so pages an older binary wrote
-// do not linger. igdev owns the whole skill directory. It reports created (no
+// writeAgentSkill writes the embedded skill into dir and removes every page in
+// references/ that the embedded skill does not carry, so pages an older binary
+// wrote do not linger. igdev owns SKILL.md and references/; other files beside
+// them are left alone. It reports created (no
 // SKILL.md before), unchanged (every file already matched and nothing was
 // removed), or updated. Identical files are left untouched, so a re-install
 // neither writes nor moves their mtimes.
@@ -600,32 +603,43 @@ func writeAgentSkill(dir, scope string) (agentSkillInstallData, *contract.Fault)
 	}, nil
 }
 
-// pruneAgentSkill removes the files under dir that the embedded skill does not
-// carry, then the directories that leaves empty. It reports whether it removed
-// anything.
+// pruneAgentSkill removes the files under dir's references/ that the embedded
+// skill does not carry, then the directories that leaves empty. It reports
+// whether it removed anything. Stale pages can only appear in references/, so
+// nothing beside it is touched. The walk starts from references/ with its
+// symlinks resolved, so a linked skill directory or a linked references/ is
+// pruned through the link and the link itself is never removed.
 func pruneAgentSkill(dir string, embedded map[string][]byte) (bool, *contract.Fault) {
+	refs := filepath.Join(dir, agentskill.ReferencesDir)
+	root, err := filepath.EvalSymlinks(refs)
+	if os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, writeFault(refs, err)
+	}
 	var files, dirs []string
-	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() {
-			if path != dir {
-				dirs = append(dirs, path)
-			}
+		if path == root {
 			return nil
 		}
-		rel, err := filepath.Rel(dir, path)
+		if entry.IsDir() {
+			dirs = append(dirs, path)
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
 		}
-		if _, ok := embedded[filepath.ToSlash(rel)]; !ok {
+		if _, ok := embedded[agentskill.ReferencesDir+"/"+filepath.ToSlash(rel)]; !ok {
 			files = append(files, path)
 		}
 		return nil
 	})
 	if err != nil {
-		return false, writeFault(dir, err)
+		return false, writeFault(refs, err)
 	}
 	for _, path := range files {
 		if err := os.Remove(path); err != nil {
@@ -634,7 +648,7 @@ func pruneAgentSkill(dir string, embedded map[string][]byte) (bool, *contract.Fa
 	}
 	// WalkDir lists parents before children, so walking backwards removes a
 	// child directory before its parent. A directory that still holds files
-	// fails to remove and is kept.
+	// fails to remove and is kept; the root is never listed.
 	for i := len(dirs) - 1; i >= 0; i-- {
 		if entries, err := os.ReadDir(dirs[i]); err == nil && len(entries) == 0 {
 			if err := os.Remove(dirs[i]); err != nil {
