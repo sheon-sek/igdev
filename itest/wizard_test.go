@@ -282,6 +282,39 @@ func TestWizardSetupConsentMissingExitsThree(t *testing.T) {
 	res.AssertNoLeaksOutside(t, dir, filepath.Join(env.Home, ".config"))
 }
 
+// The flag the Consent gate names has to unblock the gate that prints it: on a
+// fresh machine, `setup --accept-eula` in a terminal records the acceptance
+// before the Wizard reads the record, so step 1 reports it and the walkthrough
+// proceeds to the password step and completes. This is the T3 cell the matrix
+// was missing, and the deadlock issue #26 describes.
+func TestWizardSetupAcceptEULAUnblocksConsentGate(t *testing.T) {
+	env := testrig.NewEnv(t)
+	dir := env.Project("repo", testrig.MinimalContract)
+
+	session := env.StartPTY(testrig.PTYRun{Args: []string{"setup", "--accept-eula"}, Dir: dir, Env: wizardEnv(env)})
+	session.Expect("Gateway admin password").Send("\r") // generate
+	session.Expect("Baseline backup").Send("\r")        // none
+	session.Expect("Gateway HTTP port").Send("\r")      // allocate
+	res := session.Wait()
+	testrig.WantExit(t, res, contract.ExitOK)
+
+	if strings.Contains(res.Screen, "Has `igdev setup --accept-eula` been run") {
+		t.Errorf("the Acceptance flag still dead-ends in the Consent gate that names it:\n%s", res.Screen)
+	}
+	if !strings.Contains(res.Screen, "the Ignition EULA is accepted on this machine") {
+		t.Errorf("step 1 never reported the recorded acceptance:\n%s", res.Screen)
+	}
+	if accepted, err := consent.Load(consent.Path(filepath.Join(env.Home, ".config", "igdev"))); err != nil {
+		t.Fatalf("read the Consent record: %v", err)
+	} else if _, ok := accepted.Accepted(consent.EULA); !ok {
+		t.Error("the Acceptance flag did not record the EULA on this machine")
+	}
+	if _, err := os.Stat(filepath.Join(dir, project.StateDir)); err != nil {
+		t.Errorf("the walkthrough did not materialize the checkout: %v", err)
+	}
+	res.AssertNoLeaksOutside(t, dir, filepath.Join(env.Home, ".config"))
+}
+
 // The setup Wizard's steps, end to end: the Consent record is already there, so
 // the walkthrough answers the heap (reported), the password, the Baseline (left
 // empty), and the port pin, and the pin is machine-local state.

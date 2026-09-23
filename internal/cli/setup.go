@@ -162,15 +162,23 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 			// resolves.
 			doc = doc.Filled(project.DefaultDoc())
 
-			// The Wizard is a value source above the materialization: its answers
-			// arrive as flag values, and everything below runs once, unchanged.
-			wizardState, err := a.runSetupWizard(cmd, found, res, wizard, doc)
+			// The interaction flags are settled before anything is written: a
+			// usage error must not leave a Consent record behind, and the one
+			// decision is what lets the Acceptance flags below run before the
+			// Wizard reads the Consent record.
+			run, err := a.decide("setup", wizard, res.IsJSON(), a.setupNeedsWizard(found))
 			if err != nil {
 				return err
 			}
 
+			// The Acceptance flags are consumed here, before the Wizard whose
+			// step 1 is the Consent gate: that step reads the record these flags
+			// write, so consuming them afterwards dead-ends the run in the gate
+			// that names the flag. Only a human-typed flag reaches this loop
+			// (ADR 0004). acceptedAt is the acceptance, not the materialization:
+			// the timestamps below are taken after a possibly long walkthrough.
 			consentPath := consent.Path(xdg.Resolve().Config)
-			now := time.Now().UTC()
+			acceptedAt := time.Now().UTC()
 			accepted := []string{}
 			for _, term := range []struct {
 				term   consent.Term
@@ -183,7 +191,7 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 				if !term.accept {
 					continue
 				}
-				changed, err := consent.Accept(consentPath, term.term, now, Version())
+				changed, err := consent.Accept(consentPath, term.term, acceptedAt, Version())
 				if err != nil {
 					return contract.NewFault(contract.CodeInternal, contract.ExitFailure,
 						fmt.Sprintf("cannot record %s consent in %s: %v", term.term.Title, consentPath, err)).
@@ -193,11 +201,24 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 					accepted = append(accepted, term.term.ID)
 				}
 			}
+
+			// The Wizard is a value source above the materialization: its answers
+			// arrive as flag values, and everything below runs once, unchanged.
+			wizardState, err := a.runSetupWizard(cmd, found, run, doc)
+			if err != nil {
+				return err
+			}
+
 			// Nothing is materialized until the required terms are on record: a
 			// missing term is a human action, not a transient failure.
 			if fault := consent.Check(consentPath, consent.EULA); fault != nil {
 				return fault
 			}
+
+			// The materialization's timestamp is taken here, after the Wizard: a
+			// walkthrough can take minutes, and the files it stamps are written
+			// when setup materializes, not when it was invoked.
+			now := time.Now().UTC()
 
 			// The previous record is the source of continuity: the Instance keeps its
 			// identity, its ports while they are still free, and its creation time.

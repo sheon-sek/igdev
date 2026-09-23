@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sheon-sek/igdev/internal/baseline"
-	"github.com/sheon-sek/igdev/internal/config"
 	"github.com/sheon-sek/igdev/internal/consent"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/localconfig"
@@ -52,11 +51,12 @@ func (a *App) setupNeedsWizard(found project.Found) bool {
 
 // runSetupWizard is setup's value source: the Consent gate, the heap, the admin
 // password, the Baseline, and the port pin, each recorded as a flag value so the
-// materialization below runs exactly once, unchanged.
-func (a *App) runSetupWizard(cmd *cobra.Command, found project.Found, res *config.Resolution, flags wizardFlags, doc project.Doc) (*setupWizard, error) {
-	run, err := a.decide("setup", flags, res.IsJSON(), a.setupNeedsWizard(found))
-	if err != nil || !run.prompt {
-		return nil, err
+// materialization below runs exactly once, unchanged. The interaction policy has
+// already been decided by the caller, which is what lets the Acceptance flags be
+// consumed before this runs.
+func (a *App) runSetupWizard(cmd *cobra.Command, found project.Found, run wizardRun, doc project.Doc) (*setupWizard, error) {
+	if !run.prompt {
+		return nil, nil
 	}
 	wizard := &setupWizard{heapMB: doc.Gateway.MemoryMB, timezone: doc.Gateway.Timezone}
 
