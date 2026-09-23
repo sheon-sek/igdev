@@ -15,8 +15,10 @@ their own Docker namespace (igdev-<first 8 hex of the UUID>). Re-running setup o
 current checkout re-materializes it: the instance_id, its ports, and its creation time
 are kept, so identical state produces byte-identical files. When the Contract Digest
 moved, setup refreshes the Setup Stamp to the current contract. A recorded port the
-machine no longer offers is re-allocated and the record updated; ports never appear in
-the tracked Project Contract (ADR 0003).
+machine no longer offers is re-allocated and the record updated — unless this Instance's
+own Gateway is the one holding it, in which case the record keeps the triplet so a
+running Gateway's URLs survive a re-setup. Ports never appear in the tracked Project
+Contract (ADR 0003).
 
 Consent is required before anything is written. The record is machine-global
 (~/.config/igdev/accepted.toml, ADR 0004) and only a human-invoked command writes it,

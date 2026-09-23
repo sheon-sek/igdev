@@ -260,9 +260,14 @@ Compose project, the Gateway container, and the image.
 kernel for three free loopback ports (`127.0.0.1:0`), holding each listener open until
 all three are chosen so they are distinct. Re-running setup keeps the recorded triplet
 when all three ports are still free, and re-allocates when any of them was taken — the
-record is never allowed to describe a collision. Ports live in the record and in
-`.igdev/local.toml`, never in the tracked contract, and nothing may assume 8088
-(ADR 0003). A hand-edited `local.toml` keeps every line igdev does not own: setup
+record is never allowed to describe a collision. The one exception is this Instance's
+own Gateway: a busy port is re-checked against the Instance's compose project first
+(`docker compose ps`), and when the container holding it is this Instance's, the record
+keeps the triplet — a running Gateway keeps its URLs across a re-setup, which is what
+`setup` → `gateway up` → a contract edit → `setup` does. Setup asks the engine only
+after the bind probe has already failed, so a checkout with nothing running never talks
+to it. Ports live in the record and in `.igdev/local.toml`, never in the tracked
+contract, and nothing may assume 8088 (ADR 0003). A hand-edited `local.toml` keeps every line igdev does not own: setup
 writes the two credential keys and preserves the rest, including any port pin.
 
 **Materialization.** The Compose file, the Compose environment, and the Dockerfile come
