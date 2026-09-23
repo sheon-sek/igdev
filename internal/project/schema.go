@@ -75,10 +75,23 @@ type Ignition struct {
 	Edition       string `toml:"edition"`
 }
 
-// Modules is the module whitelist the Environment enables.
+// Modules is the module whitelist the Environment enables, and the artifacts the
+// project's own build produces.
 type Modules struct {
 	Enabled []string `toml:"enabled"`
+	// Artifacts are repository-relative globs naming the module artifacts the
+	// project's build stage writes. `igdev build` resolves them against the
+	// Project Root after the build stage and stages every match exactly as
+	// `module add` stages one file, so a module repository never has to chain
+	// `igdev module add` inside its own build command and never has to spell out a
+	// version-bearing file name. The key is additive to schema v1 and optional: it
+	// is omitted from the rendered contract while it is empty, and a contract that
+	// does not state it has `igdev build` stage nothing on its own.
+	Artifacts []string `toml:"artifacts"`
 }
+
+// Empty reports whether the section declares no artifact globs.
+func (m Modules) ArtifactsEmpty() bool { return len(m.Artifacts) == 0 }
 
 // Catalog is the capability-knowledge section: the Project Overlay files this
 // repository adds to the embedded Core Catalog (ADR 0005).
@@ -215,6 +228,9 @@ func (d Doc) Filled(defaults Doc) Doc {
 	if out.Modules.Enabled == nil {
 		out.Modules.Enabled = append([]string(nil), defaults.Modules.Enabled...)
 	}
+	if out.Modules.Artifacts == nil {
+		out.Modules.Artifacts = append([]string(nil), defaults.Modules.Artifacts...)
+	}
 	if out.Scan.Jython == nil {
 		out.Scan.Jython = append([]string(nil), defaults.Scan.Jython...)
 	}
@@ -271,6 +287,11 @@ func (d Doc) Validate(path string) error {
 	for _, name := range d.Modules.Enabled {
 		if !moduleLike(name) {
 			return contractInvalid("%smodules.enabled entry %q is not a module id", where, name)
+		}
+	}
+	for _, pattern := range d.Modules.Artifacts {
+		if reason := artifactGlobProblem(pattern); reason != "" {
+			return contractInvalid("%smodules.artifacts entry %q %s", where, pattern, reason)
 		}
 	}
 	for _, group := range []struct {
@@ -334,6 +355,9 @@ func (d Doc) Render() []byte {
 
 	b.WriteString("\n[modules]\n")
 	fmt.Fprintf(&b, "enabled = %s\n", tomlStrings(d.Modules.Enabled))
+	if !d.Modules.ArtifactsEmpty() {
+		fmt.Fprintf(&b, "artifacts = %s\n", tomlStrings(d.Modules.Artifacts))
+	}
 
 	b.WriteString("\n[scan]\n")
 	fmt.Fprintf(&b, "jython = %s\n", tomlStrings(d.Scan.Jython))
@@ -425,6 +449,39 @@ func overlayPathProblem(path string) string {
 		if segment == ".." {
 			return "traverses outside the repository"
 		}
+	}
+	return ""
+}
+
+// artifactGlobProblem reports why a `[modules].artifacts` entry cannot be a glob
+// over the repository, or "" when it can. The globs name files the project's own
+// build writes inside the checkout, so an absolute pattern or a traversal would
+// stage something no review ever covered.
+//
+// A `**` is refused rather than approximated: igdev resolves the globs with
+// filepath.Glob, whose `*` never crosses a path separator, so `**/*.modl` would
+// silently behave like `*/*.modl`. Naming the directory is a one-character fix and
+// the contract says exactly what it means.
+func artifactGlobProblem(pattern string) string {
+	if strings.TrimSpace(pattern) == "" {
+		return "is empty"
+	}
+	if pattern != strings.TrimSpace(pattern) {
+		return "carries surrounding whitespace"
+	}
+	if filepath.IsAbs(pattern) || strings.HasPrefix(pattern, "/") {
+		return "is an absolute path; build artifacts are inside the repository"
+	}
+	for _, segment := range strings.Split(pattern, "/") {
+		if segment == ".." {
+			return "traverses outside the repository"
+		}
+	}
+	if strings.Contains(pattern, "**") {
+		return "uses **, which igdev does not resolve; name the directory instead (build/*.modl)"
+	}
+	if _, err := filepath.Match(pattern, ""); err != nil {
+		return "is not a glob pattern: an unbalanced bracket or a bad escape breaks it"
 	}
 	return ""
 }

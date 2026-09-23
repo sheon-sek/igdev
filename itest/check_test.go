@@ -36,6 +36,16 @@ type pipelineStageState struct {
 	ModulesDir  string              `json:"modules_dir"`
 	Staged      []string            `json:"staged"`
 	RuntimeDir  string              `json:"runtime_dir"`
+	Artifacts   []struct {
+		Glob       string   `json:"glob"`
+		Source     string   `json:"source"`
+		Artifact   string   `json:"artifact"`
+		ID         string   `json:"id"`
+		Name       string   `json:"name"`
+		Version    string   `json:"version"`
+		Action     string   `json:"action"`
+		Superseded []string `json:"superseded"`
+	} `json:"artifacts"`
 }
 
 // pipelineState is the `data` member of check, test, build, and verify.
@@ -360,6 +370,104 @@ func TestBuildVerbRestagesModules(t *testing.T) {
 	human := env.RunIn(dir, "build")
 	testrig.WantExit(t, human, contract.ExitOK)
 	env.Golden(t, "build_stage.txt", human.Stdout)
+	res.AssertNoLeaksOutside(t, dir, env.Home, env.Path("state"))
+}
+
+// A module repository declares what its own build produces: build stages every
+// match of [modules].artifacts without a manual `module add`, and a version bump
+// replaces the previous build instead of leaving two artifacts for one module id.
+func TestBuildStagesTheDeclaredArtifacts(t *testing.T) {
+	env := testrig.NewEnv(t)
+	modl(t, env, "repo/build-src/com.acme.vision-1.2.3.modl", "<MODL>", moduleXML("com.acme.vision", "Acme Vision", "1.2.3"))
+	dir := pipelineFixture(t, env, func(doc *project.Doc) {
+		doc.Modules.Artifacts = []string{"build/*.modl"}
+		doc.Commands.Build = "mkdir -p build && cp build-src/*.modl build/"
+	})
+	staging := filepath.Join(dir, project.StateDir, "modules")
+
+	res := env.RunIn(dir, "build", "--json")
+	testrig.WantExit(t, res, contract.ExitOK)
+	env.Golden(t, "build_artifacts.json", res.Stdout)
+
+	data := pipelineOf(t, res.Stdout)
+	restage := stageNamed(t, data, "module-restage")
+	if len(restage.Artifacts) != 1 {
+		t.Fatalf("module-restage staged %+v, want the one declared artifact", restage.Artifacts)
+	}
+	stagedArtifact := restage.Artifacts[0]
+	if stagedArtifact.Glob != "build/*.modl" || stagedArtifact.ID != "com.acme.vision" ||
+		stagedArtifact.Version != "1.2.3" || stagedArtifact.Action != "created" {
+		t.Errorf("staged artifact = %+v, want the declared glob's match", stagedArtifact)
+	}
+	if got := strings.Join(stagedArtifacts(t, staging), ","); got != "com.acme.vision-1.2.3.modl" {
+		t.Errorf("staging directory holds %q, want the build's artifact", got)
+	}
+	// Staging is not a contract change, so the Checkout Setup stays current.
+	if state := testrig.Status(t, env.RunIn(dir, "status", "--json").Stdout); state.Setup.StampState != "current" {
+		t.Errorf("stamp_state = %q, want current: staging is not a contract write", state.Setup.StampState)
+	}
+
+	// The bump: the same module id under a new file name. The old build must not
+	// stay mounted beside the new one.
+	if err := os.Remove(filepath.Join(dir, "build", "com.acme.vision-1.2.3.modl")); err != nil {
+		t.Fatalf("remove the old build output: %v", err)
+	}
+	modl(t, env, "repo/build-src/com.acme.vision-1.2.4.modl", "<MODL_NEXT>", moduleXML("com.acme.vision", "Acme Vision", "1.2.4"))
+	if err := os.Remove(env.Path("repo", "build-src", "com.acme.vision-1.2.3.modl")); err != nil {
+		t.Fatalf("remove the old build source: %v", err)
+	}
+
+	bumped := env.RunIn(dir, "build", "--json")
+	testrig.WantExit(t, bumped, contract.ExitOK)
+	after := stageNamed(t, pipelineOf(t, bumped.Stdout), "module-restage")
+	if len(after.Artifacts) != 1 || len(after.Artifacts[0].Superseded) != 1 ||
+		after.Artifacts[0].Superseded[0] != "com.acme.vision-1.2.3.modl" {
+		t.Errorf("the version bump superseded %+v, want the previous build", after.Artifacts)
+	}
+	if got := strings.Join(stagedArtifacts(t, staging), ","); got != "com.acme.vision-1.2.4.modl" {
+		t.Errorf("staging directory holds %q, want one artifact per module id", got)
+	}
+	if got := strings.Join(after.Staged, ","); got != "com.acme.vision" {
+		t.Errorf("staged ids = %q, want the module once", got)
+	}
+	res.AssertNoLeaksOutside(t, dir, env.Home, env.Path("state"))
+}
+
+// A declared glob that matches nothing fails the build: the contract says what
+// the build produces, and a run that found none of it staged nothing, which must
+// not look like success.
+func TestBuildFailsWhenADeclaredGlobMatchesNothing(t *testing.T) {
+	env := testrig.NewEnv(t)
+	dir := pipelineFixture(t, env, func(doc *project.Doc) {
+		doc.Modules.Artifacts = []string{"build/*.modl"}
+		doc.Commands.Build = "printf 'built nothing\n'"
+	})
+
+	res := env.RunIn(dir, "build", "--json")
+	testrig.WantExit(t, res, contract.ExitFailure)
+	env.Golden(t, "build_artifact_missing.json", res.Stdout)
+
+	envelope := testrig.Envelope(t, res.Stdout)
+	testrig.WantCode(t, envelope, contract.CodeModuleArtifactMissing)
+	testrig.WantRemediation(t, envelope, "igdev build")
+
+	data := pipelineOf(t, res.Stdout)
+	if data.Failed != "module-restage" {
+		t.Errorf("failed = %q, want the stage that resolves the globs", data.Failed)
+	}
+	stage := stageNamed(t, data, "module-restage")
+	if stage.Status != "failed" || !strings.Contains(stage.Message, "build/*.modl") {
+		t.Errorf("module-restage = %+v, want a failure naming the glob", stage)
+	}
+	if got := stagedArtifacts(t, filepath.Join(dir, project.StateDir, "modules")); len(got) != 0 {
+		t.Errorf("the failed build staged %v", got)
+	}
+
+	human := env.RunIn(dir, "build")
+	testrig.WantExit(t, human, contract.ExitFailure)
+	if !strings.Contains(human.Stderr, "build/*.modl") {
+		t.Errorf("the human failure does not name the glob:\nstdout:\n%s\nstderr:\n%s", human.Stdout, human.Stderr)
+	}
 	res.AssertNoLeaksOutside(t, dir, env.Home, env.Path("state"))
 }
 

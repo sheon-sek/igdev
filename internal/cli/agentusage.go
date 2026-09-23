@@ -30,8 +30,10 @@ write — contract, gitignore, and agents — each with path, action (created, u
 unchanged), the Contract Digest afterwards, and the unified diff, so a tracked change is
 reviewed from the envelope instead of the terminal. init is the repair path for a
 contract igdev cannot read (IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED) or that needs new
-values: run it with the flags to write, then igdev setup. It never prompts when --json
-or --yes is passed, so a fully specified invocation is the whole interface.`,
+values: run it with the flags to write, then igdev setup. --modules-artifacts declares
+the globs igdev build stages, so a module repository does not chain igdev module add
+inside its own build. It never prompts when --json or --yes is passed, so a fully
+specified invocation is the whole interface.`,
 	"igdev setup": `pass --json for the machine contract. data carries instance_id, namespace,
 ports, setup_path, files (each rendered runtime path with kind, action, and mode),
 credentials (path, source, username — never the password), and consent_accepted. setup
@@ -78,10 +80,15 @@ failed, so a repository that declares no test command still passes the verb. The
 own non-zero exit propagates unchanged, and its output streams to stderr in both
 dialects.`,
 	"igdev build": `pass --json for the machine contract. data.stages carries the declared-
-check stage and the module re-staging that follows it, with the status of each; an
-undeclared build stage is reported skipped. A failing stage propagates its own exit code
-and stops the run before anything is re- staged, so a build that failed never
-republishes modules.`,
+build stage and the module re-staging that follows it (stage module-restage), with
+the status of each; an undeclared build stage is reported skipped. The re-staging
+stages every match of the contract's [modules].artifacts globs — stage.artifacts
+names each glob, the source it matched, the module id it declares, and the staged
+file, with superseded listing any staged file it replaced — and then re-materializes
+the runtime. A declared glob that matches nothing fails with
+IGDEV_E_MODULE_ARTIFACT_MISSING. A failing stage propagates its own exit code and
+stops the run before anything is re-staged, so a build that failed never republishes
+modules.`,
 	"igdev verify": `pass --json for the machine contract. data.stages concatenates check, test,
 and build in order — plus the Gateway stages when --gateway is set — with failed naming
 the stage that stopped the run, and gateway_url carrying the Gateway that --gateway left

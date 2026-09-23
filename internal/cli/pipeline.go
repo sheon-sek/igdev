@@ -66,6 +66,30 @@ type stageResult struct {
 	ModulesDir string   `json:"modules_dir,omitempty"`
 	Staged     []string `json:"staged,omitempty"`
 	RuntimeDir string   `json:"runtime_dir,omitempty"`
+	// Artifacts is the re-staging detail when the contract declares
+	// `[modules].artifacts`: one entry per artifact the globs resolved and this
+	// run staged.
+	Artifacts []stagedArtifact `json:"artifacts,omitempty"`
+}
+
+// stagedArtifact is one artifact a contract glob matched and `igdev build`
+// staged, reported so a run says which glob produced which module.
+type stagedArtifact struct {
+	Glob string `json:"glob"`
+	// Source is the artifact the glob matched, inside the repository.
+	Source string `json:"source"`
+	// Artifact is the staged file name, and ID, Name, and Version are what its
+	// module.xml declares.
+	Artifact string `json:"artifact"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Version  string `json:"version"`
+	// Action is created, or replaced when an artifact of the same file name was
+	// already staged.
+	Action string `json:"action"`
+	// Superseded lists staged file names removed because they declared the same
+	// module id under another name.
+	Superseded []string `json:"superseded,omitempty"`
 }
 
 // pipelineData is the `data` member of check, test, build, and verify: the stages
@@ -157,14 +181,19 @@ func (a *App) newBuildCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "build",
 		Short: "Run the project's declared build stage, then re-stage the modules",
-		Long: `build dispatches [commands].build at the Project Root, then re-materializes the
-module staging the Gateway mounts. The re-staging is why a build is worth running
-before ` + "`gateway up`" + `: whatever the project produced is what the next Gateway
-launch sees.
+		Long: `build dispatches [commands].build at the Project Root, then brings the module
+staging the Gateway mounts up to date. Every glob in the contract's
+` + "`[modules].artifacts`" + ` is resolved against the Project Root and every match is staged
+exactly as ` + "`module add`" + ` would — replacing a previously staged artifact that declares
+the same module id, so a version bump does not leave two builds of one module mounted.
+The re-staging is why a build is worth running before ` + "`gateway up`" + `: whatever the
+project produced is what the next Gateway launch sees. A declared glob that matches
+nothing fails the run with IGDEV_E_MODULE_ARTIFACT_MISSING, because a contract that
+declares its build outputs and finds none of them has nothing to stage.
 
 An undeclared build stage is skipped and reported as skipped. A stage that exits
 non-zero propagates its own exit code and stops the run before anything is
-re-staged.`,
+re-staged. An undeclared artifacts list stages nothing on its own.`,
 		Example: `  igdev build
   igdev build --json`,
 		Args: rejectArgs("build"),
@@ -495,10 +524,22 @@ func (a *App) declaredStage(found project.Found, name, key, command string, json
 	return stage, nil
 }
 
-// restageStage re-materializes the module staging the Gateway mounts, which is
-// what `build` adds after the project's own build command.
+// restageStage resolves the contract's `[modules].artifacts` globs, stages every
+// match exactly as `module add` would, and then re-materializes the module staging
+// the Gateway mounts. It is what `build` adds after the project's own build
+// command: a module repository declares what its build produces instead of
+// chaining `igdev module add` inside the build.
 func (a *App) restageStage(found project.Found, k *knowledge) (stageResult, *contract.Fault) {
 	stage := stageResult{Stage: "module-restage"}
+	artifacts, fault := modules.StageArtifacts(found.Root, modules.Dir(found.Root), k.doc.Modules.Artifacts)
+	if fault != nil {
+		stage.Status = stageFailed
+		stage.Message = fault.Message
+		return stage, fault
+	}
+	for _, artifact := range artifacts {
+		stage.Artifacts = append(stage.Artifacts, stagedArtifactOf(artifact))
+	}
 	if _, err := a.restage(found, k.doc); err != nil {
 		stage.Status = stageFailed
 		fault := contract.AsFault(err)
@@ -516,6 +557,24 @@ func (a *App) restageStage(found project.Found, k *knowledge) (stageResult, *con
 	stage.Staged = modules.IDs(records)
 	stage.RuntimeDir = setupPaths(found.Root).runtime
 	return stage, nil
+}
+
+// stagedArtifactOf renders one staged artifact for the run's report.
+func stagedArtifactOf(artifact modules.Artifact) stagedArtifact {
+	action := "created"
+	if artifact.Staged.Replaced {
+		action = "replaced"
+	}
+	return stagedArtifact{
+		Glob:       artifact.Glob,
+		Source:     artifact.Source,
+		Artifact:   artifact.Staged.Artifact,
+		ID:         artifact.Staged.ID,
+		Name:       artifact.Staged.Name,
+		Version:    artifact.Staged.Version,
+		Action:     action,
+		Superseded: artifact.Superseded,
+	}
 }
 
 // jythonSpec resolves the Jython checker's cache wiring for this run.
@@ -622,6 +681,9 @@ func stageDetail(stage stageResult) string {
 	case "module-restage":
 		if stage.Status == stageSkipped {
 			return ""
+		}
+		if len(stage.Artifacts) > 0 {
+			return fmt.Sprintf("%d staged (%d from [modules].artifacts)", len(stage.Staged), len(stage.Artifacts))
 		}
 		return fmt.Sprintf("%d staged", len(stage.Staged))
 	case "declared-check", "declared-test", "declared-build":

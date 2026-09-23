@@ -69,6 +69,41 @@ func TestAllowUnsignedModulesIsAdditive(t *testing.T) {
 	}
 }
 
+// [modules] artifacts is additive to schema v1 the same way: a contract that does
+// not state it renders no key and leaves `igdev build` staging nothing on its own,
+// and a stated list round-trips.
+func TestModuleArtifactsAreAdditive(t *testing.T) {
+	absent, err := ParseDoc([]byte("schema = 1\n\n[modules]\nenabled = []\n"), "igdev.toml")
+	if err != nil {
+		t.Fatalf("ParseDoc without the key: %v", err)
+	}
+	if !absent.Modules.ArtifactsEmpty() {
+		t.Errorf("artifacts = %v, want none declared", absent.Modules.Artifacts)
+	}
+	if rendered := string(absent.Render()); strings.Contains(rendered, "artifacts") {
+		t.Errorf("render emitted an empty artifacts key:\n%s", rendered)
+	}
+
+	stated, err := ParseDoc([]byte("schema = 1\n\n[modules]\nenabled = []\nartifacts = [\"build/*.modl\"]\n"), "igdev.toml")
+	if err != nil {
+		t.Fatalf("ParseDoc with the key: %v", err)
+	}
+	if got := strings.Join(stated.Modules.Artifacts, ","); got != "build/*.modl" {
+		t.Errorf("artifacts = %q, want the declared glob", got)
+	}
+	filled := stated.Filled(DefaultDoc())
+	if got := strings.Join(filled.Modules.Artifacts, ","); got != "build/*.modl" {
+		t.Errorf("Filled changed the declared globs to %q", got)
+	}
+	rendered := string(filled.Render())
+	if !strings.Contains(rendered, `artifacts = ["build/*.modl"]`) {
+		t.Errorf("render dropped the declared globs:\n%s", rendered)
+	}
+	if again, err := ParseDoc([]byte(rendered), "igdev.toml"); err != nil || again.Modules.ArtifactsEmpty() {
+		t.Errorf("round trip lost the globs: %v", err)
+	}
+}
+
 // A key igdev does not know is refused, not ignored: schema v1 is a closed
 // layout, and a typo must not silently do nothing.
 func TestParseDocRejectsUnknownKeys(t *testing.T) {
@@ -100,6 +135,11 @@ func TestValidateRejectsBadValues(t *testing.T) {
 		{"edition", func(d *Doc) { d.Ignition.Edition = "Standard Edition" }, "ignition.edition"},
 		{"tool min version", func(d *Doc) { d.Tool.MinVersion = "soon" }, "tool.min_version"},
 		{"module id", func(d *Doc) { d.Modules.Enabled = []string{"has space"} }, "modules.enabled"},
+		{"empty artifact glob", func(d *Doc) { d.Modules.Artifacts = []string{" "} }, "modules.artifacts"},
+		{"absolute artifact glob", func(d *Doc) { d.Modules.Artifacts = []string{"/tmp/*.modl"} }, "modules.artifacts"},
+		{"traversing artifact glob", func(d *Doc) { d.Modules.Artifacts = []string{"../*.modl"} }, "modules.artifacts"},
+		{"doublestar artifact glob", func(d *Doc) { d.Modules.Artifacts = []string{"build/**/*.modl"} }, "modules.artifacts"},
+		{"broken artifact glob", func(d *Doc) { d.Modules.Artifacts = []string{"build/[.modl"} }, "modules.artifacts"},
 		{"empty scan path", func(d *Doc) { d.Scan.Jython = []string{" "} }, "scan.jython"},
 		{"gateway heap", func(d *Doc) { d.Gateway.MemoryMB = -1 }, "gateway.memory_mb"},
 		{"empty overlay path", func(d *Doc) { d.Catalog.OverlayPaths = []string{" "} }, "catalog.overlay_paths"},

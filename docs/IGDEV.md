@@ -195,13 +195,15 @@ name`, `[tool] min_version`, `[ignition] version|jython_version|edition`,
 (omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints|allow_unsigned_modules`.
 A key igdev does not know is refused, and a version-like field holds a version. Fields
 the file leaves out fall back to the embedded defaults, so a minimal `schema = 1`
-contract is valid. Two keys are optional and omitted from the rendered contract while
+contract is valid. Three keys are optional and omitted from the rendered contract while
 they hold the schema default: `smoke_endpoints` (a checkout that does not state it smokes
-the root document alone), and `gateway.allow_unsigned_modules` (default false: the
-Gateway loads only signed module artifacts). Optional means additive — a contract written
-before either key existed parses, renders, and behaves exactly as it did, and stating an
-optional key is an edit of a tracked file, so it goes through `igdev init` and makes the
-Checkout Setup stale until `igdev setup` re-materializes it. `init` merges: a flag
+the root document alone), `modules.artifacts` (a contract that does not state it has
+`igdev build` stage nothing on its own), and `gateway.allow_unsigned_modules` (default
+false: the Gateway loads only signed module artifacts). Optional means additive — a
+contract written before either key existed parses, renders, and behaves exactly as it
+did, and stating an optional key is an edit of a tracked file, so it goes through
+`igdev init` and makes the Checkout Setup stale until `igdev setup` re-materializes it.
+`init` merges: a flag
 overrides the value it names and everything else the file holds is preserved; an empty
 value (`--modules ""`) clears a field.
 
@@ -586,6 +588,19 @@ whitelist survives, so a whitelisted module whose artifact was cleared reads as
 
 Both write verbs pass the full Gate, so they need a current Checkout Setup, and both
 report what the re-materialization did to each runtime file.
+
+A repository whose own build produces the artifacts declares that instead of staging by
+hand: `[modules].artifacts` holds repository-relative globs, and after a successful
+build stage `igdev build` resolves each one against the Project Root and stages every
+match exactly as `module add` would — id, name, and version read the same way, the copy
+atomic, and no contract change. Staging an artifact also removes any other staged file
+that declares the same module id, so a version bump (a new file name for the same
+module) replaces the previous build instead of leaving two builds of one module mounted
+beside each other. A glob that matches nothing fails the build with
+`IGDEV_E_MODULE_ARTIFACT_MISSING`: a contract that declares what its build produces and
+finds none of it has nothing to stage, and silence would look like success. Artifacts
+whose module id the build no longer produces are left alone — they are still cleared
+with `module clear`.
 
 `igdev module cache-path` prints the machine-wide module cache directory for the
 resolved Ignition version (`<XDG cache>/igdev/modules/<version>`), as a bare path in the

@@ -14,6 +14,9 @@ maintains a minimal, version-free managed block in AGENTS.md. A later run is an 
 flag overrides the value it names, everything else the contract already holds is
 preserved, and a run that changes nothing writes nothing and prints nothing.
 Pass an empty value (--modules "" or --command-check "") to clear a field.
+A module repository can also declare what its own build produces —
+--modules-artifacts 'build/libs/*.modl' — and igdev build then stages every match,
+so the build command never has to chain igdev module add itself.
 
 Without --json or --yes, init never prompts an invocation that already has a contract
 to preserve: an agent's fully specified invocation is the whole interface. In a
@@ -58,6 +61,7 @@ igdev init [flags]
   -i, --interactive                 run the Wizard even when every value is already supplied
       --jython-version string       Jython version the compatibility checker targets (default 2.7.4)
       --modules strings             module ids to enable, comma-separated or repeated (default: none)
+      --modules-artifacts strings   globs of the module artifacts the build produces, repository-relative, comma-separated (default: none)
       --name string                 repository name recorded as [project].name
       --scan-capabilities strings   directories scanned for capability usage, comma-separated (default src/main/python)
       --scan-jython strings         directories scanned for Jython sources, comma-separated (default src/main/python)
@@ -79,5 +83,7 @@ write — contract, gitignore, and agents — each with path, action (created, u
 unchanged), the Contract Digest afterwards, and the unified diff, so a tracked change is
 reviewed from the envelope instead of the terminal. init is the repair path for a
 contract igdev cannot read (IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED) or that needs new
-values: run it with the flags to write, then igdev setup. It never prompts when --json
-or --yes is passed, so a fully specified invocation is the whole interface.
+values: run it with the flags to write, then igdev setup. --modules-artifacts declares
+the globs igdev build stages, so a module repository does not chain igdev module add
+inside its own build. It never prompts when --json or --yes is passed, so a fully
+specified invocation is the whole interface.

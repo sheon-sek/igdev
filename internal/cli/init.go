@@ -71,6 +71,7 @@ func (a *App) newInitCmd() *cobra.Command {
 		jythonVersion    string
 		edition          string
 		modules          []string
+		moduleArtifacts  []string
 		scanJython       []string
 		scanCapabilities []string
 		commandCheck     string
@@ -98,6 +99,9 @@ maintains a minimal, version-free managed block in ` + agentsFile + `. A later r
 flag overrides the value it names, everything else the contract already holds is
 preserved, and a run that changes nothing writes nothing and prints nothing.
 Pass an empty value (--modules "" or --command-check "") to clear a field.
+A module repository can also declare what its own build produces —
+--modules-artifacts 'build/libs/*.modl' — and igdev build then stages every match,
+so the build command never has to chain igdev module add itself.
 
 Without --json or --yes, init never prompts an invocation that already has a contract
 to preserve: an agent's fully specified invocation is the whole interface. In a
@@ -136,7 +140,7 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 						JythonVersion: jythonVersion,
 						Edition:       edition,
 					},
-					Modules: project.Modules{Enabled: nonEmpty(modules)},
+					Modules: project.Modules{Enabled: nonEmpty(modules), Artifacts: nonEmpty(moduleArtifacts)},
 					Scan:    project.Scan{Jython: nonEmpty(scanJython), Capabilities: nonEmpty(scanCapabilities)},
 					Commands: project.Commands{
 						Check: commandCheck,
@@ -213,6 +217,8 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 	flags.StringVar(&edition, "edition", "", "Ignition module edition (default "+project.DefaultEdition+")")
 	flags.StringSliceVar(&modules, "modules", nil,
 		"module ids to enable, comma-separated or repeated (default: none)")
+	flags.StringSliceVar(&moduleArtifacts, "modules-artifacts", nil,
+		"globs of the module artifacts the build produces, repository-relative, comma-separated (default: none)")
 	flags.StringSliceVar(&scanJython, "scan-jython", nil,
 		"directories scanned for Jython sources, comma-separated (default "+strings.Join(project.DefaultScanPaths, ",")+")")
 	flags.StringSliceVar(&scanCapabilities, "scan-capabilities", nil,
@@ -258,6 +264,7 @@ func initDoc(cmd *cobra.Command, found project.Found, flagValues project.Doc) pr
 	set("jython-version", func() { doc.Ignition.JythonVersion = flagValues.Ignition.JythonVersion })
 	set("edition", func() { doc.Ignition.Edition = flagValues.Ignition.Edition })
 	set("modules", func() { doc.Modules.Enabled = flagValues.Modules.Enabled })
+	set("modules-artifacts", func() { doc.Modules.Artifacts = flagValues.Modules.Artifacts })
 	set("scan-jython", func() { doc.Scan.Jython = flagValues.Scan.Jython })
 	set("scan-capabilities", func() { doc.Scan.Capabilities = flagValues.Scan.Capabilities })
 	set("command-check", func() { doc.Commands.Check = flagValues.Commands.Check })
