@@ -312,8 +312,9 @@ func TestAgentContextNeverPromptsOnTTY(t *testing.T) {
 	}
 }
 
-// Skill installation writes the embedded document, globally by default under the
-// machine's HOME, and touches nothing else.
+// Skill installation writes the embedded skill, the SKILL.md entry plus its
+// references/, globally by default under the machine's HOME, and touches nothing
+// else.
 func TestAgentSkillInstallGlobal(t *testing.T) {
 	env := testrig.NewEnv(t)
 	dir := env.Mkdir("plain")
@@ -333,6 +334,15 @@ func TestAgentSkillInstallGlobal(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "version: \""+contract.Version+"\"") {
 		t.Errorf("the installed frontmatter does not carry the CLI Contract Version:\n%s", firstLines(string(raw), 5))
+	}
+	skillDir := filepath.Join(env.Home, ".agents", "skills", "igdev")
+	for name, want := range agentskill.Files() {
+		got, err := os.ReadFile(filepath.Join(skillDir, filepath.FromSlash(name)))
+		if err != nil {
+			t.Errorf("the skill file %s was not installed: %v", name, err)
+		} else if string(got) != string(want) {
+			t.Errorf("the installed %s is not the embedded file", name)
+		}
 	}
 
 	var data struct {
@@ -400,6 +410,25 @@ func TestAgentSkillInstallIsIdempotentAndUpdates(t *testing.T) {
 	}
 	if string(raw) != string(agentskill.Content()) {
 		t.Error("the updated skill is not the embedded document")
+	}
+
+	// igdev owns the skill directory: a page an older binary wrote, and the
+	// directory it leaves empty, are removed, and removing them is an update.
+	env.Write("home/.agents/skills/igdev/references/retired.md", "old page\n")
+	env.Write("home/.agents/skills/igdev/old/gone.md", "old page\n")
+	pruned := env.RunIn(dir, "agent", "skill-install", "--json")
+	testrig.WantExit(t, pruned, contract.ExitOK)
+	testrig.DataOf(t, pruned.Stdout, &data)
+	if data.Action != "updated" {
+		t.Errorf("prune action = %q, want updated", data.Action)
+	}
+	for _, stale := range []string{"references/retired.md", "old"} {
+		if _, err := os.Lstat(filepath.Join(env.Home, ".agents", "skills", "igdev", stale)); !os.IsNotExist(err) {
+			t.Errorf("the stale %s survived the install (err = %v)", stale, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(env.Home, ".agents", "skills", "igdev", "references", "errors.md")); err != nil {
+		t.Errorf("pruning removed an embedded page: %v", err)
 	}
 }
 

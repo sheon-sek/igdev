@@ -1,7 +1,8 @@
 // Command igdev-docs writes the public command reference from the CLI's own
-// command definitions. It is the only writer of docs/reference/: the committed
-// files are the generator's output, and `igdev-docs -check` (the CI step and
-// the drift test in internal/docsgen) fails when they are not.
+// command definitions. It is the only writer of docs/reference/ and of the Agent
+// Skill's internal/agentskill/references/: the committed files are the
+// generator's output, and `igdev-docs -check` (the CI step and the drift test in
+// internal/docsgen) fails when they are not.
 package main
 
 import (
@@ -17,26 +18,18 @@ import (
 
 func main() {
 	check := flag.Bool("check", false, "verify the committed reference matches the command definitions, without writing")
-	dir := flag.String("dir", docsgen.Dir, "directory, relative to the working directory, the reference is written to")
 	flag.Parse()
 
 	files := docsgen.Render()
-	rel := make(map[string]string, len(files))
-	for name, content := range files {
-		base := strings.TrimPrefix(name, docsgen.Dir+"/")
-		rel[base] = content
-	}
-
-	if *check {
-		if err := drift(*dir, rel); err != nil {
+	for _, dir := range docsgen.Dirs {
+		run := write
+		if *check {
+			run = drift
+		}
+		if err := run(dir, files); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		return
-	}
-	if err := write(*dir, rel); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
 	}
 }
 

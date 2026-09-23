@@ -87,7 +87,7 @@ A machine-readable next step inside an error result: the exact command that clea
 _Avoid_: hint, suggestion
 
 **Agent Skill**:
-The thin workflow document bundled with igdev and installed by setup. Teaches ordering, boundaries, and error handling; carries no API catalogs.
+The workflow document bundled with igdev and installed by `igdev agent skill-install`, never by setup. Its entry teaches ordering, boundaries, and error handling. Beside the entry sit the command reference and the error-code reference, which an agent reads only when a task needs them. It carries no API catalogs.
 _Avoid_: README block, cheat sheet
 
 **CLI Contract Version**:

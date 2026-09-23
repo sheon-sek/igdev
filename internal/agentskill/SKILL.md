@@ -8,9 +8,19 @@ description: Work an Ignition local-development checkout from an agent session w
 
 igdev is the Ignition local-development toolchain. Each repository declares what it
 needs in a tracked `igdev.toml` Project Contract; igdev materializes a disposable
-runtime into the gitignored `.igdev/`. This skill is the workflow. The tool is the
-reference: run `igdev help <command>` for the flags, examples, and agent usage of
-any verb.
+runtime into the gitignored `.igdev/`. This file is the workflow. Read a reference
+file below only when the task needs it; do not guess a flag or a code.
+
+## References
+
+- `references/README.md`: every command, one line each. Start here to find a verb.
+- `references/<command>.md`: one command's flags, examples, and agent usage. The
+  name is the command path with dashes, for example `references/gateway-up.md` or
+  `references/module-require.md`. `igdev help <command>` prints the same text.
+- `references/errors.md`: every `IGDEV_E_*` code with its exit level and next step.
+  Read it when a run fails and the Remediation alone does not explain the failure.
+- `references/agent-context.md`: the field-by-field shape of
+  `igdev agent context --json`.
 
 ## Workflow
 
