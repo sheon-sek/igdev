@@ -348,6 +348,54 @@ func TestSetupHumanOutput(t *testing.T) {
 	}
 }
 
+// [gateway] allow_unsigned_modules is the one Gateway option a contract states,
+// so it has to reach the rendered Compose environment and be readable from both
+// reporting surfaces an agent uses.
+func TestAllowUnsignedModulesReachesTheInstance(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.ShimDocker()
+	dir := pipelineFixture(t, env, func(doc *project.Doc) {
+		doc.Gateway.AllowUnsignedModules = true
+	})
+	envFile := filepath.Join(dir, project.StateDir, "runtime", "compose.env")
+	if got := readFile(t, envFile); !strings.Contains(got, "IGNITION_ALLOW_UNSIGNED_MODULES=true") {
+		t.Errorf("compose.env does not render the option:\n%s", got)
+	}
+
+	status := env.RunIn(dir, "status", "--json")
+	testrig.WantExit(t, status, contract.ExitOK)
+	var reported struct {
+		Gateway struct {
+			AllowUnsignedModules bool `json:"allow_unsigned_modules"`
+		} `json:"gateway"`
+	}
+	testrig.DataOf(t, status.Stdout, &reported)
+	if !reported.Gateway.AllowUnsignedModules {
+		t.Errorf("status does not report the effective option:\n%s", status.Stdout)
+	}
+
+	orientation := env.RunIn(dir, "agent", "context", "--json")
+	testrig.WantExit(t, orientation, contract.ExitOK)
+	var context struct {
+		Modules struct {
+			AllowUnsignedModules bool `json:"allow_unsigned_modules"`
+		} `json:"modules"`
+	}
+	testrig.DataOf(t, orientation.Stdout, &context)
+	if !context.Modules.AllowUnsignedModules {
+		t.Errorf("agent context does not report the effective option:\n%s", orientation.Stdout)
+	}
+
+	// The schema default is what a checkout materialized before the key existed
+	// carried: false, with nothing else about the file moved.
+	plain := env.Project("plain", testrig.MinimalContract)
+	testrig.WantExit(t, env.RunIn(plain, "setup", "--accept-eula"), contract.ExitOK)
+	defaulted := readFile(t, filepath.Join(plain, project.StateDir, "runtime", "compose.env"))
+	if !strings.Contains(defaulted, "IGNITION_ALLOW_UNSIGNED_MODULES=false") {
+		t.Errorf("a contract that does not state the option renders:\n%s", defaulted)
+	}
+}
+
 // The exact change set of the first setup: the Checkout Setup inside the
 // fixture, plus the machine Consent record under HOME, and nothing anywhere else.
 func TestSetupWritesExactlyTheCheckoutSetup(t *testing.T) {

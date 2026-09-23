@@ -79,6 +79,7 @@ func (a *App) newInitCmd() *cobra.Command {
 		commandSmoke     string
 		gatewayMemoryMB  int
 		gatewayTimezone  string
+		allowUnsigned    bool
 		minVersion       string
 	)
 
@@ -143,7 +144,8 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 						Build: commandBuild,
 						Smoke: commandSmoke,
 					},
-					Gateway: project.Gateway{MemoryMB: gatewayMemoryMB, Timezone: gatewayTimezone},
+					Gateway: project.Gateway{MemoryMB: gatewayMemoryMB, Timezone: gatewayTimezone,
+						AllowUnsignedModules: allowUnsigned},
 				}
 			}
 			// initDoc is the one merge the command and the Wizard share: the
@@ -223,6 +225,8 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 		"Gateway heap in MiB (default "+fmt.Sprint(project.DefaultGatewayMemoryMB)+")")
 	flags.StringVar(&gatewayTimezone, "gateway-timezone", "",
 		"Gateway timezone, e.g. UTC (default "+project.DefaultTimezone+")")
+	flags.BoolVar(&allowUnsigned, "allow-unsigned-modules", false,
+		"let the Gateway load a module artifact that carries no valid signature (default false)")
 	flags.StringVar(&minVersion, "tool-min-version", "",
 		"oldest igdev version this project accepts, recorded as [tool].min_version")
 
@@ -262,6 +266,9 @@ func initDoc(cmd *cobra.Command, found project.Found, flagValues project.Doc) pr
 	set("command-smoke", func() { doc.Commands.Smoke = flagValues.Commands.Smoke })
 	set("gateway-memory-mb", func() { doc.Gateway.MemoryMB = flagValues.Gateway.MemoryMB })
 	set("gateway-timezone", func() { doc.Gateway.Timezone = flagValues.Gateway.Timezone })
+	set("allow-unsigned-modules", func() {
+		doc.Gateway.AllowUnsignedModules = flagValues.Gateway.AllowUnsignedModules
+	})
 	return doc
 }
 

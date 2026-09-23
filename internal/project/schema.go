@@ -120,6 +120,14 @@ type Gateway struct {
 	// root document, in the order they are checked. The key is optional: a
 	// contract that does not state it checks the root alone.
 	SmokeEndpoints []string `toml:"smoke_endpoints"`
+	// AllowUnsignedModules lets the Gateway load a module whose artifact carries
+	// no valid signature: the value `igdev setup` renders as
+	// IGNITION_ALLOW_UNSIGNED_MODULES. A module repository that builds unsigned
+	// artifacts states it. The key is additive to schema v1 and optional: it is
+	// omitted from the rendered contract while it holds the default false, so a
+	// contract written before this key existed renders byte-identically to one
+	// written after it, and the rendered runtime is unchanged too.
+	AllowUnsignedModules bool `toml:"allow_unsigned_modules"`
 }
 
 // Empty reports whether every stage is undeclared.
@@ -355,6 +363,9 @@ func (d Doc) Render() []byte {
 	fmt.Fprintf(&b, "timezone = %s\n", tomlString(d.Gateway.Timezone))
 	if len(d.Gateway.SmokeEndpoints) > 0 {
 		fmt.Fprintf(&b, "smoke_endpoints = %s\n", tomlStrings(d.Gateway.SmokeEndpoints))
+	}
+	if d.Gateway.AllowUnsignedModules {
+		fmt.Fprintf(&b, "allow_unsigned_modules = %t\n", d.Gateway.AllowUnsignedModules)
 	}
 	return []byte(b.String())
 }

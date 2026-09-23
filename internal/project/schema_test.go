@@ -35,6 +35,40 @@ func TestRenderRoundTrips(t *testing.T) {
 	}
 }
 
+// [gateway] allow_unsigned_modules is additive to schema v1: a contract that does
+// not state it reports the default, renders byte-identically to a contract written
+// before the key existed (no key at all), and survives a round trip when stated.
+func TestAllowUnsignedModulesIsAdditive(t *testing.T) {
+	absent, err := ParseDoc([]byte("schema = 1\n\n[gateway]\nmemory_mb = 2048\ntimezone = \"UTC\"\n"), "igdev.toml")
+	if err != nil {
+		t.Fatalf("ParseDoc without the key: %v", err)
+	}
+	if absent.Gateway.AllowUnsignedModules {
+		t.Error("a contract that does not state the key reports the Gateway loading unsigned modules")
+	}
+	if rendered := string(absent.Render()); strings.Contains(rendered, "allow_unsigned_modules") {
+		t.Errorf("render emitted the key at its default:\n%s", rendered)
+	}
+
+	stated, err := ParseDoc([]byte("schema = 1\n\n[gateway]\nmemory_mb = 2048\ntimezone = \"UTC\"\nallow_unsigned_modules = true\n"), "igdev.toml")
+	if err != nil {
+		t.Fatalf("ParseDoc with the key: %v", err)
+	}
+	if !stated.Gateway.AllowUnsignedModules {
+		t.Error("the stated true did not parse")
+	}
+	rendered := string(stated.Render())
+	if !strings.Contains(rendered, "allow_unsigned_modules = true") {
+		t.Errorf("render dropped the stated key:\n%s", rendered)
+	}
+	if !strings.Contains(string(stated.Filled(DefaultDoc()).Render()), "allow_unsigned_modules = true") {
+		t.Error("Filled cleared the stated key")
+	}
+	if again, err := ParseDoc([]byte(rendered), "igdev.toml"); err != nil || !again.Gateway.AllowUnsignedModules {
+		t.Errorf("round trip lost the key: %v", err)
+	}
+}
+
 // A key igdev does not know is refused, not ignored: schema v1 is a closed
 // layout, and a typo must not silently do nothing.
 func TestParseDocRejectsUnknownKeys(t *testing.T) {

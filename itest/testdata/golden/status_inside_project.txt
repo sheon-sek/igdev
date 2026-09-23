@@ -6,6 +6,7 @@ schema:    supported
 setup:     missing (<ROOT>/repo/.igdev/setup.json)
 stamp:     required
 modules:   none staged (<ROOT>/repo/.igdev/modules)
+gateway:   unsigned modules refused
 consent:   <HOME>/.config/igdev/accepted.toml
   ignition-eula      not accepted
   module-license     not accepted

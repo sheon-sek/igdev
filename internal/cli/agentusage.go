@@ -42,10 +42,10 @@ repeats. Read the admin password only through igdev gateway credentials --json.`
 	"igdev status": `pass --json for the machine contract. data is the whole report:
 initialized, project_root, working_dir, contract (path, present, schema_version,
 schema_supported, digest), setup (present, path, stamp_state, instance_id, namespace,
-ports), modules, consent (per-term acceptance), and config (tier_files plus every
-resolved key with the tier that won). It succeeds before init and setup and outside a
-Project Root, so it is always the safe first call; branch on the blocks, never on the
-exit level.`,
+ports), gateway (allow_unsigned_modules — the effective IGNITION_ALLOW_UNSIGNED_MODULES),
+modules, consent (per-term acceptance), and config (tier_files plus every resolved key
+with the tier that won). It succeeds before init and setup and outside a Project Root,
+so it is always the safe first call; branch on the blocks, never on the exit level.`,
 	"igdev doctor": `pass --json for the machine contract. data carries ready plus
 prerequisites, one entry per tool with name, command, required, state (present, missing,
 or failed), the version line the probe printed, and the error when there is none. doctor
@@ -237,11 +237,11 @@ state the envelope reports. agent skill-install writes the workflow document thi
 ships, so the guidance an agent follows can never be out of date with the tool.`,
 	"igdev agent context": `agent context --json is the orientation entry point. data.project_root,
 data.lifecycle (initialized, setup_state, consent), data.versions, data.instance,
-data.gateway, data.modules, data.catalog, data.capabilities, and data.commands are all
-reported in every lifecycle state, initialized or not, so one call replaces reading
-files. Never mutate on its word: run the verb whose state it reports, or the Remediation
-of the fault a verb returned. The field-by-field reference is generated at
-docs/reference/agent-context.md.`,
+data.gateway, data.modules (staged ids plus allow_unsigned_modules), data.catalog,
+data.capabilities, and data.commands are all reported in every lifecycle state,
+initialized or not, so one call replaces reading files. Never mutate on its word: run
+the verb whose state it reports, or the Remediation of the fault a verb returned. The
+field-by-field reference is generated at docs/reference/agent-context.md.`,
 	"igdev agent skill-install": `pass --json for the machine contract. data carries scope, path (the
 installed SKILL.md), action (created, updated, or unchanged), and version (the CLI
 Contract Version the installed frontmatter records). Installation is idempotent: identical

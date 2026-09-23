@@ -27,6 +27,9 @@
         "debug": <PORT_DEBUG>
       }
     },
+    "gateway": {
+      "allow_unsigned_modules": false
+    },
     "modules": {
       "dir": "<ROOT>/repo/.igdev/modules",
       "count": 0,

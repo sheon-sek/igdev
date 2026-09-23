@@ -174,7 +174,8 @@ state it.
 contract's declared schema version, whether this CLI supports that schema
 (`contract.schema_supported`), the Contract Digest, and the Checkout Setup's
 `setup.stamp_state` (`required` / `current` / `stale`) — plus the Instance the record
-names (`setup.instance_id`, `setup.namespace`, `setup.ports`), the machine Consent term
+names (`setup.instance_id`, `setup.namespace`, `setup.ports`), the Gateway option the contract
+states (`gateway.allow_unsigned_modules`), the machine Consent term
 by term (`consent`), and every config key with the tier that won. status reports the
 Gate's verdict, it never enforces it.
 
@@ -191,13 +192,18 @@ The schema v1 layout is closed and version-checked: `schema = 1`, then `[project
 name`, `[tool] min_version`, `[ignition] version|jython_version|edition`,
 `[modules] enabled`, `[scan] jython|capabilities`, `[catalog] overlay_paths`
 (omitted when empty), `[commands] check|test|build|smoke`
-(omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints`. A key igdev does
-not know is refused, and a version-like field holds a version. Fields the file leaves
-out fall back to the embedded defaults, so a minimal `schema = 1` contract is valid.
-`smoke_endpoints` is the one optional list: it is omitted from the rendered contract
-unless it is non-empty, and a checkout that does not state it smokes the root document
-alone. `init` merges: a flag overrides the value it names and everything else the file
-holds is preserved; an empty value (`--modules ""`) clears a field.
+(omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints|allow_unsigned_modules`.
+A key igdev does not know is refused, and a version-like field holds a version. Fields
+the file leaves out fall back to the embedded defaults, so a minimal `schema = 1`
+contract is valid. Two keys are optional and omitted from the rendered contract while
+they hold the schema default: `smoke_endpoints` (a checkout that does not state it smokes
+the root document alone), and `gateway.allow_unsigned_modules` (default false: the
+Gateway loads only signed module artifacts). Optional means additive — a contract written
+before either key existed parses, renders, and behaves exactly as it did, and stating an
+optional key is an edit of a tracked file, so it goes through `igdev init` and makes the
+Checkout Setup stale until `igdev setup` re-materializes it. `init` merges: a flag
+overrides the value it names and everything else the file holds is preserved; an empty
+value (`--modules ""`) clears a field.
 
 `[catalog] overlay_paths` is additive to schema v1, so a contract written before this
 key existed keeps parsing and behaves exactly as it did — the Effective Catalog is then
@@ -275,6 +281,15 @@ is the only way to read it back out — human `credentials` prints the username 
 source and says so. The rendered runtime files carry
 no secret at all — the Compose environment only *references* the credential variables,
 which the igdev process supplies at `gateway up` time.
+
+**Gateway options.** One contract key reaches the Gateway through the rendered Compose
+environment: `[gateway] allow_unsigned_modules` becomes `IGNITION_ALLOW_UNSIGNED_MODULES`,
+which the rendered Compose file passes to the Gateway as
+`-Dignition.allowunsignedmodules`. It is the switch a module repository that builds
+unsigned artifacts needs — a `.modl` with no valid signature otherwise never loads. The
+rendered value is `false` unless a contract asks for `true`, so the file a checkout
+materializes without the key is byte-identical to the one it materialized before the key
+existed.
 
 **Consent.** The record is machine-global: `~/.config/igdev/accepted.toml`, keyed by
 term (`ignition-eula`, `module-license`, `module-cert`) and holding when each was

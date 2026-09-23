@@ -45,6 +45,7 @@ igdev init [flags]
 ## Options
 
 ```text
+      --allow-unsigned-modules      let the Gateway load a module artifact that carries no valid signature (default false)
       --command-build string        command igdev build runs for this project
       --command-check string        command igdev check runs for this project
       --command-smoke string        command igdev smoke runs after a Gateway starts
