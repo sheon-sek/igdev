@@ -60,7 +60,7 @@ jobs:
           mkdir -p "$CHECKOUT"
           cd "$CHECKOUT"
           igdev init \
-            --name ignition-devenv-automation-e2e \
+            --name igdev-e2e \
             --ignition-version "$IGNITION_VERSION" \
             --gateway-timezone UTC \
             --gateway-memory-mb 2048 \
