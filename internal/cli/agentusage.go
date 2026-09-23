@@ -187,16 +187,22 @@ Baseline is applied on the fresh launch.`,
 	"igdev gateway restart": `pass --json for the machine contract. data is the address block:
 instance_id, namespace, url, and ports. The named volume is kept, so nothing is restored
 and no state is lost; use igdev gateway reset when a fresh Gateway is what is wanted.`,
-	"igdev gateway wait": `pass --json for the machine contract. data is the address block. On timeout
-the command fails with the tail of the Gateway's own log in the message, because that
-log holds the reason; the Remediation names igdev gateway logs and igdev gateway status
-for the follow-up. --timeout takes seconds or a duration like 3m (default 180s).`,
+	"igdev gateway wait": `pass --json for the machine contract. data is the address block. The
+wait ends when the Gateway reports RUNNING on its readiness endpoint (/StatusPing) —
+the root document answering is not readiness, Jetty serves it while the Gateway is
+still starting — so a returned wait means the Gateway is usable, including its module
+routes. On timeout the command fails with the tail of the Gateway's own log in the
+message, because that log holds the reason; the Remediation names igdev gateway logs and
+igdev gateway status for the follow-up. --timeout takes seconds or a duration like 3m
+(default 180s).`,
 	"igdev gateway smoke": `pass --json for the machine contract. data carries instance_id, url, and
 checks: one entry per request in the order they ran, each with path, url, status, ok,
-and the error when it did not answer. A failing check is IGDEV_E_GATEWAY_UNHEALTHY with
-Remediation naming igdev gateway logs --tail 50 and igdev gateway status --json. The
-endpoints come from the contract's [gateway] smoke_endpoints, so the check is project-
-declared.`,
+and the error when it did not answer. The run begins with the same readiness gate
+igdev gateway wait applies — the Gateway must report RUNNING — so a passing check means
+the endpoint answered a Gateway that is up. A failing check is
+IGDEV_E_GATEWAY_UNHEALTHY with Remediation naming igdev gateway logs --tail 50 and
+igdev gateway status --json. The endpoints come from the contract's
+[gateway] smoke_endpoints, so the check is project-declared.`,
 	"igdev gateway status": `pass --json for the machine contract. data carries the address block plus
 state (the compose project's overall verdict) and services, one entry per service with
 name, service, state, and status as the container engine reports them, so an agent reads

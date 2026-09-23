@@ -472,6 +472,31 @@ func TestGatewayWaitPollsTheRecordedURL(t *testing.T) {
 	env.AssertNoDockerOrphans(t)
 }
 
+// A Gateway whose Jetty answers the root document is not ready: wait requires the
+// Gateway to report RUNNING, because the root document answers while modules are
+// still being mounted (issue #35).
+func TestGatewayWaitRequiresTheRunningState(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.ShimDocker()
+	env.ShimMeminfo(65536)
+	dir, stamp := gatewayFixture(t, env, testrig.MinimalContract)
+	stub := testrig.ServeGateway(t, stamp.Ports.HTTP, map[string]int{"/": 302})
+	stub.SetBody("/StatusPing", `{"state":"STARTING"}`)
+
+	starting := env.RunIn(dir, "gateway", "wait", "--timeout", "2", "--json")
+	testrig.WantExit(t, starting, contract.ExitFailure)
+	envelope := testrig.Envelope(t, starting.Stdout)
+	testrig.WantCode(t, envelope, contract.CodeGatewayUnhealthy)
+	if !strings.Contains(envelope.Message, "STARTING") {
+		t.Errorf("the timeout does not repeat what the Gateway reported: %q", envelope.Message)
+	}
+
+	// The Gateway finishes starting: the same wait now returns.
+	stub.SetBody("/StatusPing", `{"state":"RUNNING"}`)
+	ready := env.RunIn(dir, "gateway", "wait", "--timeout", "10")
+	testrig.WantExit(t, ready, contract.ExitOK)
+}
+
 // smoke checks the root document plus the endpoints the Project Contract declares,
 // and a failing endpoint is named in the failure.
 func TestGatewaySmokeChecksDeclaredEndpoints(t *testing.T) {

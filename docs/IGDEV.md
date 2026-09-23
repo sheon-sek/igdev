@@ -333,7 +333,8 @@ igdev gateway down [--volumes]      stop and remove the containers; --volumes al
                                     discards the Gateway's data volume
 igdev gateway reset [--force] [--timeout N]   down --volumes, then up, then wait
 igdev gateway restart               restart the container in place
-igdev gateway wait [--timeout N]    poll the recorded URL until it answers below 400
+igdev gateway wait [--timeout N]    poll the Gateway's status endpoint until it reports
+                                    RUNNING (default 180 s)
 igdev gateway smoke [--timeout N]   wait, then GET the root document and the
                                     contract's [gateway] smoke_endpoints, in order
 igdev gateway status                `docker compose ps` for this project plus the
@@ -353,8 +354,13 @@ be addressed by mistake, and no rendered file carries a secret or has to be rewr
 when the staged set changes.
 
 `wait` accepts bare seconds (`--timeout 240`) or a Go duration (`--timeout 3m`);
-180 s is the default, 60 s for `smoke`. A failed wait reports the last 50 log lines on
-stderr, because the reason a Gateway never came up is in its own log. `smoke` fails
+180 s is the default, 60 s for `smoke`. Readiness is the state the Gateway reports about
+itself on `/StatusPing` — the same endpoint and state the Ignition image's own health
+check reads — and not the root document, which Jetty answers with a redirect while the
+Gateway is still starting and modules are not mounted yet; a returned `wait` therefore
+means the Gateway is usable. A failed wait reports the last 50 log lines on
+stderr, because the reason a Gateway never came up is in its own log. `smoke` applies
+the same readiness gate before it checks anything, fails
 with the failing endpoint named in the message, and the transport error or status is
 in `data.checks[].error` for a passing run's report.
 
