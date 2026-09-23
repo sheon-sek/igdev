@@ -312,8 +312,9 @@ func TestAgentContextNeverPromptsOnTTY(t *testing.T) {
 	}
 }
 
-// Skill installation writes the embedded document, globally by default under the
-// machine's HOME, and touches nothing else.
+// Skill installation writes the embedded skill, the SKILL.md entry plus its
+// references/, globally by default under the machine's HOME, and touches nothing
+// else.
 func TestAgentSkillInstallGlobal(t *testing.T) {
 	env := testrig.NewEnv(t)
 	dir := env.Mkdir("plain")
@@ -333,6 +334,15 @@ func TestAgentSkillInstallGlobal(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "version: \""+contract.Version+"\"") {
 		t.Errorf("the installed frontmatter does not carry the CLI Contract Version:\n%s", firstLines(string(raw), 5))
+	}
+	skillDir := filepath.Join(env.Home, ".agents", "skills", "igdev")
+	for name, want := range agentskill.Files() {
+		got, err := os.ReadFile(filepath.Join(skillDir, filepath.FromSlash(name)))
+		if err != nil {
+			t.Errorf("the skill file %s was not installed: %v", name, err)
+		} else if string(got) != string(want) {
+			t.Errorf("the installed %s is not the embedded file", name)
+		}
 	}
 
 	var data struct {
@@ -400,6 +410,101 @@ func TestAgentSkillInstallIsIdempotentAndUpdates(t *testing.T) {
 	}
 	if string(raw) != string(agentskill.Content()) {
 		t.Error("the updated skill is not the embedded document")
+	}
+
+	// igdev owns SKILL.md and references/: a page an older binary wrote, and
+	// the references/ directory it leaves empty, are removed, and removing
+	// them is an update. Files beside them belong to the person and survive.
+	env.Write("home/.agents/skills/igdev/references/retired.md", "old page\n")
+	env.Write("home/.agents/skills/igdev/references/old/gone.md", "old page\n")
+	env.Write("home/.agents/skills/igdev/NOTES.md", "my notes\n")
+	env.Write("home/.agents/skills/igdev/old/gone.md", "my page\n")
+	pruned := env.RunIn(dir, "agent", "skill-install", "--json")
+	testrig.WantExit(t, pruned, contract.ExitOK)
+	testrig.DataOf(t, pruned.Stdout, &data)
+	if data.Action != "updated" {
+		t.Errorf("prune action = %q, want updated", data.Action)
+	}
+	skillDir := filepath.Join(env.Home, ".agents", "skills", "igdev")
+	for _, stale := range []string{"references/retired.md", "references/old"} {
+		if _, err := os.Lstat(filepath.Join(skillDir, stale)); !os.IsNotExist(err) {
+			t.Errorf("the stale %s survived the install (err = %v)", stale, err)
+		}
+	}
+	for _, kept := range []string{"NOTES.md", "old/gone.md", "references/errors.md"} {
+		if _, err := os.Stat(filepath.Join(skillDir, kept)); err != nil {
+			t.Errorf("the install removed %s: %v", kept, err)
+		}
+	}
+}
+
+// A skill directory that is a symlink (a dotfiles setup) survives the install:
+// the link stays a link, and the skill is written through it.
+func TestAgentSkillInstallThroughSymlinkedDir(t *testing.T) {
+	env := testrig.NewEnv(t)
+	dir := env.Mkdir("plain")
+	target := env.Mkdir("dotfiles/igdev")
+	link := filepath.Join(env.Home, ".agents", "skills", "igdev")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{"created", "unchanged"} {
+		res := env.RunIn(dir, "agent", "skill-install", "--json")
+		testrig.WantExit(t, res, contract.ExitOK)
+		var data struct {
+			Action string `json:"action"`
+		}
+		testrig.DataOf(t, res.Stdout, &data)
+		if data.Action != want {
+			t.Errorf("install action = %q, want %s", data.Action, want)
+		}
+		if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("the symlinked skill directory did not survive the install (err = %v)", err)
+		}
+		for name := range agentskill.Files() {
+			if _, err := os.Stat(filepath.Join(target, filepath.FromSlash(name))); err != nil {
+				t.Errorf("the skill file %s was not written through the link: %v", name, err)
+			}
+		}
+	}
+}
+
+// A references/ directory that is a symlink survives the install and is
+// populated and pruned through the link.
+func TestAgentSkillInstallThroughSymlinkedReferences(t *testing.T) {
+	env := testrig.NewEnv(t)
+	dir := env.Mkdir("plain")
+	target := env.Mkdir("dotfiles/references")
+	env.Write("dotfiles/references/retired.md", "old page\n")
+	skillDir := filepath.Join(env.Home, ".agents", "skills", "igdev")
+	link := filepath.Join(skillDir, "references")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	res := env.RunIn(dir, "agent", "skill-install", "--json")
+	testrig.WantExit(t, res, contract.ExitOK)
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the symlinked references/ did not survive the install (err = %v)", err)
+	}
+	for name := range agentskill.Files() {
+		rel, ok := strings.CutPrefix(name, "references/")
+		if !ok {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(target, filepath.FromSlash(rel))); err != nil {
+			t.Errorf("the reference %s was not written through the link: %v", name, err)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(target, "retired.md")); !os.IsNotExist(err) {
+		t.Errorf("the stale retired.md survived the install (err = %v)", err)
 	}
 }
 

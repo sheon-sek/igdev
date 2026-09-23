@@ -3,8 +3,10 @@ package cli
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -490,16 +492,20 @@ func (a *App) newAgentSkillInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "skill-install",
 		Short: "Install the Agent Skill that matches this binary",
-		Long: `skill-install writes the Agent Skill embedded in this binary — the thin workflow
-document an agent follows when working an igdev repository. It is installed
-globally by default, at ` + "`~/.agents/skills/igdev/SKILL.md`" + `, so one install covers every
-repository. With ` + "`--scope repo`" + ` it goes into the repository instead, at
-` + "`.agents/skills/igdev/SKILL.md`" + `, where it can be committed and reviewed.
+		Long: `skill-install writes the Agent Skill embedded in this binary. Its entry,
+SKILL.md, is the thin workflow an agent follows when working an igdev repository.
+Beside it, references/ holds the command reference and the error-code reference,
+which an agent reads only when a task needs them. It is installed globally by
+default, into ` + "`~/.agents/skills/igdev/`" + `, so one install covers every repository.
+With ` + "`--scope repo`" + ` it goes into the repository instead, at
+` + "`.agents/skills/igdev/`" + `, where it can be committed and reviewed.
 
-The installed document's frontmatter carries the CLI Contract Version this binary
-speaks, so the guidance can never disagree with the tool. Installation is
-idempotent: a document that already matches the embedded one is left untouched, and
-a document left by an older binary is updated in place.`,
+The entry's frontmatter carries the CLI Contract Version this binary speaks, so the
+guidance can never disagree with the tool. igdev owns SKILL.md and references/:
+installation writes every embedded file and removes pages from references/ that the
+embedded skill no longer carries. Other files beside them are left alone, and a
+symlinked skill directory or references/ is written through, never replaced. It is
+idempotent: files that already match are left untouched.`,
 		Example: `  igdev agent skill-install
   igdev agent skill-install --scope repo
   igdev agent skill-install --json`,
@@ -545,36 +551,122 @@ func installAgentSkill(found project.Found, scope string) (agentSkillInstallData
 			fmt.Sprintf("--scope %q is not %s or %s", scope, scopeGlobal, scopeRepo),
 			contract.Remediation{Command: "igdev help agent skill-install", Why: "show the accepted scopes"})
 	}
-	return writeAgentSkill(filepath.Join(dir, agentskill.FileName), scope)
+	return writeAgentSkill(dir, scope)
 }
 
-// writeAgentSkill writes the embedded document, reporting created, updated, or
-// unchanged. Identical content is left untouched, so a re-install neither writes
-// nor moves the file's mtime.
-func writeAgentSkill(path, scope string) (agentSkillInstallData, *contract.Fault) {
-	content := agentskill.Content()
-	existing, readErr := os.ReadFile(path)
-	if readErr != nil && !os.IsNotExist(readErr) {
-		return agentSkillInstallData{}, writeFault(path, readErr)
-	}
-	action := "updated"
-	switch {
-	case os.IsNotExist(readErr):
+// writeAgentSkill writes the embedded skill into dir and removes every page in
+// references/ that the embedded skill does not carry, so pages an older binary
+// wrote do not linger. igdev owns SKILL.md and references/; other files beside
+// them are left alone. It reports created (no
+// SKILL.md before), unchanged (every file already matched and nothing was
+// removed), or updated. Identical files are left untouched, so a re-install
+// neither writes nor moves their mtimes.
+func writeAgentSkill(dir, scope string) (agentSkillInstallData, *contract.Fault) {
+	entry := filepath.Join(dir, agentskill.FileName)
+	action := "unchanged"
+	if _, err := os.Lstat(entry); os.IsNotExist(err) {
 		action = "created"
-	case bytes.Equal(existing, content):
-		action = "unchanged"
+	} else if err != nil {
+		return agentSkillInstallData{}, writeFault(entry, err)
 	}
-	if action != "unchanged" {
-		if err := atomicfile.Write(path, content, 0o644, 0o755); err != nil {
+
+	embedded := agentskill.Files()
+	for _, name := range sortedFileNames(embedded) {
+		path := filepath.Join(dir, filepath.FromSlash(name))
+		existing, err := os.ReadFile(path)
+		if err != nil && !os.IsNotExist(err) {
 			return agentSkillInstallData{}, writeFault(path, err)
 		}
+		if err == nil && bytes.Equal(existing, embedded[name]) {
+			continue
+		}
+		if err := atomicfile.Write(path, embedded[name], 0o644, 0o755); err != nil {
+			return agentSkillInstallData{}, writeFault(path, err)
+		}
+		if action == "unchanged" {
+			action = "updated"
+		}
+	}
+
+	removed, fault := pruneAgentSkill(dir, embedded)
+	if fault != nil {
+		return agentSkillInstallData{}, fault
+	}
+	if removed && action == "unchanged" {
+		action = "updated"
 	}
 	return agentSkillInstallData{
 		Scope:   scope,
-		Path:    path,
+		Path:    entry,
 		Action:  action,
 		Version: agentskill.Version(),
 	}, nil
+}
+
+// pruneAgentSkill removes the files under dir's references/ that the embedded
+// skill does not carry, then the directories that leaves empty. It reports
+// whether it removed anything. Stale pages can only appear in references/, so
+// nothing beside it is touched. The walk starts from references/ with its
+// symlinks resolved, so a linked skill directory or a linked references/ is
+// pruned through the link and the link itself is never removed.
+func pruneAgentSkill(dir string, embedded map[string][]byte) (bool, *contract.Fault) {
+	refs := filepath.Join(dir, agentskill.ReferencesDir)
+	root, err := filepath.EvalSymlinks(refs)
+	if os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, writeFault(refs, err)
+	}
+	var files, dirs []string
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == root {
+			return nil
+		}
+		if entry.IsDir() {
+			dirs = append(dirs, path)
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if _, ok := embedded[agentskill.ReferencesDir+"/"+filepath.ToSlash(rel)]; !ok {
+			files = append(files, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return false, writeFault(refs, err)
+	}
+	for _, path := range files {
+		if err := os.Remove(path); err != nil {
+			return false, writeFault(path, err)
+		}
+	}
+	// WalkDir lists parents before children, so walking backwards removes a
+	// child directory before its parent. A directory that still holds files
+	// fails to remove and is kept; the root is never listed.
+	for i := len(dirs) - 1; i >= 0; i-- {
+		if entries, err := os.ReadDir(dirs[i]); err == nil && len(entries) == 0 {
+			if err := os.Remove(dirs[i]); err != nil {
+				return false, writeFault(dirs[i], err)
+			}
+			files = append(files, dirs[i])
+		}
+	}
+	return len(files) > 0, nil
+}
+
+func sortedFileNames(files map[string][]byte) []string {
+	out := make([]string, 0, len(files))
+	for name := range files {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (a *App) printAgentSkillInstall(data agentSkillInstallData) {

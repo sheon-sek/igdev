@@ -1,6 +1,7 @@
 package agentskill
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -81,6 +82,33 @@ func TestBodyCarriesNoCapabilityCatalog(t *testing.T) {
 	for _, forbidden := range []string{"system.perspective", "com.inductiveautomation.", "/data/"} {
 		if strings.Contains(doc, forbidden) {
 			t.Errorf("SKILL.md carries catalog data (%q), which belongs to the Core Catalog", forbidden)
+		}
+	}
+}
+
+// maxEntryLines caps SKILL.md. Agents load the entry whole on every activation,
+// so detail belongs in references/, which they read on demand.
+const maxEntryLines = 80
+
+func TestEntryStaysShort(t *testing.T) {
+	lines := strings.Count(string(Content()), "\n")
+	if lines > maxEntryLines {
+		t.Errorf("SKILL.md has %d lines, the cap is %d: move detail into references/", lines, maxEntryLines)
+	}
+}
+
+// Every references/ path SKILL.md names must be a file the skill installs, and
+// the generated command and error references must be there.
+func TestEntryRoutesToEmbeddedReferences(t *testing.T) {
+	installed := Files()
+	for _, want := range []string{FileName, "references/README.md", "references/errors.md", "references/gateway-up.md"} {
+		if _, ok := installed[want]; !ok {
+			t.Errorf("the skill does not embed %s", want)
+		}
+	}
+	for _, path := range regexp.MustCompile("`(references/[a-z-]+\\.md)`").FindAllStringSubmatch(string(Content()), -1) {
+		if _, ok := installed[path[1]]; !ok {
+			t.Errorf("SKILL.md routes to %s, which the skill does not embed", path[1])
 		}
 	}
 }

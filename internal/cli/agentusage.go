@@ -242,11 +242,14 @@ reported in every lifecycle state, initialized or not, so one call replaces read
 files. Never mutate on its word: run the verb whose state it reports, or the Remediation
 of the fault a verb returned. The field-by-field reference is generated at
 docs/reference/agent-context.md.`,
-	"igdev agent skill-install": `pass --json for the machine contract. data carries scope, path, action
-(created, updated, or unchanged), and version (the CLI Contract Version the installed
-frontmatter records). Installation is idempotent: an identical document is left
-untouched, so a re-install never moves the file's mtime. --scope repo requires a Project
-Root (IGDEV_E_NOT_INITIALIZED otherwise) and writes .agents/skills/igdev/ into it.`,
+	"igdev agent skill-install": `pass --json for the machine contract. data carries scope, path (the
+installed SKILL.md), action (created, updated, or unchanged), and version (the CLI
+Contract Version the installed frontmatter records). Installation is idempotent: identical
+files are left untouched, so a re-install never moves their mtimes, and pages in
+references/ the embedded skill no longer carries are removed. igdev owns SKILL.md and
+references/; other files beside them are left alone, and a symlinked skill directory or
+references/ is written through, never replaced. --scope repo requires a Project Root
+(IGDEV_E_NOT_INITIALIZED otherwise) and writes .agents/skills/igdev/ into it.`,
 	"igdev ci-local": `pass --json for the machine contract. data carries the exact invocation
 (event, job, offline, command, args, workdir), act's exit code, and the tail of its
 output. act's own output streams to stderr in both dialects, so a human reads the
