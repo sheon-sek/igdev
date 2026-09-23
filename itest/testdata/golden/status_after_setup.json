@@ -39,7 +39,7 @@
           "id": "ignition-eula",
           "accepted": true,
           "accepted_at": "<ACCEPTED_AT:ignition-eula>",
-          "cli_version": "0.1.0"
+          "cli_version": "0.1.1"
         },
         {
           "id": "module-license",
