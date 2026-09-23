@@ -19,7 +19,10 @@ references in project code and checks each one, reporting file:line.
 Whether a required module is satisfied depends on the contract's
 `[modules].enabled` whitelist and on the `.modl` artifacts staged in
 `.igdev/modules/`. An empty whitelist means no whitelist: every module loads, which
-is the Gateway image's own semantics for GATEWAY_MODULES_ENABLED.
+is the Gateway image's own semantics for GATEWAY_MODULES_ENABLED. A staged private
+module is enabled by being staged — the rendered module list carries every staged id,
+because that id is local build output that does not belong in the tracked contract —
+so `module add` is all a private module needs.
 
 The write verbs change what the next Gateway sees. `enable` adds module ids to the
 tracked whitelist, which moves the Contract Digest and so makes the Checkout Setup

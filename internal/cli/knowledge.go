@@ -32,8 +32,13 @@ type moduleSet struct {
 	records   []modules.Record
 }
 
-// Enabled reports whether the module whitelist selects a module id.
-func (s moduleSet) Enabled(id string) bool { return modules.Enabled(s.whitelist, id) }
+// Enabled reports whether this checkout loads a module id: the contract's
+// whitelist selects it, or a staged private artifact declares it — a staged module
+// is enabled by being staged (the rendered list carries it), so a whitelist that
+// does not name one is not a verdict about it.
+func (s moduleSet) Enabled(id string) bool {
+	return modules.Enabled(s.whitelist, id) || modules.Has(s.records, id)
+}
 
 // Builtin reports whether the module ships in the Ignition image.
 func (s moduleSet) Builtin(id string) bool { return modules.Builtin(s.eff.Builtin, id) }

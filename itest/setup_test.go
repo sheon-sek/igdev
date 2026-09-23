@@ -562,6 +562,45 @@ func TestSetupReallocatesPortsThatWereTaken(t *testing.T) {
 	}
 }
 
+// The ports a running Gateway holds are this Instance's own, so a re-setup keeps
+// them: re-allocating would move the URLs of a Gateway that never stopped, out from
+// under every saved bookmark and CI job (issue #36).
+func TestSetupKeepsPortsThisInstancesGatewayHolds(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.ShimDocker()
+	env.ShimMeminfo(65536)
+	dir, stamp := gatewayFixture(t, env, testrig.MinimalContract)
+	testrig.WantExit(t, env.RunIn(dir, "gateway", "up"), contract.ExitOK)
+	// The container publishes the recorded triplet, so the bind probe fails.
+	holdPorts(t, stamp.Ports)
+
+	// A contract edit makes the Setup stale: the re-setup materializes while the
+	// Gateway keeps running.
+	testrig.WantExit(t, env.RunIn(dir, "init", "--gateway-memory-mb", "1024"), contract.ExitOK)
+	resent := env.RunIn(dir, "setup", "--json")
+	testrig.WantExit(t, resent, contract.ExitOK)
+	after := setupStampOf(t, dir)
+	if after.Ports != stamp.Ports {
+		t.Errorf("ports = %+v, want the running Gateway's %+v", after.Ports, stamp.Ports)
+	}
+	if after.InstanceID != stamp.InstanceID {
+		t.Errorf("instance_id moved from %s to %s", stamp.InstanceID, after.InstanceID)
+	}
+	envFile := readFile(t, filepath.Join(dir, project.StateDir, "runtime", "compose.env"))
+	if !strings.Contains(envFile, fmt.Sprintf("GATEWAY_HTTP_PORT=%d", stamp.Ports.HTTP)) {
+		t.Errorf("compose.env does not carry the kept port:\n%s", envFile)
+	}
+
+	// The rule is about this Instance's own container: with nothing of it running,
+	// a busy port is somebody else's and the triplet moves as it always did.
+	testrig.WantExit(t, env.RunIn(dir, "gateway", "down", "--volumes"), contract.ExitOK)
+	testrig.WantExit(t, env.RunIn(dir, "init", "--gateway-memory-mb", "2048"), contract.ExitOK)
+	testrig.WantExit(t, env.RunIn(dir, "setup", "--json"), contract.ExitOK)
+	if moved := setupStampOf(t, dir); moved.Ports == stamp.Ports {
+		t.Errorf("ports stayed %+v although nothing of this Instance is running", moved.Ports)
+	}
+}
+
 // Two worktrees of one repository are two Instances: the same contract bytes,
 // two identities, two namespaces, and disjoint ports even while the first
 // worktree's Gateway holds its own.

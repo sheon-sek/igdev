@@ -260,9 +260,14 @@ Compose project, the Gateway container, and the image.
 kernel for three free loopback ports (`127.0.0.1:0`), holding each listener open until
 all three are chosen so they are distinct. Re-running setup keeps the recorded triplet
 when all three ports are still free, and re-allocates when any of them was taken — the
-record is never allowed to describe a collision. Ports live in the record and in
-`.igdev/local.toml`, never in the tracked contract, and nothing may assume 8088
-(ADR 0003). A hand-edited `local.toml` keeps every line igdev does not own: setup
+record is never allowed to describe a collision. The one exception is this Instance's
+own Gateway: a busy port is re-checked against the Instance's compose project first
+(`docker compose ps`), and when the container holding it is this Instance's, the record
+keeps the triplet — a running Gateway keeps its URLs across a re-setup, which is what
+`setup` → `gateway up` → a contract edit → `setup` does. Setup asks the engine only
+after the bind probe has already failed, so a checkout with nothing running never talks
+to it. Ports live in the record and in `.igdev/local.toml`, never in the tracked
+contract, and nothing may assume 8088 (ADR 0003). A hand-edited `local.toml` keeps every line igdev does not own: setup
 writes the two credential keys and preserves the rest, including any port pin.
 
 **Materialization.** The Compose file, the Compose environment, and the Dockerfile come
@@ -333,7 +338,8 @@ igdev gateway down [--volumes]      stop and remove the containers; --volumes al
                                     discards the Gateway's data volume
 igdev gateway reset [--force] [--timeout N]   down --volumes, then up, then wait
 igdev gateway restart               restart the container in place
-igdev gateway wait [--timeout N]    poll the recorded URL until it answers below 400
+igdev gateway wait [--timeout N]    poll the Gateway's status endpoint until it reports
+                                    RUNNING (default 180 s)
 igdev gateway smoke [--timeout N]   wait, then GET the root document and the
                                     contract's [gateway] smoke_endpoints, in order
 igdev gateway status                `docker compose ps` for this project plus the
@@ -353,8 +359,13 @@ be addressed by mistake, and no rendered file carries a secret or has to be rewr
 when the staged set changes.
 
 `wait` accepts bare seconds (`--timeout 240`) or a Go duration (`--timeout 3m`);
-180 s is the default, 60 s for `smoke`. A failed wait reports the last 50 log lines on
-stderr, because the reason a Gateway never came up is in its own log. `smoke` fails
+180 s is the default, 60 s for `smoke`. Readiness is the state the Gateway reports about
+itself on `/StatusPing` — the same endpoint and state the Ignition image's own health
+check reads — and not the root document, which Jetty answers with a redirect while the
+Gateway is still starting and modules are not mounted yet; a returned `wait` therefore
+means the Gateway is usable. A failed wait reports the last 50 log lines on
+stderr, because the reason a Gateway never came up is in its own log. `smoke` applies
+the same readiness gate before it checks anything, fails
 with the failing endpoint named in the message, and the transport error or status is
 in `data.checks[].error` for a passing run's report.
 
@@ -489,7 +500,9 @@ carries. The resolved Ignition version comes from the config precedence chain, s
 whether the whitelist selects it, every `.modl` staged in `.igdev/modules/` with its
 `module.xml` metadata, and the `[modules].enabled` whitelist. An artifact whose
 `module.xml` cannot be read is still listed as `UNREADABLE` (it is in the directory),
-and a whitelisted module no artifact declares is `MISSING-ARTIFACT`. `--built-in` and
+and a whitelisted module no artifact declares is `MISSING-ARTIFACT`. A staged artifact
+the whitelist does not name reads as `enabled (staged)`: staging is what enables it (see
+`EnabledList`), so the id never has to enter the contract. `--built-in` and
 `--private` select one group; the human dialect keeps the legacy group headings, and
 `--json` omits the group a flag did not select. An empty whitelist is not "nothing
 enabled": it is the Gateway image's own semantics for `GATEWAY_MODULES_ENABLED` —
@@ -577,9 +590,11 @@ An id has to be one this environment can load — a built-in module from the Cor
 Catalog, a solution-suite selector, or an id a staged `.modl` declares. One unknown id
 refuses the whole run with `IGDEV_E_MODULE_UNKNOWN`, names the closest built-in ids,
 and stages nothing. Enabling what the whitelist already names changes nothing and
-writes nothing, so re-running is safe. When the whitelist is *empty* every module
-already loads, so `enable` reports that state instead of writing a list that would
-restrict the Gateway; an explicit whitelist comes from `igdev init --modules`.
+writes nothing, so re-running is safe; an id a staged artifact declares is reported as
+already enabled for the same reason — it is loaded by being staged, and its id is local
+build output that does not belong in the tracked contract. When the whitelist is *empty*
+every module already loads, so `enable` reports that state instead of writing a list
+that would restrict the Gateway; an explicit whitelist comes from `igdev init --modules`.
 
 Because the write moves the Contract Digest, the Checkout Setup becomes stale: the Gate
 refuses the next project command with `IGDEV_E_SETUP_STALE` until `igdev setup`
@@ -595,12 +610,18 @@ decompressed; a file that is not a readable zip carrying a `module.xml` with a u
 id is `IGDEV_E_MODULE_ARCHIVE_INVALID` with the reason. The artifact is metadata-only:
 id, name, and version is everything igdev reads out of a `.modl`, and the archive is
 never a source of capability knowledge (ADR 0005). Re-adding a file name already staged
-replaces it, which is how a newer build of one module is staged.
+replaces it, which is how a newer build of one module is staged. There is no
+"also enable it" step and no `--enable` flag: a staged private module is enabled by
+being staged (see below), so that write could only ever put a local artifact's id into
+the tracked contract.
 
 Staging is not a contract change, so the Setup Stamp stays current: what moved is what
-is staged, not what the contract asked for. A staged private module is a first-class id,
-so `module enable <id>` and `module require module:<id>` accept it once the artifact is
-there. `igdev module clear` deletes every staged `.modl` and re-renders the runtime; the
+is staged, not what the contract asked for. Staging a private module is also what
+enables it: the rendered `GATEWAY_MODULES_ENABLED` is the whitelist plus every staged
+private id (`modules.EnabledList`), so a whitelist that does not name the module still
+loads it, and `module list` reports it as `enabled (staged)`. A staged private module is
+a first-class id, so `module require module:<id>` accepts it once the artifact is there.
+`igdev module clear` deletes every staged `.modl` and re-renders the runtime; the
 whitelist survives, so a whitelisted module whose artifact was cleared reads as
 `MISSING-ARTIFACT` — the state that makes a Gateway refuse it.
 
@@ -1037,8 +1058,9 @@ next to the Go suite: package, install the tarball into a temp prefix, then
 `igdev-gateway-e2e` stays the real-Docker tier. The GitHub repository rename to `igdev`
 is still pending — the Go module path and the install docs already anticipate it.
 
-Ticket 16 adds the Wizards: `init` (6 steps), `setup` (7 steps), and `module add` (4
-steps). A Wizard prompts only when a required value is missing, stdin is a terminal,
+Ticket 16 adds the Wizards: `init` (7 steps), `setup` (7 steps), and `module add` (3
+steps — staging is what enables a private module, so there is no whitelist question). A
+Wizard prompts only when a required value is missing, stdin is a terminal,
 and neither `--json` nor `--yes` was asked for; `--interactive` forces it, `--yes`
 takes the same defaults silently, and `--json` never prompts whatever the terminal is.
 Every Wizard answer becomes the flag value the silent path would have been given, so

@@ -9,9 +9,13 @@ import (
 	"testing"
 )
 
+// statusPingPath is the endpoint an Ignition Gateway serves its own state on. The
+// stand-in answers it so igdev's readiness gate sees a Gateway that is up.
+const statusPingPath = "/StatusPing"
+
 // GatewayStub is a loopback HTTP server standing in for a running Ignition
-// Gateway. The `gateway wait` and `gateway smoke` verbs probe it over the ports
-// the Checkout Setup recorded, so the whole health path runs hermetically
+// Gateway. The `gateway wait` and `gateway smoke` verbs probe it over the ports the
+// Checkout Setup recorded, so the whole health path runs hermetically
 // without an engine: the test decides which paths answer, and with what.
 type GatewayStub struct {
 	// URL is the stand-in's base URL, without a trailing slash.
@@ -22,9 +26,10 @@ type GatewayStub struct {
 	listener net.Listener
 	server   *http.Server
 
-	mu    sync.Mutex
-	paths map[string]int
-	hits  int
+	mu     sync.Mutex
+	paths  map[string]int
+	bodies map[string]string
+	hits   int
 }
 
 // ServeGateway starts a stand-in Gateway on a loopback port the fixture already
@@ -42,14 +47,36 @@ func ServeGateway(t *testing.T, port int, paths map[string]int) *GatewayStub {
 		Port:     port,
 		listener: listener,
 		paths:    map[string]int{},
+		bodies:   map[string]string{},
 	}
 	for path, status := range paths {
 		stub.paths[path] = status
 	}
+	// The stand-in is a *running* Gateway: it reports the readiness state igdev
+	// reads, so a test about the root document or a declared endpoint does not have
+	// to state it. A test about a Gateway that is still starting overrides it.
+	stub.Ready()
 	stub.server = &http.Server{Handler: http.HandlerFunc(stub.handle)}
 	go func() { _ = stub.server.Serve(listener) }()
 	t.Cleanup(stub.Close)
 	return stub
+}
+
+// SetBody changes the payload one path answers with, so a test can drive a Gateway
+// through its states: igdev reads the state a Gateway reports about itself, and a
+// fixture that always reports the same thing cannot show the transition.
+func (g *GatewayStub) SetBody(path, body string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.bodies[path] = body
+}
+
+// Ready makes the stand-in report the readiness state a Gateway that is up reports:
+// the state the Ignition image's own health check reads from /StatusPing. It is the
+// default; a test overrides the body to stand in for a starting Gateway.
+func (g *GatewayStub) Ready() {
+	g.SetStatus(statusPingPath, http.StatusOK)
+	g.SetBody(statusPingPath, `{"state":"RUNNING"}`)
 }
 
 // SetStatus changes one path's answer, so a test can make a healthy Gateway start
@@ -78,10 +105,17 @@ func (g *GatewayStub) Close() {
 func (g *GatewayStub) handle(w http.ResponseWriter, r *http.Request) {
 	g.mu.Lock()
 	status, ok := g.paths[r.URL.Path]
+	body := g.bodies[r.URL.Path]
 	g.hits++
 	g.mu.Unlock()
 	if !ok {
 		status = http.StatusNotFound
 	}
+	if body == "" && !ok {
+		w.WriteHeader(status)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
+	_, _ = w.Write([]byte(body))
 }

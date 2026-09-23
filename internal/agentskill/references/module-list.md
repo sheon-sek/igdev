@@ -10,7 +10,9 @@ whitelist itself.
 A private artifact whose module.xml cannot be read is still listed, with status
 UNREADABLE: it is in the directory, so hiding it would hide a broken download. A
 whitelist entry that is neither built-in nor declared by an artifact is listed as
-MISSING-ARTIFACT, which is the state that makes a Gateway refuse to load.
+MISSING-ARTIFACT, which is the state that makes a Gateway refuse to load. A staged
+artifact the whitelist does not name is reported as `enabled (staged)`: staging is
+what enables it, so the id never has to enter the contract.
 
 --built-in and --private select one group each; without them both are reported.
 
@@ -52,5 +54,6 @@ enabled_all (the empty whitelist means every module loads), whitelist, and the s
 rows: built_in (id, artifact, enabled) and private (id, name, version, artifact, source,
 status, error). A private row with status MISSING-ARTIFACT is a whitelist entry nothing
 stages and the reason a Gateway would refuse to load; UNREADABLE is an artifact whose
-module.xml could not be read. Stage the missing one with igdev module add; this verb
-only reports.
+module.xml could not be read; "enabled (staged)" is a staged private module the whitelist
+does not name — staging is what enables it, so no contract write is needed. Stage the
+missing one with igdev module add; this verb only reports.

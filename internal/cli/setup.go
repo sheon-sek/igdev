@@ -16,6 +16,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/config"
 	"github.com/sheon-sek/igdev/internal/consent"
 	"github.com/sheon-sek/igdev/internal/contract"
+	"github.com/sheon-sek/igdev/internal/docker"
 	"github.com/sheon-sek/igdev/internal/gate"
 	"github.com/sheon-sek/igdev/internal/instance"
 	"github.com/sheon-sek/igdev/internal/localconfig"
@@ -101,8 +102,10 @@ their own Docker namespace (igdev-<first 8 hex of the UUID>). Re-running setup o
 current checkout re-materializes it: the instance_id, its ports, and its creation time
 are kept, so identical state produces byte-identical files. When the Contract Digest
 moved, setup refreshes the Setup Stamp to the current contract. A recorded port the
-machine no longer offers is re-allocated and the record updated; ports never appear in
-the tracked Project Contract (ADR 0003).
+machine no longer offers is re-allocated and the record updated — unless this Instance's
+own Gateway is the one holding it, in which case the record keeps the triplet so a
+running Gateway's URLs survive a re-setup. Ports never appear in the tracked Project
+Contract (ADR 0003).
 
 Consent is required before anything is written. The record is machine-global
 (~/.config/igdev/accepted.toml, ADR 0004) and only a human-invoked command writes it,
@@ -243,6 +246,11 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 				triplet, fault = ports.AllocateFrom(pin)
 			case triplet.Free():
 				// The recorded triplet still binds, so the Instance keeps it.
+			case triplet.Complete() && instanceHoldsPorts(found.Root, instanceID):
+				// The ports are busy because this Instance's own Gateway is holding
+				// them. Re-allocating here would move a running Gateway's URLs out
+				// from under every saved bookmark and CI job, so the record stays.
+				// A first setup has no triplet to keep, so the engine is not asked.
 			case pin > 0:
 				triplet, fault = ports.AllocateFrom(pin)
 			default:
@@ -448,6 +456,35 @@ func actionOf(changed, existed bool) string {
 	}
 }
 
+// instanceHoldsPorts reports whether this Instance's own compose project runs its
+// Gateway right now, which is why the recorded ports are busy.
+//
+// The bind probe cannot tell a port this Instance's container publishes from a
+// stranger's process, and treating the container as a stranger is what re-allocated
+// a running Gateway's ports on every re-setup (issue #36). Setup asks the engine
+// instead — and only when the probe already failed, so a checkout with nothing
+// running never talks to it. An engine igdev cannot ask answers false: the record
+// then moves exactly as it did before.
+func instanceHoldsPorts(root, instanceID string) bool {
+	runtimeDir := filepath.Join(root, project.StateDir, "runtime")
+	compose := docker.Compose{
+		Namespace: instance.Namespace(instanceID),
+		File:      filepath.Join(runtimeDir, runtimeassets.ComposeFileName),
+		EnvFile:   filepath.Join(runtimeDir, runtimeassets.EnvFileName),
+		Dir:       root,
+	}
+	services, fault := compose.Ps()
+	if fault != nil {
+		return false
+	}
+	for _, service := range services {
+		if service.Service == docker.GatewayServiceName && service.State == "running" {
+			return true
+		}
+	}
+	return false
+}
+
 // runtimePaths are the Checkout Setup directories a materialization owns: the
 // build context, the module staging directory the Gateway mounts, and the
 // Baseline restore mount point.
@@ -483,13 +520,21 @@ func setupPaths(root string) runtimePaths {
 // that outlives a re-materialization.
 func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceID string, triplet ports.Triplet) ([]setupWrite, error) {
 	paths := setupPaths(found.Root)
+	// The staged private artifacts are read here because they are part of the
+	// rendered environment: the module list the Gateway is told to load carries
+	// every staged id (a private module is enabled by being staged), so staging
+	// and re-materializing are enough to make one load.
+	records, fault := modules.Scan(paths.modules)
+	if fault != nil {
+		return nil, fault
+	}
 	rendered := runtimeassets.Input{
 		InstanceID:           instanceID,
 		Namespace:            instance.Namespace(instanceID),
 		IgnitionVersion:      doc.Ignition.Version,
 		JythonVersion:        doc.Ignition.JythonVersion,
 		Edition:              doc.Ignition.Edition,
-		Modules:              doc.Modules.Enabled,
+		Modules:              modules.EnabledList(doc.Modules.Enabled, records),
 		MemoryMB:             doc.Gateway.MemoryMB,
 		Timezone:             doc.Gateway.Timezone,
 		AllowUnsignedModules: doc.Gateway.AllowUnsignedModules,

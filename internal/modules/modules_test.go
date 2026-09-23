@@ -142,14 +142,36 @@ func TestMissing(t *testing.T) {
 	}
 }
 
-// The status vocabulary: enabled, staged but not enabled, unreadable.
+// The status vocabulary: enabled, enabled by staging, unreadable.
 func TestStatus(t *testing.T) {
 	staged := Record{ID: "com.example.mod", Artifact: "mod.modl", Source: Local}
 	if got := Status(staged, nil); got != StatusEnabled {
 		t.Errorf("status = %q, want %q", got, StatusEnabled)
 	}
-	if got := Status(staged, []string{"com.example.other"}); got != StatusStagedNotEnabled {
-		t.Errorf("status = %q, want %q", got, StatusStagedNotEnabled)
+	if got := Status(staged, []string{"com.example.other"}); got != StatusStagedEnabled {
+		t.Errorf("status = %q, want %q", got, StatusStagedEnabled)
+	}
+	if got := Status(Record{Artifact: "broken.modl", Err: "not a zip"}, nil); got != StatusUnreadable {
+		t.Errorf("status = %q, want %q", got, StatusUnreadable)
+	}
+}
+
+// The list the Gateway is told to load carries every staged private id, because
+// that id is local build output and does not belong in the tracked contract; an
+// empty whitelist stays empty (no whitelist loads every module).
+func TestEnabledListAppendsStagedModules(t *testing.T) {
+	records := []Record{
+		{ID: "com.acme.vision"},
+		{ID: "com.inductiveautomation.perspective"},
+		{Artifact: "broken.modl"}, // unreadable: no id to enable
+	}
+	if got := EnabledList(nil, records); got != nil {
+		t.Errorf("EnabledList(nil) = %v, want no list at all", got)
+	}
+	got := EnabledList([]string{"com.inductiveautomation.perspective", "com.inductiveautomation.opcua"}, records)
+	want := "com.inductiveautomation.perspective,com.inductiveautomation.opcua,com.acme.vision"
+	if strings.Join(got, ",") != want {
+		t.Errorf("EnabledList = %v, want %q", got, want)
 	}
 }
 

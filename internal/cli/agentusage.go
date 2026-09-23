@@ -119,8 +119,9 @@ enabled_all (the empty whitelist means every module loads), whitelist, and the s
 rows: built_in (id, artifact, enabled) and private (id, name, version, artifact, source,
 status, error). A private row with status MISSING-ARTIFACT is a whitelist entry nothing
 stages and the reason a Gateway would refuse to load; UNREADABLE is an artifact whose
-module.xml could not be read. Stage the missing one with igdev module add; this verb
-only reports.`,
+module.xml could not be read; "enabled (staged)" is a staged private module the whitelist
+does not name — staging is what enables it, so no contract write is needed. Stage the
+missing one with igdev module add; this verb only reports.`,
 	"igdev module require": `pass --json for the machine contract. data.capabilities carries one entry
 per argument, in argument order, with capability, kind, platform, the modules it needs,
 and the layer that resolved it (core or overlay). Every argument is checked before the
@@ -140,10 +141,11 @@ Checkout Setup no longer matches the contract — run igdev setup before the nex
 command.`,
 	"igdev module add": `pass --json for the machine contract. data carries the artifact's id, name,
 version, source, artifact, and staged path, action (created or replaced), bytes,
-modules_dir, staged, count, runtime_dir, and the runtime files re- rendered; enable
-appears when --enable also wrote the whitelist, and setup_stale when that write moved
-the Contract Digest (run igdev setup then). Nothing is staged unless the archive's
-module.xml can be read.`,
+modules_dir, staged, count, runtime_dir, and the runtime files re-rendered. Nothing is
+staged unless the archive's module.xml can be read, and nothing is written to the
+contract: a staged private module is enabled by being staged, so no whitelist entry is
+needed. The staged id is a first-class id for igdev module require and igdev module
+list reports it as "enabled (staged)".`,
 	"igdev module cache-path": `pass --json for the machine contract. data carries path (the machine-wide
 cache directory for this Ignition version), ignition_version, and exists. An absent
 directory is normal: the cache is disposable and is created on first use, so data.exists
@@ -185,16 +187,22 @@ Baseline is applied on the fresh launch.`,
 	"igdev gateway restart": `pass --json for the machine contract. data is the address block:
 instance_id, namespace, url, and ports. The named volume is kept, so nothing is restored
 and no state is lost; use igdev gateway reset when a fresh Gateway is what is wanted.`,
-	"igdev gateway wait": `pass --json for the machine contract. data is the address block. On timeout
-the command fails with the tail of the Gateway's own log in the message, because that
-log holds the reason; the Remediation names igdev gateway logs and igdev gateway status
-for the follow-up. --timeout takes seconds or a duration like 3m (default 180s).`,
+	"igdev gateway wait": `pass --json for the machine contract. data is the address block. The
+wait ends when the Gateway reports RUNNING on its readiness endpoint (/StatusPing) —
+the root document answering is not readiness, Jetty serves it while the Gateway is
+still starting — so a returned wait means the Gateway is usable, including its module
+routes. On timeout the command fails with the tail of the Gateway's own log in the
+message, because that log holds the reason; the Remediation names igdev gateway logs and
+igdev gateway status for the follow-up. --timeout takes seconds or a duration like 3m
+(default 180s).`,
 	"igdev gateway smoke": `pass --json for the machine contract. data carries instance_id, url, and
 checks: one entry per request in the order they ran, each with path, url, status, ok,
-and the error when it did not answer. A failing check is IGDEV_E_GATEWAY_UNHEALTHY with
-Remediation naming igdev gateway logs --tail 50 and igdev gateway status --json. The
-endpoints come from the contract's [gateway] smoke_endpoints, so the check is project-
-declared.`,
+and the error when it did not answer. The run begins with the same readiness gate
+igdev gateway wait applies — the Gateway must report RUNNING — so a passing check means
+the endpoint answered a Gateway that is up. A failing check is
+IGDEV_E_GATEWAY_UNHEALTHY with Remediation naming igdev gateway logs --tail 50 and
+igdev gateway status --json. The endpoints come from the contract's
+[gateway] smoke_endpoints, so the check is project-declared.`,
 	"igdev gateway status": `pass --json for the machine contract. data carries the address block plus
 state (the compose project's overall verdict) and services, one entry per service with
 name, service, state, and status as the container engine reports them, so an agent reads
