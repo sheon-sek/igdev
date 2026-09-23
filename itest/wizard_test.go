@@ -66,7 +66,7 @@ func TestWizardInitWalkthroughOnGradleLayout(t *testing.T) {
 
 	session := env.StartPTY(testrig.PTYRun{Args: []string{"init"}, Dir: dir, Env: wizardEnv(env)})
 	session.Expect("Project stack").Send("\r")
-	session.Expect("Ignition version").Send("\r")
+	session.Expect("igdev carries a Core Catalog for it").Send("\r")
 	session.Expect("Enabled modules").Send("\r")
 	session.Expect("[scan].jython").Send("\r")
 	session.Expect("[commands].check").Send("\r")
@@ -202,7 +202,7 @@ func TestWizardInteractiveForcesPromptsWithDefaultsPreselected(t *testing.T) {
 		Env:  wizardEnv(env),
 	})
 	session.Expect("Project stack").Send("\r")
-	session.Expect("Ignition version").Send("\r")
+	session.Expect("igdev carries a Core Catalog for it").Send("\r")
 	session.Expect("Enabled modules").Send("\r")
 	session.Expect("[scan].jython").Send("\r")
 	session.Expect("[commands].check").Send("\r")
@@ -256,7 +256,7 @@ func TestWizardSetupConsentMissingExitsThree(t *testing.T) {
 	dir := env.Project("repo", testrig.MinimalContract)
 
 	session := env.StartPTY(testrig.PTYRun{Args: []string{"setup"}, Dir: dir, Env: wizardEnv(env)})
-	session.Expect("accept-eula").Send("n")
+	session.Expect("Has `igdev setup --accept-eula` been run").Send("n")
 	res := session.Wait()
 
 	testrig.WantExit(t, res, contract.ExitHumanAction)
@@ -291,8 +291,8 @@ func TestWizardSetupWalksEveryStep(t *testing.T) {
 	testrig.WantExit(t, env.RunIn(dir, "setup", "--accept-eula"), contract.ExitOK)
 
 	session := env.StartPTY(testrig.PTYRun{Args: []string{"setup", "--interactive"}, Dir: dir, Env: wizardEnv(env)})
-	session.Expect("admin password").Send("\r")  // keep, or generate
-	session.Expect("Baseline backup").Send("\r") // none
+	session.Expect("Gateway admin password").Send("\r") // keep, or generate
+	session.Expect("Baseline backup").Send("\r")        // none
 	session.Expect("Gateway HTTP port").Send("18080\r")
 	res := session.Wait()
 	testrig.WantExit(t, res, contract.ExitOK)
@@ -334,7 +334,7 @@ func TestWizardSetupStagesBaseline(t *testing.T) {
 	backup := env.Write("downloads/customer.gwbk", "GWBK")
 
 	session := env.StartPTY(testrig.PTYRun{Args: []string{"setup", "--interactive"}, Dir: dir, Env: wizardEnv(env)})
-	session.Expect("admin password").Send("\r")
+	session.Expect("Gateway admin password").Send("\r")
 	session.Expect("Baseline backup").Send(backup + "\r")
 	session.Expect("Gateway HTTP port").Send("\r")
 	res := session.Wait()
