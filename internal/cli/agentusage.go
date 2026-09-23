@@ -119,8 +119,9 @@ enabled_all (the empty whitelist means every module loads), whitelist, and the s
 rows: built_in (id, artifact, enabled) and private (id, name, version, artifact, source,
 status, error). A private row with status MISSING-ARTIFACT is a whitelist entry nothing
 stages and the reason a Gateway would refuse to load; UNREADABLE is an artifact whose
-module.xml could not be read. Stage the missing one with igdev module add; this verb
-only reports.`,
+module.xml could not be read; "enabled (staged)" is a staged private module the whitelist
+does not name — staging is what enables it, so no contract write is needed. Stage the
+missing one with igdev module add; this verb only reports.`,
 	"igdev module require": `pass --json for the machine contract. data.capabilities carries one entry
 per argument, in argument order, with capability, kind, platform, the modules it needs,
 and the layer that resolved it (core or overlay). Every argument is checked before the
@@ -140,10 +141,11 @@ Checkout Setup no longer matches the contract — run igdev setup before the nex
 command.`,
 	"igdev module add": `pass --json for the machine contract. data carries the artifact's id, name,
 version, source, artifact, and staged path, action (created or replaced), bytes,
-modules_dir, staged, count, runtime_dir, and the runtime files re- rendered; enable
-appears when --enable also wrote the whitelist, and setup_stale when that write moved
-the Contract Digest (run igdev setup then). Nothing is staged unless the archive's
-module.xml can be read.`,
+modules_dir, staged, count, runtime_dir, and the runtime files re-rendered. Nothing is
+staged unless the archive's module.xml can be read, and nothing is written to the
+contract: a staged private module is enabled by being staged, so no whitelist entry is
+needed. The staged id is a first-class id for igdev module require and igdev module
+list reports it as "enabled (staged)".`,
 	"igdev module cache-path": `pass --json for the machine contract. data carries path (the machine-wide
 cache directory for this Ignition version), ignition_version, and exists. An absent
 directory is normal: the cache is disposable and is created on first use, so data.exists

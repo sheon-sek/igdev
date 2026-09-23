@@ -388,8 +388,9 @@ func TestWizardSetupStagesBaseline(t *testing.T) {
 }
 
 // The `module add` Wizard: with no argument, a terminal is asked for the archive,
-// shown what it declares, and asked whether to enable it.
-func TestWizardModuleAddStagesAndOffersEnable(t *testing.T) {
+// shown what it declares, and asked to confirm the copy. It never offers the
+// whitelist, because a staged module is enabled by being staged (issue #34).
+func TestWizardModuleAddStagesTheArtifact(t *testing.T) {
 	env := testrig.NewEnv(t)
 	dir := moduleFixture(t, env, "com.inductiveautomation.perspective")
 	source := modl(t, env, "downloads/acme-vision.modl", "<DOWNLOAD>",
@@ -398,7 +399,6 @@ func TestWizardModuleAddStagesAndOffersEnable(t *testing.T) {
 	session := env.StartPTY(testrig.PTYRun{Args: []string{"module", "add"}, Dir: dir, Env: wizardEnv(env)})
 	session.Expect("Module archive").Send(source + "\r")
 	session.Expect("Acme Vision").Expect("Copy acme-vision.modl").Send("\r")
-	session.Expect("Also add com.acme.vision").Send("y")
 	res := session.Wait()
 	testrig.WantExit(t, res, contract.ExitOK)
 	env.Golden(t, "wizard_module_add_transcript.txt", wizardTranscript(res.Screen, "module add"))
@@ -407,20 +407,19 @@ func TestWizardModuleAddStagesAndOffersEnable(t *testing.T) {
 	if got := readFile(t, staged); got != readFile(t, source) {
 		t.Error("the artifact was not staged")
 	}
+	// The staged id is enabled by being staged, so the contract is untouched and
+	// the Checkout Setup stays current.
 	body := readFile(t, filepath.Join(dir, project.ContractFile))
-	if !strings.Contains(body, "com.acme.vision") {
-		t.Errorf("the enabled module is not in the whitelist:\n%s", body)
-	}
-	// Enabling moves the Contract Digest, so the checkout is stale until setup
-	// runs again: the Wizard says so and the next setup clears it.
-	if !strings.Contains(res.Screen, "stale") {
-		t.Errorf("the Wizard did not report the stale checkout:\n%s", res.Screen)
+	if strings.Contains(body, "com.acme.vision") {
+		t.Errorf("the Wizard wrote the staged id to the contract:\n%s", body)
 	}
 	state := testrig.Status(t, env.RunIn(dir, "status", "--json").Stdout)
-	if state.Setup.StampState != "stale" {
-		t.Errorf("stamp_state = %q, want stale", state.Setup.StampState)
+	if state.Setup.StampState != "current" {
+		t.Errorf("stamp_state = %q, want current: staging is not a contract write", state.Setup.StampState)
 	}
-	testrig.WantExit(t, env.RunIn(dir, "setup", "--json"), contract.ExitOK)
+	if got := readFile(t, filepath.Join(dir, project.StateDir, "runtime", "compose.env")); !strings.Contains(got, "com.acme.vision") {
+		t.Errorf("the rendered module list does not carry the staged module:\n%s", got)
+	}
 	res.AssertNoLeaksOutside(t, dir)
 }
 

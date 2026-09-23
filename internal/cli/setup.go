@@ -483,13 +483,21 @@ func setupPaths(root string) runtimePaths {
 // that outlives a re-materialization.
 func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceID string, triplet ports.Triplet) ([]setupWrite, error) {
 	paths := setupPaths(found.Root)
+	// The staged private artifacts are read here because they are part of the
+	// rendered environment: the module list the Gateway is told to load carries
+	// every staged id (a private module is enabled by being staged), so staging
+	// and re-materializing are enough to make one load.
+	records, fault := modules.Scan(paths.modules)
+	if fault != nil {
+		return nil, fault
+	}
 	rendered := runtimeassets.Input{
 		InstanceID:           instanceID,
 		Namespace:            instance.Namespace(instanceID),
 		IgnitionVersion:      doc.Ignition.Version,
 		JythonVersion:        doc.Ignition.JythonVersion,
 		Edition:              doc.Ignition.Edition,
-		Modules:              doc.Modules.Enabled,
+		Modules:              modules.EnabledList(doc.Modules.Enabled, records),
 		MemoryMB:             doc.Gateway.MemoryMB,
 		Timezone:             doc.Gateway.Timezone,
 		AllowUnsignedModules: doc.Gateway.AllowUnsignedModules,

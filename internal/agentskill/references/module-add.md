@@ -18,16 +18,18 @@ with no backup file. That directory is what the rendered Compose file mounts, so
 next `igdev gateway up` hands the Gateway the new module; nothing about running a
 Gateway changes here. Staging does not touch the Project Contract, so the Setup Stamp
 stays current — what changed is what is staged, not what the contract asked for. Run
-`igdev module enable <id>` to add the module to the whitelist as well.
+`igdev module enable <id>` to add the module to the whitelist as well — although a
+staged private module is enabled by being staged, so its id never has to enter the
+tracked contract.
 
 Adding an artifact whose file name is already staged replaces it, which is how a
 newer build of the same module is staged.
 
 Without --json or --yes, add never prompts an invocation that named its file: an
 agent's fully specified invocation is the whole interface. A terminal that names no
-file gets the module add Wizard — four steps that ask for the archive, show what it
-declares, state what igdev does not verify, confirm the copy, and offer to whitelist
-the module. --interactive runs it even when the file was named; --yes takes the same
+file gets the module add Wizard — three steps that ask for the archive, show what it
+declares, and state what igdev does not verify before confirming the copy.
+--interactive runs it even when the file was named; --yes takes the same
 defaults without asking; on a non-terminal --interactive is a usage error, because a
 Wizard has no way to ask.
 
@@ -41,13 +43,12 @@ igdev module add <file.modl> [flags]
 
 ```text
   igdev module add ~/Downloads/com.acme.vision.modl
-  igdev module add /mnt/vendor/acme-vision-1.2.3.modl --enable --json
+  igdev module add /mnt/vendor/acme-vision-1.2.3.modl --json
 ```
 
 ## Options
 
 ```text
-      --enable        also add the staged module to the contract's [modules].enabled whitelist
   -h, --help          help for add
   -i, --interactive   run the Wizard even when every value is already supplied
   -y, --yes           take the Wizard's defaults and never prompt
@@ -64,7 +65,8 @@ igdev module add <file.modl> [flags]
 
 pass --json for the machine contract. data carries the artifact's id, name,
 version, source, artifact, and staged path, action (created or replaced), bytes,
-modules_dir, staged, count, runtime_dir, and the runtime files re- rendered; enable
-appears when --enable also wrote the whitelist, and setup_stale when that write moved
-the Contract Digest (run igdev setup then). Nothing is staged unless the archive's
-module.xml can be read.
+modules_dir, staged, count, runtime_dir, and the runtime files re-rendered. Nothing is
+staged unless the archive's module.xml can be read, and nothing is written to the
+contract: a staged private module is enabled by being staged, so no whitelist entry is
+needed. The staged id is a first-class id for igdev module require and igdev module
+list reports it as "enabled (staged)".

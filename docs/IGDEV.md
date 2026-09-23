@@ -489,7 +489,9 @@ carries. The resolved Ignition version comes from the config precedence chain, s
 whether the whitelist selects it, every `.modl` staged in `.igdev/modules/` with its
 `module.xml` metadata, and the `[modules].enabled` whitelist. An artifact whose
 `module.xml` cannot be read is still listed as `UNREADABLE` (it is in the directory),
-and a whitelisted module no artifact declares is `MISSING-ARTIFACT`. `--built-in` and
+and a whitelisted module no artifact declares is `MISSING-ARTIFACT`. A staged artifact
+the whitelist does not name reads as `enabled (staged)`: staging is what enables it (see
+`EnabledList`), so the id never has to enter the contract. `--built-in` and
 `--private` select one group; the human dialect keeps the legacy group headings, and
 `--json` omits the group a flag did not select. An empty whitelist is not "nothing
 enabled": it is the Gateway image's own semantics for `GATEWAY_MODULES_ENABLED` —
@@ -577,9 +579,11 @@ An id has to be one this environment can load — a built-in module from the Cor
 Catalog, a solution-suite selector, or an id a staged `.modl` declares. One unknown id
 refuses the whole run with `IGDEV_E_MODULE_UNKNOWN`, names the closest built-in ids,
 and stages nothing. Enabling what the whitelist already names changes nothing and
-writes nothing, so re-running is safe. When the whitelist is *empty* every module
-already loads, so `enable` reports that state instead of writing a list that would
-restrict the Gateway; an explicit whitelist comes from `igdev init --modules`.
+writes nothing, so re-running is safe; an id a staged artifact declares is reported as
+already enabled for the same reason — it is loaded by being staged, and its id is local
+build output that does not belong in the tracked contract. When the whitelist is *empty*
+every module already loads, so `enable` reports that state instead of writing a list
+that would restrict the Gateway; an explicit whitelist comes from `igdev init --modules`.
 
 Because the write moves the Contract Digest, the Checkout Setup becomes stale: the Gate
 refuses the next project command with `IGDEV_E_SETUP_STALE` until `igdev setup`
@@ -595,12 +599,18 @@ decompressed; a file that is not a readable zip carrying a `module.xml` with a u
 id is `IGDEV_E_MODULE_ARCHIVE_INVALID` with the reason. The artifact is metadata-only:
 id, name, and version is everything igdev reads out of a `.modl`, and the archive is
 never a source of capability knowledge (ADR 0005). Re-adding a file name already staged
-replaces it, which is how a newer build of one module is staged.
+replaces it, which is how a newer build of one module is staged. There is no
+"also enable it" step and no `--enable` flag: a staged private module is enabled by
+being staged (see below), so that write could only ever put a local artifact's id into
+the tracked contract.
 
 Staging is not a contract change, so the Setup Stamp stays current: what moved is what
-is staged, not what the contract asked for. A staged private module is a first-class id,
-so `module enable <id>` and `module require module:<id>` accept it once the artifact is
-there. `igdev module clear` deletes every staged `.modl` and re-renders the runtime; the
+is staged, not what the contract asked for. Staging a private module is also what
+enables it: the rendered `GATEWAY_MODULES_ENABLED` is the whitelist plus every staged
+private id (`modules.EnabledList`), so a whitelist that does not name the module still
+loads it, and `module list` reports it as `enabled (staged)`. A staged private module is
+a first-class id, so `module require module:<id>` accepts it once the artifact is there.
+`igdev module clear` deletes every staged `.modl` and re-renders the runtime; the
 whitelist survives, so a whitelisted module whose artifact was cleared reads as
 `MISSING-ARTIFACT` — the state that makes a Gateway refuse it.
 
@@ -1037,8 +1047,9 @@ next to the Go suite: package, install the tarball into a temp prefix, then
 `igdev-gateway-e2e` stays the real-Docker tier. The GitHub repository rename to `igdev`
 is still pending — the Go module path and the install docs already anticipate it.
 
-Ticket 16 adds the Wizards: `init` (6 steps), `setup` (7 steps), and `module add` (4
-steps). A Wizard prompts only when a required value is missing, stdin is a terminal,
+Ticket 16 adds the Wizards: `init` (7 steps), `setup` (7 steps), and `module add` (3
+steps — staging is what enables a private module, so there is no whitelist question). A
+Wizard prompts only when a required value is missing, stdin is a terminal,
 and neither `--json` nor `--yes` was asked for; `--interactive` forces it, `--yes`
 takes the same defaults silently, and `--json` never prompts whatever the terminal is.
 Every Wizard answer becomes the flag value the silent path would have been given, so

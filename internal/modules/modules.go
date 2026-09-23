@@ -35,11 +35,13 @@ const SuiteSelectorPrefix = "com.inductiveautomation.suite."
 // Status values a private module record reports, matching the vocabulary the
 // bash specification printed.
 const (
-	// StatusEnabled means the whitelist selects the module.
+	// StatusEnabled means the whitelist selects the module, or the whitelist is
+	// empty (no whitelist: every module loads).
 	StatusEnabled = "enabled"
-	// StatusStagedNotEnabled means the artifact is staged but the whitelist does
-	// not select it.
-	StatusStagedNotEnabled = "staged-not-enabled"
+	// StatusStagedEnabled means the artifact is staged, which is what enables it:
+	// the rendered module list carries every staged private id, so a whitelist
+	// that does not name this module is not a verdict about it.
+	StatusStagedEnabled = "enabled (staged)"
 	// StatusUnreadable means the artifact is present but its module.xml could
 	// not be read.
 	StatusUnreadable = "UNREADABLE"
@@ -334,7 +336,9 @@ func Has(records []Record, id string) bool {
 	return false
 }
 
-// Status is a record's status under the whitelist.
+// Status is a record's status under the whitelist. A readable artifact is never
+// reported as switched off: staging it is what enables it (see EnabledList), so
+// the only distinction left is whether the whitelist also names it.
 func Status(record Record, whitelist []string) string {
 	switch {
 	case record.ID == "":
@@ -342,8 +346,39 @@ func Status(record Record, whitelist []string) string {
 	case Enabled(whitelist, record.ID):
 		return StatusEnabled
 	default:
-		return StatusStagedNotEnabled
+		return StatusStagedEnabled
 	}
+}
+
+// EnabledList is the module list the Gateway is told to load: the contract's
+// whitelist plus the id of every module a staged private artifact declares.
+//
+// A private module is the checkout's own artifact — its id is local build output
+// that does not belong in the tracked contract — so staging it, with `module add`
+// or through `[modules].artifacts`, is what enables it; a whitelist that does not
+// name it would mount it without loading it. An empty whitelist means no whitelist
+// at all (every module loads), so the list stays empty and nothing is appended.
+func EnabledList(whitelist []string, records []Record) []string {
+	if len(whitelist) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(whitelist)+len(records))
+	seen := make(map[string]bool, cap(out))
+	for _, id := range whitelist {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	for _, record := range records {
+		if record.ID == "" || seen[record.ID] {
+			continue
+		}
+		seen[record.ID] = true
+		out = append(out, record.ID)
+	}
+	return out
 }
 
 // SuggestLimit is how many ids a "closest match" hint names at most: enough to
