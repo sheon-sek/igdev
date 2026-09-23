@@ -53,16 +53,19 @@ var (
 		Flag:  "--accept-eula",
 		Why:   "the Gateway image refuses to start without it",
 	}
-	// ModuleLicense covers the licenses of the modules a project enables. The
-	// module commands (ticket 12) require it; the record already holds it so the
-	// acceptance is machine-global from the start.
+	// ModuleLicense covers the licenses of the private modules a checkout stages.
+	// igdev accepts what the checkout staged itself by default; a contract that
+	// demands the human acceptance states [modules]
+	// require_private_module_consent = true (ADR 0006).
 	ModuleLicense = Term{
 		ID:    "module-license",
 		Title: "module licenses",
 		Flag:  "--accept-module-license",
 		Why:   "an enabled module whose license is not accepted will not load",
 	}
-	// ModuleCert covers the certificates of the modules a project enables.
+	// ModuleCert covers the certificates of the private modules a checkout stages.
+	// It is the same rule as ModuleLicense: accepted by default for what the
+	// checkout staged, demanded when the contract opts in.
 	ModuleCert = Term{
 		ID:    "module-cert",
 		Title: "module certificates",
@@ -233,4 +236,44 @@ func requiredFault(path string, term Term) *contract.Fault {
 			Why: "a person must accept " + term.Title + " once per machine: " + term.Why +
 				" (agents may never accept on a human's behalf, ADR 0004)",
 		})
+}
+
+// CheckAll reports every required term this machine has not accepted as one
+// human-required fault, with a Remediation per missing term. Check names the first
+// missing one, which is all a gate that needs one term has to say; a gate that
+// needs several at once (the private-module acceptance of ADR 0006) uses this, so
+// one run tells a person everything to record instead of one term per retry.
+func CheckAll(path string, required ...Term) *contract.Fault {
+	rec, _ := Load(path)
+	missing := make([]Term, 0, len(required))
+	for _, term := range required {
+		if _, ok := rec.Accepted(term); !ok {
+			missing = append(missing, term)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	titles := make([]string, 0, len(missing))
+	for _, term := range missing {
+		titles = append(titles, term.Title)
+	}
+	fault := contract.NewFault(contract.CodeConsentRequired, contract.ExitHumanAction,
+		fmt.Sprintf("%s are not accepted on this machine (Consent record: %s)",
+			strings.Join(titles, " and "), path))
+	fault = fault.WithRemediation(remediationsOf(missing)...)
+	return fault
+}
+
+// remediationsOf renders one Remediation per missing term, in the order given.
+func remediationsOf(terms []Term) []contract.Remediation {
+	out := make([]contract.Remediation, 0, len(terms))
+	for _, term := range terms {
+		out = append(out, contract.Remediation{
+			Command: "igdev setup " + term.Flag,
+			Why: "a person must accept " + term.Title + " once per machine: " + term.Why +
+				" (agents may never accept on a human's behalf, ADR 0004)",
+		})
+	}
+	return out
 }

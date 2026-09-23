@@ -146,6 +146,29 @@ func TestComposeEnvCarriesTheRuntimeSettings(t *testing.T) {
 	}
 }
 
+// The unsigned-modules switch is rendered from the contract: false is what a
+// checkout materialized before the key existed carried, and true is what a module
+// repository that builds unsigned artifacts asks for.
+func TestComposeEnvRendersTheUnsignedModulesSwitch(t *testing.T) {
+	off, err := ComposeEnv(sampleInput())
+	if err != nil {
+		t.Fatalf("ComposeEnv: %v", err)
+	}
+	if !strings.Contains(string(off), "IGNITION_ALLOW_UNSIGNED_MODULES=false") {
+		t.Errorf("compose.env does not carry the default switch:\n%s", off)
+	}
+
+	on := sampleInput()
+	on.AllowUnsignedModules = true
+	raw, err := ComposeEnv(on)
+	if err != nil {
+		t.Fatalf("ComposeEnv: %v", err)
+	}
+	if !strings.Contains(string(raw), "IGNITION_ALLOW_UNSIGNED_MODULES=true") {
+		t.Errorf("compose.env does not render the contract's switch:\n%s", raw)
+	}
+}
+
 // The Dockerfile derives from the Ignition image the contract asked for, and
 // copies nothing out of the repository: the build context is the disposable
 // runtime directory alone.

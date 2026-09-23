@@ -51,8 +51,11 @@ type agentContext struct {
 		URL     string `json:"url"`
 	} `json:"gateway"`
 	Modules struct {
-		Count  int      `json:"count"`
-		Staged []string `json:"staged"`
+		Count                       int      `json:"count"`
+		Staged                      []string `json:"staged"`
+		AllowUnsignedModules        bool     `json:"allow_unsigned_modules"`
+		AutoAccepted                []string `json:"auto_accepted"`
+		RequirePrivateModuleConsent bool     `json:"require_private_module_consent"`
 	} `json:"modules"`
 	Catalog struct {
 		CoreDigest string `json:"core_digest"`
@@ -240,6 +243,53 @@ func TestAgentContextReportsRunningGateway(t *testing.T) {
 	data := contextOf(t, res)
 	if data.Gateway == nil || !data.Gateway.Running {
 		t.Fatalf("gateway = %+v, want running", data.Gateway)
+	}
+}
+
+// Context reports which staged private module ids igdev would accept without a
+// human step, and the contract value that withholds them, so an unattended run
+// knows which behaviour it gets (ADR 0006).
+func TestAgentContextReportsModuleAcceptance(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.ShimDocker()
+	dir := env.Mkdir("repo")
+	testrig.WantExit(t, env.RunIn(dir, "init"), contract.ExitOK)
+	testrig.WantExit(t, env.RunIn(dir, "setup", "--accept-eula"), contract.ExitOK)
+	path := modl(t, env, "downloads/acme-vision.modl", "<MODL>", moduleXML("com.acme.vision", "Acme Vision", "1.0.0"))
+	testrig.WantExit(t, env.RunIn(dir, "module", "add", path), contract.ExitOK)
+
+	byDefault := contextOf(t, env.RunIn(dir, "agent", "context", "--json"))
+	if got := strings.Join(byDefault.Modules.AutoAccepted, ","); got != "com.acme.vision" {
+		t.Errorf("auto_accepted = %q, want the staged module", got)
+	}
+	if byDefault.Modules.RequirePrivateModuleConsent {
+		t.Error("the opt-in is reported as on by default")
+	}
+
+	// The strict opt-in: the same staged id is no longer accepted by igdev.
+	strict := `schema = 1
+
+[project]
+name = "repo"
+
+[modules]
+enabled = []
+require_private_module_consent = true
+`
+	root := env.Project("strict", strict)
+	testrig.WantExit(t, env.RunIn(root, "setup", "--accept-eula"), contract.ExitOK)
+	path = modl(t, env, "strict-downloads/acme-vision.modl", "<MODL_STRICT>", moduleXML("com.acme.vision", "Acme Vision", "1.0.0"))
+	testrig.WantExit(t, env.RunIn(root, "module", "add", path), contract.ExitOK)
+
+	gated := contextOf(t, env.RunIn(root, "agent", "context", "--json"))
+	if len(gated.Modules.AutoAccepted) != 0 {
+		t.Errorf("auto_accepted = %v, want none under the opt-in", gated.Modules.AutoAccepted)
+	}
+	if !gated.Modules.RequirePrivateModuleConsent {
+		t.Error("the opt-in is not reported")
+	}
+	if got := strings.Join(gated.Modules.Staged, ","); got != "com.acme.vision" {
+		t.Errorf("staged = %q, want the staged module reported either way", got)
 	}
 }
 

@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -13,10 +14,10 @@ import (
 	"github.com/sheon-sek/igdev/internal/project"
 )
 
-// The init Wizard, in the frozen step sequence (6 steps, Q19): the project
+// The init Wizard, in the frozen step sequence (7 steps, Q19): the project
 // stack, the Ignition version, the built-in modules, the scan paths, the command
-// strings, and the summary of what is written.
-const initWizardSteps = 6
+// strings, the Gateway options, and the summary of what is written.
+const initWizardSteps = 7
 
 // initNeedsWizard reports whether init has values to invent: a repository with
 // no Project Contract yet, or one this binary cannot carry forward, has nothing
@@ -148,22 +149,41 @@ func (a *App) runInitWizard(cmd *cobra.Command, found project.Found, res *config
 		}
 	}
 
+	// Step 6: the Gateway options — the one contract value that changes what the
+	// Gateway loads, and the one a module repository that builds unsigned
+	// artifacts has to state. The default is what the contract already holds, so
+	// an edit never flips it.
+	allowUnsignedModules := doc.Gateway.AllowUnsignedModules
+	if run.prompt {
+		a.wizardBanner("init", 6, initWizardSteps, "the Gateway options")
+		a.wizardNote("a module repository builds unsigned artifacts until it has a signing key; " +
+			"the Gateway loads them only when the contract allows it")
+		if err := a.ask("init", huh.NewConfirm().
+			Title("Allow unsigned modules").
+			Description("Render IGNITION_ALLOW_UNSIGNED_MODULES for this Instance's Gateway.").
+			Affirmative("Yes").Negative("No").
+			Value(&allowUnsignedModules)); err != nil {
+			return err
+		}
+	}
+
 	if err := setFlags(cmd, run.prompt, map[string]string{
-		"ignition-version":  version,
-		"modules":           strings.Join(enabled, ","),
-		"scan-jython":       scanJython,
-		"scan-capabilities": scanCapabilities,
-		"command-check":     commands.Check,
-		"command-test":      commands.Test,
-		"command-build":     commands.Build,
-		"command-smoke":     commands.Smoke,
+		"ignition-version":       version,
+		"modules":                strings.Join(enabled, ","),
+		"scan-jython":            scanJython,
+		"scan-capabilities":      scanCapabilities,
+		"command-check":          commands.Check,
+		"command-test":           commands.Test,
+		"command-build":          commands.Build,
+		"command-smoke":          commands.Smoke,
+		"allow-unsigned-modules": strconv.FormatBool(allowUnsignedModules),
 	}); err != nil {
 		return err
 	}
 
-	// Step 6: what the run is about to write, and then the write itself.
+	// Step 7: what the run is about to write, and then the write itself.
 	if run.prompt {
-		a.wizardBanner("init", 6, initWizardSteps, "the summary")
+		a.wizardBanner("init", 7, initWizardSteps, "the summary")
 		a.printInitSummary(current())
 	}
 	return nil
@@ -182,6 +202,9 @@ func (a *App) printInitSummary(doc project.Doc) {
 	}
 	a.wizardNote("scan:      jython %s; capabilities %s",
 		listOr(doc.Scan.Jython, "none"), listOr(doc.Scan.Capabilities, "none"))
+	if doc.Gateway.AllowUnsignedModules {
+		a.wizardNote("gateway:   unsigned modules are allowed")
+	}
 	if doc.Commands.Empty() {
 		a.wizardNote("commands:  none declared")
 		return

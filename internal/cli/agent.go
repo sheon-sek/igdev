@@ -100,10 +100,24 @@ type agentGateway struct {
 	URL     string `json:"url"`
 }
 
-// agentModules reports the private module artifacts this checkout stages.
+// agentModules reports the private module artifacts this checkout stages, and
+// what the contract lets the Gateway load and accept.
 type agentModules struct {
 	Count  int      `json:"count"`
 	Staged []string `json:"staged"`
+	// AllowUnsignedModules is the effective [gateway] allow_unsigned_modules:
+	// true means the Gateway this checkout starts loads a module artifact that
+	// carries no valid signature. It is a contract value, so it is reported in
+	// every lifecycle state, initialized or not.
+	AllowUnsignedModules bool `json:"allow_unsigned_modules"`
+	// AutoAccepted lists the staged private module ids igdev passes to the Gateway
+	// as ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS without a human step
+	// (ADR 0006). It is empty when the contract requires private-module Consent:
+	// there, the ids are passed only after a person recorded the terms.
+	AutoAccepted []string `json:"auto_accepted"`
+	// RequirePrivateModuleConsent is the effective
+	// [modules] require_private_module_consent, which is why AutoAccepted is empty.
+	RequirePrivateModuleConsent bool `json:"require_private_module_consent"`
 }
 
 // agentCatalog is the Effective Catalog's identity: the Core Catalog digest and
@@ -184,9 +198,12 @@ var AgentContextFields = []AgentContextField{
 	{"gateway", "object", "Whether the Gateway is running and its recorded URL; null when there is no Instance. Context never starts anything."},
 	{"gateway.running", "bool", "The container engine reports this Instance's Gateway running."},
 	{"gateway.url", "string", "The recorded Gateway URL, built from the Instance's allocated HTTP port."},
-	{"modules", "object", "The private module artifacts this checkout stages."},
+	{"modules", "object", "The private module artifacts this checkout stages, and what the contract lets the Gateway load."},
 	{"modules.count", "int", "How many artifacts are staged in .igdev/modules/."},
 	{"modules.staged", "array", "The module ids those artifacts declare."},
+	{"modules.allow_unsigned_modules", "bool", "The effective [gateway] allow_unsigned_modules: true means the Gateway loads a module artifact that carries no valid signature. A contract value, so it is reported whether or not this checkout was set up."},
+	{"modules.auto_accepted", "array", "The staged private module ids igdev passes to the Gateway as ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS without a human step. Empty when the contract requires private-module Consent."},
+	{"modules.require_private_module_consent", "bool", "The effective [modules] require_private_module_consent: true means those ids are passed only after a human recorded the module-license and module-cert terms (ADR 0006)."},
 	{"catalog", "object", "The Effective Catalog's identity."},
 	{"catalog.core_digest", "string", "sha256 of the Core Catalog embedded in this binary, for this Ignition version."},
 	{"catalog.overlay", "object", "This repository's tracked Project Overlay layer."},
@@ -248,7 +265,8 @@ envelope:
   instance      the recorded Instance identity and its ports, or null before setup
   gateway       whether the Gateway is running and its recorded URL, or null when
                 there is no Instance (context never starts anything)
-  modules       how many private module artifacts this checkout stages
+  modules       the staged private module artifacts, and whether the contract
+                lets the Gateway load an unsigned one
   catalog       the Core Catalog digest and the Project Overlay layer
   capabilities  the Effective Catalog's row counts
   commands      which project verbs are available here
@@ -299,7 +317,7 @@ func agentContextOf(found project.Found, res *config.Resolution, state gate.Stat
 			Ignition:    res.String("ignition.version"),
 			Jython:      jythonVersion(doc),
 		},
-		Modules:  agentModulesOf(found),
+		Modules:  agentModulesOf(found, doc),
 		Commands: agentCommandsOf(doc),
 	}
 	data.Catalog, data.Capabilities = agentCatalogOf(found, res, doc)
@@ -345,10 +363,22 @@ func agentConsentState() agentConsent {
 }
 
 // agentModulesOf reports the staged module artifacts, reusing the status report
-// so both surfaces answer from the same read.
-func agentModulesOf(found project.Found) agentModules {
+// so both surfaces answer from the same read. An unreadable contract reports no
+// staged modules and the option's default: the orientation never fails on the
+// state it is describing.
+func agentModulesOf(found project.Found, doc project.Doc) agentModules {
 	staged := modulesStatus(found)
-	return agentModules{Count: staged.Count, Staged: staged.Staged}
+	autoAccepted := []string{}
+	if !doc.Modules.RequirePrivateModuleConsent {
+		autoAccepted = append(autoAccepted, staged.Staged...)
+	}
+	return agentModules{
+		Count:                       staged.Count,
+		Staged:                      staged.Staged,
+		AllowUnsignedModules:        doc.Gateway.AllowUnsignedModules,
+		AutoAccepted:                autoAccepted,
+		RequirePrivateModuleConsent: doc.Modules.RequirePrivateModuleConsent,
+	}
 }
 
 // agentCatalogOf resolves the Effective Catalog best-effort: an Invalid Project

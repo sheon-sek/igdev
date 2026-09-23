@@ -24,6 +24,10 @@ module licenses, and the module certificates this machine has accepted, with whe
 by which igdev. A term that is not accepted is a human action; the command that records
 it is named in the remediation of every command that needs it (ADR 0004).
 
+gateway reports the Gateway option the contract states: allow_unsigned_modules, which
+is the effective value `igdev setup` renders as IGNITION_ALLOW_UNSIGNED_MODULES. It
+is false unless a contract asks for it, which is the schema default.
+
 The config block shows every key igdev resolves, its value, and the tier that won:
 flag > IGDEV_* environment > .igdev/local.toml > igdev.toml > embedded defaults.
 
@@ -58,7 +62,7 @@ igdev status [flags]
 pass --json for the machine contract. data is the whole report:
 initialized, project_root, working_dir, contract (path, present, schema_version,
 schema_supported, digest), setup (present, path, stamp_state, instance_id, namespace,
-ports), modules, consent (per-term acceptance), and config (tier_files plus every
-resolved key with the tier that won). It succeeds before init and setup and outside a
-Project Root, so it is always the safe first call; branch on the blocks, never on the
-exit level.
+ports), gateway (allow_unsigned_modules — the effective IGNITION_ALLOW_UNSIGNED_MODULES),
+modules, consent (per-term acceptance), and config (tier_files plus every resolved key
+with the tier that won). It succeeds before init and setup and outside a Project Root,
+so it is always the safe first call; branch on the blocks, never on the exit level.

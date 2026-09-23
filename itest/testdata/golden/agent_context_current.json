@@ -36,7 +36,10 @@
     },
     "modules": {
       "count": 0,
-      "staged": []
+      "staged": [],
+      "allow_unsigned_modules": false,
+      "auto_accepted": [],
+      "require_private_module_consent": false
     },
     "catalog": {
       "core_digest": "sha256:cb2c0f1d81212bbfb5b3cc9686f105acf818a886283e71c89b12d57fc95cdbf0",

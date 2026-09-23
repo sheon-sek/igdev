@@ -12,7 +12,8 @@ envelope:
   instance      the recorded Instance identity and its ports, or null before setup
   gateway       whether the Gateway is running and its recorded URL, or null when
                 there is no Instance (context never starts anything)
-  modules       how many private module artifacts this checkout stages
+  modules       the staged private module artifacts, and whether the contract
+                lets the Gateway load an unsigned one
   catalog       the Core Catalog digest and the Project Overlay layer
   capabilities  the Effective Catalog's row counts
   commands      which project verbs are available here
@@ -74,9 +75,12 @@ no Instance before `setup`).
 | `gateway` | `object` | Whether the Gateway is running and its recorded URL; null when there is no Instance. Context never starts anything. |
 | `gateway.running` | `bool` | The container engine reports this Instance's Gateway running. |
 | `gateway.url` | `string` | The recorded Gateway URL, built from the Instance's allocated HTTP port. |
-| `modules` | `object` | The private module artifacts this checkout stages. |
+| `modules` | `object` | The private module artifacts this checkout stages, and what the contract lets the Gateway load. |
 | `modules.count` | `int` | How many artifacts are staged in .igdev/modules/. |
 | `modules.staged` | `array` | The module ids those artifacts declare. |
+| `modules.allow_unsigned_modules` | `bool` | The effective [gateway] allow_unsigned_modules: true means the Gateway loads a module artifact that carries no valid signature. A contract value, so it is reported whether or not this checkout was set up. |
+| `modules.auto_accepted` | `array` | The staged private module ids igdev passes to the Gateway as ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS without a human step. Empty when the contract requires private-module Consent. |
+| `modules.require_private_module_consent` | `bool` | The effective [modules] require_private_module_consent: true means those ids are passed only after a human recorded the module-license and module-cert terms (ADR 0006). |
 | `catalog` | `object` | The Effective Catalog's identity. |
 | `catalog.core_digest` | `string` | sha256 of the Core Catalog embedded in this binary, for this Ignition version. |
 | `catalog.overlay` | `object` | This repository's tracked Project Overlay layer. |
@@ -101,8 +105,9 @@ no Instance before `setup`).
 
 agent context --json is the orientation entry point. data.project_root,
 data.lifecycle (initialized, setup_state, consent), data.versions, data.instance,
-data.gateway, data.modules, data.catalog, data.capabilities, and data.commands are all
-reported in every lifecycle state, initialized or not, so one call replaces reading
-files. Never mutate on its word: run the verb whose state it reports, or the Remediation
-of the fault a verb returned. The field-by-field reference is generated at
-docs/reference/agent-context.md.
+data.gateway, data.modules (staged ids, allow_unsigned_modules, auto_accepted,
+require_private_module_consent), data.catalog,
+data.capabilities, and data.commands are all reported in every lifecycle state,
+initialized or not, so one call replaces reading files. Never mutate on its word: run
+the verb whose state it reports, or the Remediation of the fault a verb returned. The
+field-by-field reference is generated at docs/reference/agent-context.md.

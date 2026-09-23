@@ -27,7 +27,7 @@ human action required. At exit 3 an agent stops and hands the Remediation to a p
 | `IGDEV_E_BASELINE_INVALID` | 1 | The `baseline set` source is a directory or cannot be read. | Pass a readable `.gwbk` file. |
 | `IGDEV_E_UNKNOWN_CAPABILITY` | 1 | Nothing in the Effective Catalog owns a `system.*` function, REST request, or capability name. | Check the spelling and the Ignition version. A private module's capability needs a Project Overlay. |
 | `IGDEV_E_MODULE_NOT_ENABLED` | 1 | Project code needs a module outside `[modules].enabled`. | Run the `igdev module enable` command in the Remediation. |
-| `IGDEV_E_MODULE_ARTIFACT_MISSING` | 1 | An enabled module is neither built into the image nor staged as a `.modl`. | Stage it with `igdev module add <file.modl>`, or remove it from the whitelist. |
+| `IGDEV_E_MODULE_ARTIFACT_MISSING` | 1 | An enabled module is neither built into the image nor staged as a `.modl`, or a `[modules].artifacts` glob matched nothing. | Stage the module with `igdev module add <file.modl>`, or fix the glob so it matches what the build produced. |
 | `IGDEV_E_MODULE_ARCHIVE_INVALID` | 1 | A `.modl` is unreadable, has no usable `module.xml`, or trips the zip-bomb guard. | Get a valid archive. Do not repackage it. |
 | `IGDEV_E_MODULE_UNKNOWN` | 1 | `module enable` got an id that is neither built in nor declared by a staged `.modl`. | Use one of the close ids the message suggests, or stage the `.modl` first. |
 | `IGDEV_E_OVERLAY_INVALID` | 1 | A Project Overlay file cannot be read or does not follow the overlay format. | Fix the overlay file the message names. |

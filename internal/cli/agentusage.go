@@ -30,8 +30,10 @@ write — contract, gitignore, and agents — each with path, action (created, u
 unchanged), the Contract Digest afterwards, and the unified diff, so a tracked change is
 reviewed from the envelope instead of the terminal. init is the repair path for a
 contract igdev cannot read (IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED) or that needs new
-values: run it with the flags to write, then igdev setup. It never prompts when --json
-or --yes is passed, so a fully specified invocation is the whole interface.`,
+values: run it with the flags to write, then igdev setup. --modules-artifacts declares
+the globs igdev build stages, so a module repository does not chain igdev module add
+inside its own build. It never prompts when --json or --yes is passed, so a fully
+specified invocation is the whole interface.`,
 	"igdev setup": `pass --json for the machine contract. data carries instance_id, namespace,
 ports, setup_path, files (each rendered runtime path with kind, action, and mode),
 credentials (path, source, username — never the password), and consent_accepted. setup
@@ -42,10 +44,10 @@ repeats. Read the admin password only through igdev gateway credentials --json.`
 	"igdev status": `pass --json for the machine contract. data is the whole report:
 initialized, project_root, working_dir, contract (path, present, schema_version,
 schema_supported, digest), setup (present, path, stamp_state, instance_id, namespace,
-ports), modules, consent (per-term acceptance), and config (tier_files plus every
-resolved key with the tier that won). It succeeds before init and setup and outside a
-Project Root, so it is always the safe first call; branch on the blocks, never on the
-exit level.`,
+ports), gateway (allow_unsigned_modules — the effective IGNITION_ALLOW_UNSIGNED_MODULES),
+modules, consent (per-term acceptance), and config (tier_files plus every resolved key
+with the tier that won). It succeeds before init and setup and outside a Project Root,
+so it is always the safe first call; branch on the blocks, never on the exit level.`,
 	"igdev doctor": `pass --json for the machine contract. data carries ready plus
 prerequisites, one entry per tool with name, command, required, state (present, missing,
 or failed), the version line the probe printed, and the error when there is none. doctor
@@ -78,10 +80,15 @@ failed, so a repository that declares no test command still passes the verb. The
 own non-zero exit propagates unchanged, and its output streams to stderr in both
 dialects.`,
 	"igdev build": `pass --json for the machine contract. data.stages carries the declared-
-check stage and the module re-staging that follows it, with the status of each; an
-undeclared build stage is reported skipped. A failing stage propagates its own exit code
-and stops the run before anything is re- staged, so a build that failed never
-republishes modules.`,
+build stage and the module re-staging that follows it (stage module-restage), with
+the status of each; an undeclared build stage is reported skipped. The re-staging
+stages every match of the contract's [modules].artifacts globs — stage.artifacts
+names each glob, the source it matched, the module id it declares, and the staged
+file, with superseded listing any staged file it replaced — and then re-materializes
+the runtime. A declared glob that matches nothing fails with
+IGDEV_E_MODULE_ARTIFACT_MISSING. A failing stage propagates its own exit code and
+stops the run before anything is re-staged, so a build that failed never republishes
+modules.`,
 	"igdev verify": `pass --json for the machine contract. data.stages concatenates check, test,
 and build in order — plus the Gateway stages when --gateway is set — with failed naming
 the stage that stopped the run, and gateway_url carrying the Gateway that --gateway left
@@ -152,13 +159,20 @@ the Checkout Setup, so an agent never assumes a port. up and reset add capacity
 adds state and services; down adds volumes_removed; logs carries the log text;
 credentials carries the password. Every verb needs recorded Consent (exit 3,
 IGDEV_E_CONSENT_REQUIRED) and a current Checkout Setup, and up/reset also pass the
-Capacity Gate (IGDEV_E_CAPACITY, exit 3).`,
+Capacity Gate (IGDEV_E_CAPACITY, exit 3). Starting a Gateway accepts the private
+modules this checkout staged, by module id (ACCEPT_MODULE_LICENSES and
+ACCEPT_MODULE_CERTS); a contract with [modules] require_private_module_consent = true
+instead requires the machine-global module-license and module-cert terms, and without
+them the run stops at exit 3 (ADR 0006).`,
 	"igdev gateway up": `pass --json for the machine contract. data carries instance_id, namespace,
 url, ports, and capacity (measured, available_mb, required_mb, headroom_mb, forced). up
 returns as soon as the container is started: follow it with igdev gateway wait or igdev
 gateway smoke, and never assume the URL from the address block is answering yet. A
 refusal is IGDEV_E_CAPACITY at exit 3 — a human frees memory or passes --force — and a
-machine that was never set up is IGDEV_E_SETUP_REQUIRED, repaired with igdev setup.`,
+machine that was never set up is IGDEV_E_SETUP_REQUIRED, repaired with igdev setup. The
+staged private modules are accepted by module id as part of starting (ADR 0006); with
+[modules] require_private_module_consent the run stops at exit 3 until the
+module-license and module-cert terms are recorded.`,
 	"igdev gateway down": `pass --json for the machine contract. data carries instance_id, namespace,
 and volumes_removed. Stopping an Instance that is already stopped succeeds. --volumes
 discards the Gateway's data, which with a staged Baseline is reproduced by the next
@@ -237,11 +251,12 @@ state the envelope reports. agent skill-install writes the workflow document thi
 ships, so the guidance an agent follows can never be out of date with the tool.`,
 	"igdev agent context": `agent context --json is the orientation entry point. data.project_root,
 data.lifecycle (initialized, setup_state, consent), data.versions, data.instance,
-data.gateway, data.modules, data.catalog, data.capabilities, and data.commands are all
-reported in every lifecycle state, initialized or not, so one call replaces reading
-files. Never mutate on its word: run the verb whose state it reports, or the Remediation
-of the fault a verb returned. The field-by-field reference is generated at
-docs/reference/agent-context.md.`,
+data.gateway, data.modules (staged ids, allow_unsigned_modules, auto_accepted,
+require_private_module_consent), data.catalog,
+data.capabilities, and data.commands are all reported in every lifecycle state,
+initialized or not, so one call replaces reading files. Never mutate on its word: run
+the verb whose state it reports, or the Remediation of the fault a verb returned. The
+field-by-field reference is generated at docs/reference/agent-context.md.`,
 	"igdev agent skill-install": `pass --json for the machine contract. data carries scope, path (the
 installed SKILL.md), action (created, updated, or unchanged), and version (the CLI
 Contract Version the installed frontmatter records). Installation is idempotent: identical
