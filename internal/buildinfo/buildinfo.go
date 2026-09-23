@@ -5,7 +5,7 @@
 package buildinfo
 
 // Version is the release semver of this binary, without a leading "v".
-var Version = "0.1.1"
+var Version = "0.1.2"
 
 // Commit is the git object this binary was built from, or "unset".
 var Commit = "unset"
