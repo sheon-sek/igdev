@@ -1,1 +1,1 @@
-[igdev] igdev 9.9.9 is available (you have 0.1.1). Update with: curl -fsSL https://github.com/sheon-sek/igdev/releases/latest/download/install.sh | bash
+[igdev] igdev 9.9.9 is available (you have 0.1.2). Update with: curl -fsSL https://github.com/sheon-sek/igdev/releases/latest/download/install.sh | bash
