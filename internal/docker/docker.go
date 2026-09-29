@@ -13,10 +13,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/instance"
@@ -41,6 +43,12 @@ type Compose struct {
 	// which is what keeps compose.env safe to diff and golden and keeps the
 	// rendered Compose file identical whether or not a Baseline is staged.
 	Env []string
+	// Progress, when set, receives the engine's own output as it arrives. A
+	// lifecycle call is minutes long — `up --detach --build` builds or pulls the
+	// image before it creates anything — so a verb that can be slow streams its
+	// output here rather than leaving the caller with a blank terminal until the
+	// call returns. Verbs whose output igdev parses (`ps`, `logs`) never use it.
+	Progress io.Writer
 }
 
 // Service is one compose service as `compose ps` reports it.
@@ -76,7 +84,7 @@ func (c Compose) Restart() *contract.Fault {
 
 // Ps reports the project's containers.
 func (c Compose) Ps() ([]Service, *contract.Fault) {
-	stdout, stderr, err := c.exec("ps", "--format", "json")
+	stdout, stderr, err := c.capture("ps", "--format", "json")
 	if err != nil {
 		return nil, c.faultOf("ps", stdout, stderr, err)
 	}
@@ -98,7 +106,7 @@ func (c Compose) Logs(tail int) (string, *contract.Fault) {
 		verb = append(verb, "--tail", fmt.Sprint(tail))
 	}
 	verb = append(verb, GatewayServiceName)
-	stdout, stderr, err := c.exec(verb...)
+	stdout, stderr, err := c.capture(verb...)
 	if err != nil {
 		return stdout + stderr, c.faultOf("logs", stdout, stderr, err)
 	}
@@ -111,15 +119,58 @@ func (c Compose) args(verb ...string) []string {
 	return append(out, verb...)
 }
 
+// exec runs compose, streaming the engine's output to Progress while also
+// capturing it: a long build or pull reports progress, and the last line is still
+// there to report when the call fails.
 func (c Compose) exec(verb ...string) (stdout, stderr string, err error) {
+	return c.run(c.progress(), verb...)
+}
+
+// capture runs compose without streaming: the output is igdev's to parse, not the
+// caller's to watch.
+func (c Compose) capture(verb ...string) (stdout, stderr string, err error) {
+	return c.run(nil, verb...)
+}
+
+func (c Compose) run(progress io.Writer, verb ...string) (stdout, stderr string, err error) {
 	cmd := exec.Command("docker", c.args(verb...)...)
 	cmd.Dir = c.Dir
 	cmd.Env = append(os.Environ(), c.Env...)
 	var out, errBuf bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errBuf
+	cmd.Stdout, cmd.Stderr = sink(&out, progress), sink(&errBuf, progress)
 	err = cmd.Run()
 	return out.String(), errBuf.String(), err
+}
+
+// progress wraps Progress in a lock: exec copies the two output streams with one
+// goroutine each, and both land on that one destination.
+func (c Compose) progress() io.Writer {
+	if c.Progress == nil {
+		return nil
+	}
+	return &lockWriter{w: c.Progress}
+}
+
+// sink tee's one child stream into its buffer and, when streaming, into progress.
+func sink(buf *bytes.Buffer, progress io.Writer) io.Writer {
+	if progress == nil {
+		return buf
+	}
+	return io.MultiWriter(buf, progress)
+}
+
+// lockWriter serializes writes from compose's two output copiers onto Progress,
+// so Progress can be any writer, including one that is not safe for concurrent
+// use on its own.
+type lockWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
 }
 
 func (c Compose) faultOf(action, stdout, stderr string, err error) *contract.Fault {

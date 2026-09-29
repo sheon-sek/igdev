@@ -289,6 +289,57 @@ func TestGatewayUpStartsTheNamespacedProject(t *testing.T) {
 	env.AssertNoDockerOrphans(t)
 }
 
+// A lifecycle verb reports what it is doing while it does it: `up` is minutes
+// long the first time because it builds or pulls the image, and the engine's own
+// output plus igdev's stage line have to reach stderr instead of a blank terminal
+// (issue #37). The verbs whose output igdev parses stay silent.
+func TestGatewayLifecycleReportsProgress(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.ShimDocker()
+	env.ShimMeminfo(65536)
+	dir, stamp := gatewayFixture(t, env, testrig.MinimalContract)
+
+	res := env.RunIn(dir, "gateway", "up", "--json")
+	testrig.WantExit(t, res, contract.ExitOK)
+	// The shim's `compose up` prints the container it created; that is the
+	// engine's own output and it has to arrive on stderr, where progress belongs.
+	if !strings.Contains(res.Stderr, "Container "+testrig.ComposeContainer(stamp.Namespace())) {
+		t.Errorf("up did not stream the engine's output to stderr:\n%s", res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "[igdev] gateway up: starting") {
+		t.Errorf("up did not announce the stage it was running:\n%s", res.Stderr)
+	}
+	// stdout stays the envelope alone, so machine output never carries progress.
+	testrig.Envelope(t, res.Stdout)
+
+	// status reads `compose ps`: parsed output is not progress and must not leak.
+	silent := env.RunIn(dir, "gateway", "status", "--json")
+	testrig.WantExit(t, silent, contract.ExitOK)
+	if silent.Stderr != "" {
+		t.Errorf("status echoed the engine's parsed output:\n%s", silent.Stderr)
+	}
+
+	// The human dialect gets the same progress on stderr and its result on stdout.
+	human := env.RunIn(dir, "gateway", "up")
+	testrig.WantExit(t, human, contract.ExitOK)
+	if !strings.Contains(human.Stderr, "[igdev] gateway up: starting") {
+		t.Errorf("human up did not announce the stage:\n%s", human.Stderr)
+	}
+	if !strings.Contains(human.Stdout, "gateway up:") {
+		t.Errorf("human up did not report its result:\n%s", human.Stdout)
+	}
+
+	// wait announces the poll it is about to run, so a timeout is not a mystery.
+	waited := env.RunIn(dir, "gateway", "wait", "--timeout", "1")
+	testrig.WantExit(t, waited, contract.ExitFailure)
+	if !strings.Contains(waited.Stderr, "[igdev] waiting for the Gateway at") {
+		t.Errorf("wait did not announce the poll:\n%s", waited.Stderr)
+	}
+
+	testrig.WantExit(t, env.RunIn(dir, "gateway", "down", "--volumes"), contract.ExitOK)
+	env.AssertNoDockerOrphans(t)
+}
+
 // status reports what the engine says about this Instance plus the recorded URL,
 // in both the running and the not-started case.
 func TestGatewayStatusReportsComposeState(t *testing.T) {

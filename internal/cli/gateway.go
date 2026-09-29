@@ -242,6 +242,11 @@ func (a *App) gatewayContext() (*gateway, error) {
 				"GATEWAY_ADMIN_PASSWORD=" + password,
 				"GATEWAY_RESTORE_ARGS=" + restoreArgs,
 			},
+			// The engine's own output goes to stderr as it arrives: `up --build`
+			// can spend minutes building or pulling before it creates anything,
+			// and a caller watching a blank terminal cannot tell a slow image
+			// from a hung command.
+			Progress: a.Stderr,
 		},
 	}, nil
 }
@@ -292,6 +297,15 @@ func capacityOf(d capacity.Decision, force bool) gatewayCapacity {
 		HeadroomMB:  d.HeadroomMB,
 		Forced:      force && !d.Meets(),
 	}
+}
+
+// stage announces one step of a lifecycle verb on stderr. A step that is about to
+// spend minutes in compose has to say what it is doing before it does it: a
+// command whose output is a blank terminal cannot be told from one that hung.
+// stdout stays the verb's result in both dialects, so this is stderr always
+// (issue #37, docs/IGDEV.md).
+func (a *App) stage(format string, args ...any) {
+	fmt.Fprintf(a.Stderr, "[igdev] "+format+"\n", args...)
 }
 
 func (a *App) newGatewayCmd() *cobra.Command {
@@ -365,6 +379,8 @@ escape hatch for a machine where the measurement is wrong or the risk is accepte
 			if fault != nil {
 				return fault
 			}
+			a.stage("gateway up: starting %s (docker compose up --detach --build %s)",
+				g.stamp.Namespace(), docker.GatewayServiceName)
 			if fault := g.compose.Up(); fault != nil {
 				return fault
 			}
@@ -397,6 +413,7 @@ the named volume, which discards the Gateway's data — that is what ` + "`reset
 			if err := g.requireRuntimeFiles(); err != nil {
 				return err
 			}
+			a.stage("gateway down: stopping %s", g.stamp.Namespace())
 			if fault := g.compose.Down(volumes); fault != nil {
 				return fault
 			}
@@ -443,9 +460,13 @@ costs the data that was about to be reset.`,
 			if fault != nil {
 				return fault
 			}
+			a.stage("gateway reset: discarding %s (docker compose down --volumes --remove-orphans)",
+				g.stamp.Namespace())
 			if fault := g.compose.Down(true); fault != nil {
 				return fault
 			}
+			a.stage("gateway reset: starting %s (docker compose up --detach --build %s)",
+				g.stamp.Namespace(), docker.GatewayServiceName)
 			if fault := g.compose.Up(); fault != nil {
 				return fault
 			}
@@ -481,6 +502,7 @@ recorded ports.`,
 			if err := g.requireRuntimeFiles(); err != nil {
 				return err
 			}
+			a.stage("gateway restart: restarting %s", g.stamp.Namespace())
 			if fault := g.compose.Restart(); fault != nil {
 				return fault
 			}
@@ -713,6 +735,7 @@ from the 0600 .igdev/local.toml setup wrote otherwise.`,
 func (a *App) waitForGateway(g *gateway, timeout time.Duration) error {
 	url := g.url() + "/"
 	client := &http.Client{Timeout: gatewayProbeTimeout}
+	a.stage("waiting for the Gateway at %s (up to %s)", g.url(), timeout)
 	deadline := time.Now().Add(timeout)
 	var last error
 	for {
