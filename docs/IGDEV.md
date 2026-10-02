@@ -894,7 +894,7 @@ verb, so on a machine that has not accepted the EULA it fails with
 ## Running the project's CI locally
 
 ```
-igdev ci-local --job <name> [--event <event>] [--offline] [--json] [-- <act args>...]
+igdev ci-local --job <name> [--event <event>] [--offline] [--with-gateway] [--json] [-- <act args>...]
 ```
 
 `igdev ci-local` is the port of the bash specification's `cmd_ci_local`: it runs one job
@@ -922,6 +922,32 @@ In machine mode `data` carries `event`, `job`, `offline`, `command`, `args`, `wo
 `exit`, and `output_tail` (the last 50 lines act printed). The golden tests drive the
 whole verb against a PATH-shimmed act that records argv, working directory, and the
 environment act inherited, so no docker, no network, and no real workflow is involved.
+
+**With a Gateway.** `--with-gateway` runs `igdev gateway ensure` first (so it needs
+Consent, like every gateway verb), then puts the job container on the Instance's compose
+network (`--network igdev-<id>_default`), where the job reaches the Gateway at
+`http://gateway:8088`. The job gets `IGDEV_GATEWAY_URL` and `IGDEV_GATEWAY_TOKEN` as
+environment variables, and the token also as the act secret `IGDEV_GATEWAY_TOKEN`, so act
+prints it as `***`. Both reach act through 0600 `--env-file` and `--secret-file` files
+igdev removes after the run, never through argv; a project `.env` or `.secrets` act would
+read by default is not read in this mode. `data.gateway` reports `action`, `reason`,
+`url` (in-network), `host_url` and `network`. A workspace-local action (`uses:
+./actions/...`) needs act's `--bind` or an `actions/checkout` step, as always under act.
+
+**The same workflow on GitHub.** `sheon-sek/igdev/actions/gateway@<tag>` is a composite
+action that installs a pinned, checksum-verified igdev release (`version`), writes the
+`consent` input (a person's `igdev consent export`, from a secret) to a 0600 file for
+`IGDEV_CONSENT_FILE`, runs `igdev setup` and `igdev gateway ensure`, masks the token, and
+exports `IGDEV_GATEWAY_URL` and `IGDEV_GATEWAY_TOKEN` to later steps. Under act with both
+variables already provided it does nothing, so one workflow file runs in both places:
+
+```yaml
+- uses: sheon-sek/igdev/actions/gateway@v0.9.0
+  with:
+    version: 0.9.0
+    consent: ${{ secrets.IGDEV_CONSENT }}
+- run: curl -fsS -H "X-Ignition-API-Token: $IGDEV_GATEWAY_TOKEN" "$IGDEV_GATEWAY_URL/data/api/v1/gateway-info"
+```
 
 ## Host prerequisites
 

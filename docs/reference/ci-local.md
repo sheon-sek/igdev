@@ -24,6 +24,15 @@ act is an optional `igdev doctor` prerequisite: when it is not installed,
 subprocess is attempted. The verb passes the Gate (a current Checkout Setup) but
 not Consent: it starts no Gateway.
 
+--with-gateway first runs `igdev gateway ensure` for this checkout, which does need
+Consent, then puts the job container on the Instance's compose network
+(`--network igdev-<id>_default`), where the job reaches the Gateway at
+http://gateway:8088. The job gets IGDEV_GATEWAY_URL and IGDEV_GATEWAY_TOKEN as
+environment variables, and the token also as the act secret IGDEV_GATEWAY_TOKEN, so act
+masks it in its log. Both reach act through 0600 files igdev removes after the run,
+never through argv. Those files are passed as --env-file and --secret-file, so a
+project .env or .secrets file act would read by default is not read in this mode.
+
 ## Usage
 
 ```text
@@ -36,6 +45,7 @@ igdev ci-local [flags]
   igdev ci-local --job foundation
   igdev ci-local --event push --job foundation --offline
   igdev ci-local --job foundation --json
+  igdev ci-local --job e2e --with-gateway
   igdev ci-local --job foundation -- --reuse --container-architecture linux/amd64
 ```
 
@@ -46,6 +56,7 @@ igdev ci-local [flags]
   -h, --help           help for ci-local
       --job string     workflow job to run (required)
       --offline        run offline: act gets --pull=false --action-offline-mode
+      --with-gateway   ensure this Instance's Gateway and hand the job its URL and token
 ```
 
 ## Global options
@@ -62,4 +73,6 @@ pass --json for the machine contract. data carries the exact invocation
 output. act's own output streams to stderr in both dialects, so a human reads the
 workflow run and an agent reads the envelope. A run act cannot complete is
 IGDEV_E_ACT_FAILED at act's own exit code; a host without act is IGDEV_E_ACT_MISSING
-with the install commands in Remediation.
+with the install commands in Remediation. --with-gateway ensures the Gateway first and
+adds data.gateway (action, reason, url, host_url, network); the job reads
+IGDEV_GATEWAY_URL and IGDEV_GATEWAY_TOKEN, and the token never appears in argv.

@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/sheon-sek/igdev/internal/config"
 	"github.com/sheon-sek/igdev/internal/contract"
+	"github.com/sheon-sek/igdev/internal/docker"
 	"github.com/sheon-sek/igdev/internal/gate"
 	"github.com/sheon-sek/igdev/internal/project"
 )
@@ -63,7 +66,29 @@ type ciLocalData struct {
 	Exit int `json:"exit"`
 	// OutputTail is the last ciLocalTailLines lines act printed.
 	OutputTail []string `json:"output_tail"`
+	// Gateway is what --with-gateway ensured, or absent without the flag.
+	Gateway *ciLocalGateway `json:"gateway,omitempty"`
 }
+
+// ciLocalGateway is the Gateway a --with-gateway run handed its job.
+type ciLocalGateway struct {
+	// Action and Reason are what `gateway ensure` did and why.
+	Action string `json:"action"`
+	Reason string `json:"reason"`
+	// URL is the Gateway as the job reaches it, inside the compose network.
+	URL string `json:"url"`
+	// HostURL is the Gateway as the host reaches it.
+	HostURL string `json:"host_url"`
+	// Network is the compose network the job container joins.
+	Network string `json:"network"`
+}
+
+// The variables a --with-gateway job reads, and the in-network Gateway address.
+const (
+	gatewayURLVar   = "IGDEV_GATEWAY_URL"
+	gatewayTokenVar = "IGDEV_GATEWAY_TOKEN"
+	inNetworkURL    = "http://" + docker.GatewayServiceName + ":8088"
+)
 
 // missingActFault is the fault for a host without act. It names the tool the
 // way `igdev doctor` does and how to install it, because the fix is a host
@@ -96,7 +121,7 @@ func (a *App) requireCILocalGate() (project.Found, *config.Resolution, error) {
 
 func (a *App) newCILocalCmd() *cobra.Command {
 	var event, job string
-	var offline bool
+	var offline, withGateway bool
 	cmd := &cobra.Command{
 		Use:   "ci-local",
 		Short: "Run this project's GitHub Actions workflows locally through act",
@@ -120,10 +145,20 @@ flag-shaped needs no ` + "`--`" + `; flag-shaped passthrough is what it is for.
 act is an optional ` + "`igdev doctor`" + ` prerequisite: when it is not installed,
 ` + "`ci-local`" + ` fails with IGDEV_E_ACT_MISSING and the install commands, and no
 subprocess is attempted. The verb passes the Gate (a current Checkout Setup) but
-not Consent: it starts no Gateway.`,
+not Consent: it starts no Gateway.
+
+--with-gateway first runs ` + "`igdev gateway ensure`" + ` for this checkout, which does need
+Consent, then puts the job container on the Instance's compose network
+(` + "`--network igdev-<id>_default`" + `), where the job reaches the Gateway at
+http://gateway:8088. The job gets IGDEV_GATEWAY_URL and IGDEV_GATEWAY_TOKEN as
+environment variables, and the token also as the act secret IGDEV_GATEWAY_TOKEN, so act
+masks it in its log. Both reach act through 0600 files igdev removes after the run,
+never through argv. Those files are passed as --env-file and --secret-file, so a
+project .env or .secrets file act would read by default is not read in this mode.`,
 		Example: `  igdev ci-local --job foundation
   igdev ci-local --event push --job foundation --offline
   igdev ci-local --job foundation --json
+  igdev ci-local --job e2e --with-gateway
   igdev ci-local --job foundation -- --reuse --container-architecture linux/amd64`,
 		PreRunE: func(cmd *cobra.Command, _ []string) error {
 			// The flag tier is recorded before RunE resolves config, so an
@@ -158,6 +193,14 @@ not Consent: it starts no Gateway.`,
 				Args:    actArgs(event, job, res.Bool(configKeyActOffline), args),
 				Workdir: found.Root,
 			}
+			if withGateway {
+				files, cleanup, err := a.ciLocalGateway(&data)
+				if err != nil {
+					return err
+				}
+				defer cleanup()
+				data.Args = append(data.Args[:4:4], append(files, data.Args[4:]...)...)
+			}
 			data.Command = strings.Join(data.Args, " ")
 			return a.runAct(res, bin, data)
 		},
@@ -168,7 +211,52 @@ not Consent: it starts no Gateway.`,
 		"workflow job to run (required)")
 	cmd.Flags().BoolVar(&offline, "offline", false,
 		"run offline: act gets --pull=false --action-offline-mode")
+	cmd.Flags().BoolVar(&withGateway, "with-gateway", false,
+		"ensure this Instance's Gateway and hand the job its URL and token")
 	return cmd
+}
+
+// ciLocalGateway ensures the Instance's Gateway and returns the act arguments
+// that hand it to the job: the compose network, and the env and secret files that
+// carry the URL and the token. cleanup removes the files.
+func (a *App) ciLocalGateway(data *ciLocalData) ([]string, func(), error) {
+	g, err := a.gatewayContext()
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := g.requireRuntimeFiles(); err != nil {
+		return nil, nil, err
+	}
+	ensured, err := a.ensureGateway(g, ensureOptions{timeout: gatewayWaitDefault})
+	if err != nil {
+		return nil, nil, err
+	}
+	network := g.compose.Namespace + "_default"
+	data.Gateway = &ciLocalGateway{
+		Action: ensured.Action, Reason: ensured.Reason,
+		URL: inNetworkURL, HostURL: ensured.URL, Network: network,
+	}
+	dir, err := os.MkdirTemp("", "igdev-ci-local-")
+	if err != nil {
+		return nil, nil, contract.NewFault(contract.CodeInternal, contract.ExitFailure,
+			fmt.Sprintf("cannot create the act variable files: %v", err)).WithCause(err)
+	}
+	cleanup := func() { _ = os.RemoveAll(dir) }
+	envFile, secretFile := filepath.Join(dir, "gateway.env"), filepath.Join(dir, "gateway.secrets")
+	vars := gatewayURLVar + "=" + inNetworkURL + "\n"
+	secrets := ""
+	if g.token != "" {
+		vars += gatewayTokenVar + "=" + g.token + "\n"
+		secrets = gatewayTokenVar + "=" + g.token + "\n"
+	}
+	for path, body := range map[string]string{envFile: vars, secretFile: secrets} {
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			cleanup()
+			return nil, nil, contract.NewFault(contract.CodeInternal, contract.ExitFailure,
+				fmt.Sprintf("cannot write %s: %v", path, err)).WithCause(err)
+		}
+	}
+	return []string{"--network", network, "--env-file", envFile, "--secret-file", secretFile}, cleanup, nil
 }
 
 // runAct starts act at the Project Root, streams its output, and reports the

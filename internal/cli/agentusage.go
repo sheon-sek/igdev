@@ -328,7 +328,9 @@ references/ is written through, never replaced. --scope repo requires a Project 
 output. act's own output streams to stderr in both dialects, so a human reads the
 workflow run and an agent reads the envelope. A run act cannot complete is
 IGDEV_E_ACT_FAILED at act's own exit code; a host without act is IGDEV_E_ACT_MISSING
-with the install commands in Remediation.`,
+with the install commands in Remediation. --with-gateway ensures the Gateway first and
+adds data.gateway (action, reason, url, host_url, network); the job reads
+IGDEV_GATEWAY_URL and IGDEV_GATEWAY_TOKEN, and the token never appears in argv.`,
 }
 
 // AgentUsage returns the machine-facing section for cmd, or "" when the command
