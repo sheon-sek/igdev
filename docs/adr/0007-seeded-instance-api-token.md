@@ -44,3 +44,41 @@ acceptable for a disposable development Gateway, and the Administrator role keep
 right it had. The token is an administrator credential for a Gateway bound to loopback
 ports (ADR 0003). It never leaves the checkout's 0600 file and the processes igdev
 starts.
+
+## Amendment 1: the seed names the login provider the volume really has (igdev#69)
+
+The first version of the seed copied the commissioning defaults verbatim, including
+`systemAuthProfile` and `systemIdentityProvider` set to `default`. On a real 8.3 Gateway
+that broke two things:
+
+- **Browser login on a fresh volume.** Ignition commissions the admin from
+  `GATEWAY_ADMIN_USERNAME/PASSWORD` in `initSecurityProperties`, which returns early when
+  security settings already exist. The seed's settings exist, so commissioning falls
+  through to Ignition's password-reset path, which creates the admin in a user source and
+  identity provider named `temp`. No `default` provider exists, and because the seeded
+  settings are authoritative, `/data/app/login` answered 500
+  (`Identity provider not found: default`). The token kept working, which is why the
+  smoke check stayed green.
+- **Restoring a Baseline.** On a restored volume the password-reset path writes its
+  `security-properties` as a CREATE into `core`, where the backup already has one, and
+  the Gateway faults (`PushConflictException: CREATE conflict`).
+
+We decided that the seeded settings carry placeholders for the two names, and a small
+wrapper the image carries (`igdev-gateway-entrypoint.sh`) fills them in on a volume's
+first start, before handing over to the image's own `docker-entrypoint.sh`. igdev
+passes the names at `gateway up` time in `IGDEV_SYSTEM_USER_SOURCE` and
+`IGDEV_SYSTEM_IDENTITY_PROVIDER`:
+
+- a fresh volume gets `temp`, the names Ignition's own password-reset path gives the
+  commissioned admin;
+- a volume restored from the staged Baseline gets the names the backup's own
+  `security-properties` records, read from the `.gwbk`, falling back to `default`. It is
+  started without the admin credentials (the wrapper removes the empty variables), so it
+  is not commissioned at all and keeps the backup's users.
+
+Consequences: on a fresh Gateway the admin logs in through a provider named `temp`; the
+name is cosmetic and the provider is an ordinary internal one. On a Gateway restored from
+a Baseline the admin password is the backup's, not the one `gateway credentials` reports;
+the Instance token works either way. The rendered files still hold no secret and are
+still identical whether or not a Baseline is staged. The real-Gateway e2e workflow checks
+that `/data/app/login` redirects to the identity provider.

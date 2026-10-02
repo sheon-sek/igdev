@@ -66,6 +66,12 @@ func TestSeedSecurityPropertiesGrantTheTokenAndKeepAdministrator(t *testing.T) {
 			}
 		}
 	}
+	// Being authoritative, the settings must name the login provider the volume
+	// really has (igdev#69), which only the entrypoint wrapper knows.
+	if props["systemAuthProfile"] != SystemUserSourcePlaceholder ||
+		props["systemIdentityProvider"] != SystemIdentityProviderPlaceholder {
+		t.Errorf("the login names are not placeholders: %v / %v", props["systemAuthProfile"], props["systemIdentityProvider"])
+	}
 	levels := seedFile(t, in, "security-levels/config.json")
 	raw, _ := json.Marshal(levels)
 	if !strings.Contains(string(raw), `"name":"IgdevAdmin"`) || !strings.Contains(string(raw), `"name":"Administrator"`) {
@@ -158,5 +164,39 @@ func TestTrialKeeperResetsOnlyAnExpiredTrial(t *testing.T) {
 	}
 	if strings.Contains(body, seededInput().APITokenHash) {
 		t.Error("trial-keeper.sh carries the token hash")
+	}
+}
+
+// The Gateway runs the wrapper, which fills the seed's placeholders from the
+// environment igdev passes and then hands over to the image's own entrypoint.
+func TestGatewayEntrypointNamesTheLoginProvider(t *testing.T) {
+	files, err := Materialize(seededInput())
+	if err != nil {
+		t.Fatalf("Materialize: %v", err)
+	}
+	byName := map[string]string{}
+	for _, f := range files {
+		byName[f.Name] = string(f.Data)
+	}
+	script := byName[EntrypointFileName]
+	for _, want := range []string{
+		SystemUserSourcePlaceholder, SystemIdentityProviderPlaceholder,
+		"${IGDEV_SYSTEM_USER_SOURCE:-temp}", "${IGDEV_SYSTEM_IDENTITY_PROVIDER:-temp}",
+		`exec docker-entrypoint.sh "$@"`,
+		"unset GATEWAY_ADMIN_USERNAME", "unset GATEWAY_ADMIN_PASSWORD",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("%s does not carry %q", EntrypointFileName, want)
+		}
+	}
+	compose := byName[ComposeFileName]
+	for _, want := range []string{
+		`entrypoint: ["bash", "/usr/local/bin/igdev-gateway-entrypoint.sh"]`,
+		"IGDEV_SYSTEM_USER_SOURCE: ${IGDEV_SYSTEM_USER_SOURCE:-temp}",
+		"IGDEV_SYSTEM_IDENTITY_PROVIDER: ${IGDEV_SYSTEM_IDENTITY_PROVIDER:-temp}",
+	} {
+		if !strings.Contains(compose, want) {
+			t.Errorf("compose.yaml does not carry %q", want)
+		}
 	}
 }

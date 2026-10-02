@@ -186,7 +186,8 @@ func TestDockerfilePinsTheRequestedImage(t *testing.T) {
 		t.Errorf("Dockerfile does not default the image tag from the contract:\n%s", body)
 	}
 	for _, line := range strings.Split(body, "\n") {
-		if strings.HasPrefix(line, "COPY") && line != "COPY trial-keeper.sh /usr/local/bin/igdev-trial-keeper.sh" {
+		if strings.HasPrefix(line, "COPY") && line != "COPY trial-keeper.sh /usr/local/bin/igdev-trial-keeper.sh" &&
+			line != "COPY gateway-entrypoint.sh /usr/local/bin/igdev-gateway-entrypoint.sh" {
 			t.Errorf("Dockerfile copies something other than the generated files: %q", line)
 		}
 	}
@@ -217,8 +218,8 @@ func TestMaterializeReturnsTheRuntimeFiles(t *testing.T) {
 			t.Errorf("%s is empty or unterminated", file.Name)
 		}
 	}
-	if strings.Join(names, ",") != "compose.yaml,compose.env,Dockerfile,trial-keeper.sh" {
-		t.Errorf("Materialize produced %v, want compose.yaml,compose.env,Dockerfile,trial-keeper.sh", names)
+	if strings.Join(names, ",") != "compose.yaml,compose.env,Dockerfile,trial-keeper.sh,gateway-entrypoint.sh" {
+		t.Errorf("Materialize produced %v, want compose.yaml,compose.env,Dockerfile,trial-keeper.sh,gateway-entrypoint.sh", names)
 	}
 
 	seeded := sampleInput()
@@ -232,7 +233,7 @@ func TestMaterializeReturnsTheRuntimeFiles(t *testing.T) {
 		names = append(names, file.Name)
 	}
 	want := []string{
-		"compose.yaml", "compose.env", "Dockerfile", "trial-keeper.sh",
+		"compose.yaml", "compose.env", "Dockerfile", "trial-keeper.sh", "gateway-entrypoint.sh",
 		"seed/config/resources/external/ignition/security-levels/config.json",
 		"seed/config/resources/external/ignition/security-levels/resource.json",
 		"seed/config/resources/external/ignition/security-properties/config.json",

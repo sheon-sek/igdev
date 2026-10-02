@@ -14,6 +14,9 @@ X-Ignition-API-Token value that administers this Gateway. setup mints it and the
 Gateway is seeded with its hash before its first start, so it works without a
 restart (ADR 0007).
 
+A Gateway restored from a staged Baseline keeps the backup's users, so its admin
+password is the backup's, not this one; the API token works on it all the same.
+
 ## Usage
 
 ```text

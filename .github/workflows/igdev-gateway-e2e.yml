@@ -76,6 +76,42 @@ jobs:
           igdev gateway status
           igdev gateway url
 
+      # Phase 1 (ADR 0007, 0008): the seeded Instance token answers at the first
+      # RUNNING, the trial is readable, a live trial is not reset, the keeper runs
+      # beside the Gateway, and a person can still reach the login page (#69).
+      # Expiry itself is not exercised: it takes two hours.
+      - name: Assert the seeded token, the trial, and the login page
+        working-directory: ${{ env.CHECKOUT }}
+        run: |
+          set -euo pipefail
+          url="$(igdev gateway status --json | jq -r '.data.url')"
+          token="$(igdev gateway credentials --json | jq -r '.data.api_token')"
+          echo "::add-mask::$token"
+
+          code="$(curl -s -o /dev/null -w '%{http_code}' -H "X-Ignition-API-Token: $token" "$url/data/api/v1/gateway-info")"
+          [ "$code" = 200 ] || { echo "gateway-info with the token answered $code, want 200"; exit 1; }
+          code="$(curl -s -o /dev/null -w '%{http_code}' "$url/data/api/v1/gateway-info")"
+          [ "$code" = 401 ] || { echo "gateway-info without a token answered $code, want 401"; exit 1; }
+
+          trial="$(igdev gateway trial --json)"
+          echo "$trial" | jq -e '.data.trial.license_mode == "Trial" and .data.trial.expired == false' >/dev/null \
+            || { echo "unexpected trial state: $trial"; exit 1; }
+          reset="$(igdev gateway trial reset --json)"
+          echo "$reset" | jq -e '.ok == true and .data.reset == false' >/dev/null \
+            || { echo "a live trial was not left alone: $reset"; exit 1; }
+
+          igdev gateway status --json \
+            | jq -e '[.data.services[] | select(.service == "trial-keeper" and .state == "running")] | length == 1' >/dev/null \
+            || { echo "the trial-keeper service is not running"; exit 1; }
+
+          # The login route redirects to the system identity provider; a seed that
+          # names a provider the Gateway lacks answers 500 here.
+          location="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "$url/data/app/login")"
+          case "$location" in
+            "302 $url/idp/temp/"*) ;;
+            *) echo "the login route answered '$location', want a redirect to /idp/temp/"; exit 1 ;;
+          esac
+
       - name: Collect diagnostics on failure
         if: failure()
         working-directory: ${{ env.CHECKOUT }}

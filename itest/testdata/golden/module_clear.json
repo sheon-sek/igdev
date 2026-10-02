@@ -57,6 +57,12 @@
         "mode": "0644"
       },
       {
+        "path": "<ROOT>/repo/.igdev/runtime/gateway-entrypoint.sh",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
+      },
+      {
         "path": "<ROOT>/repo/.igdev/runtime/seed/config/resources/external/ignition/security-levels/config.json",
         "kind": "file",
         "action": "unchanged",

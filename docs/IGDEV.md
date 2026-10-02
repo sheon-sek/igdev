@@ -450,6 +450,12 @@ re-renders anything (a Compose service command has no CLI override, so the varia
 the only seam that keeps this state out of generated files). `clear` removes the staged
 file and its record, so the next launch restores nothing.
 
+A restoring launch is not commissioned: igdev hands it empty admin credentials, so the
+restored Gateway keeps the backup's users and the admin password is the backup's, not the
+one `gateway credentials` reports. igdev reads the backup's system user source and
+identity provider from the `.gwbk` and names them in the seeded security settings
+(ADR 0007, amendment 1); the Instance token works on a restored Gateway as on a fresh one.
+
 `status` reports `{staged, path, bytes, source, sha256, staged_at, restore_args}`, or
 `{staged: false}`. The staged file is the state and the record is only a note about it:
 a record that is missing, unreadable, or no longer describes the file (a different size)

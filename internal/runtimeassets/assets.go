@@ -1,6 +1,6 @@
 // Package runtimeassets renders the runtime files one Instance runs from:
 // the Compose file, the Compose environment, the image build file, the trial
-// keeper script, and the Gateway configuration seed the image carries.
+// keeper script, the Gateway entrypoint wrapper, and the Gateway configuration seed the image carries.
 //
 // The templates are embedded in the binary with //go:embed, so `igdev setup`
 // materializes a checkout without reading any repository file and without a
@@ -30,6 +30,10 @@ const (
 	DockerfileFileName = "Dockerfile"
 	// KeeperFileName is the trial keeper script the image carries (ADR 0008).
 	KeeperFileName = "trial-keeper.sh"
+	// EntrypointFileName is the Gateway entrypoint wrapper the image carries: it
+	// names the login provider in the seeded security settings on a volume's
+	// first start (ADR 0007, amendment 1).
+	EntrypointFileName = "gateway-entrypoint.sh"
 )
 
 //go:embed templates
@@ -117,7 +121,7 @@ type File struct {
 // slash-separated path below the runtime directory.
 func Materialize(in Input) ([]File, error) {
 	out := make([]File, 0, 10)
-	for _, name := range []string{ComposeFileName, EnvFileName, DockerfileFileName, KeeperFileName} {
+	for _, name := range []string{ComposeFileName, EnvFileName, DockerfileFileName, KeeperFileName, EntrypointFileName} {
 		data, err := render(name, in)
 		if err != nil {
 			return nil, err
