@@ -420,6 +420,7 @@ func TestSetupWritesExactlyTheCheckoutSetup(t *testing.T) {
 		"repo/.igdev/runtime/Dockerfile",
 		"repo/.igdev/runtime/compose.env",
 		"repo/.igdev/runtime/compose.yaml",
+		"repo/.igdev/runtime/gateway-entrypoint.sh",
 		"repo/.igdev/runtime/seed",
 		"repo/.igdev/runtime/seed/config",
 		"repo/.igdev/runtime/seed/config/resources",

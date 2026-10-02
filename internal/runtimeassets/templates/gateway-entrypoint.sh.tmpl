@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# igdev Gateway entrypoint for Instance {{ .Namespace }} (generated; do not edit).
+#
+# Wraps the image's own docker-entrypoint.sh. The seeded general security
+# settings (ADR 0007) are not overridable, so they must name the user source and
+# identity provider the Gateway actually logs people in with, and that depends on
+# how this data volume starts (ADR 0007, amendment 1):
+#
+# - a fresh volume is commissioned from GATEWAY_ADMIN_USERNAME/PASSWORD. Because
+#   security settings already exist, Ignition takes its password-reset path and
+#   creates the admin in a user source and identity provider named "temp";
+# - a volume restored from the staged Baseline keeps the backup's own names,
+#   which igdev reads from the backup and passes in.
+#
+# igdev passes both names in IGDEV_SYSTEM_USER_SOURCE and
+# IGDEV_SYSTEM_IDENTITY_PROVIDER. They are written once, on the first start of a
+# volume, where the seed still carries its placeholders.
+set -euo pipefail
+
+props=/usr/local/bin/ignition/data/config/resources/external/ignition/security-properties/config.json
+if [ -f "$props" ] && grep -q '__IGDEV_SYSTEM_' "$props"; then
+  sed -i \
+    -e "s/__IGDEV_SYSTEM_USER_SOURCE__/${IGDEV_SYSTEM_USER_SOURCE:-temp}/" \
+    -e "s/__IGDEV_SYSTEM_IDENTITY_PROVIDER__/${IGDEV_SYSTEM_IDENTITY_PROVIDER:-temp}/" \
+    "$props"
+  chown 2003:0 "$props" 2>/dev/null || true
+fi
+
+# A restoring start gets empty admin credentials from igdev: the backup brings
+# its own users, and commissioning a restored volume that carries the seed
+# faults the Gateway. The image treats a variable that is set but empty as a
+# request to commission, so an empty one is removed instead.
+[ -n "${GATEWAY_ADMIN_USERNAME:-}" ] || unset GATEWAY_ADMIN_USERNAME
+[ -n "${GATEWAY_ADMIN_PASSWORD:-}" ] || unset GATEWAY_ADMIN_PASSWORD
+
+exec docker-entrypoint.sh "$@"

@@ -22,6 +22,9 @@ services:
       args:
         IGNITION_VERSION: {{ quote .IgnitionVersion }}
     image: {{ .Namespace }}:{{ .IgnitionVersion }}
+    # Names the login provider in the seeded security settings, then runs the
+    # image's own entrypoint (ADR 0007, amendment 1).
+    entrypoint: ["bash", "/usr/local/bin/igdev-gateway-entrypoint.sh"]
     ports:
       - "{{ .BindAddress }}:{{ .Ports.HTTP }}:8088"
       - "{{ .BindAddress }}:{{ .Ports.HTTPS }}:8043"
@@ -36,6 +39,8 @@ services:
       ACCEPT_MODULE_LICENSES: ${ACCEPT_MODULE_LICENSES:-}
       GATEWAY_ADMIN_USERNAME: ${GATEWAY_ADMIN_USERNAME}
       GATEWAY_ADMIN_PASSWORD: ${GATEWAY_ADMIN_PASSWORD}
+      IGDEV_SYSTEM_USER_SOURCE: ${IGDEV_SYSTEM_USER_SOURCE:-temp}
+      IGDEV_SYSTEM_IDENTITY_PROVIDER: ${IGDEV_SYSTEM_IDENTITY_PROVIDER:-temp}
       IGNITION_EDITION: {{ quote .Edition }}
       GATEWAY_MODULES_ENABLED: {{ quote .ModuleList }}
       TZ: {{ quote .Timezone }}

@@ -450,8 +450,20 @@ func TestGatewayUpCarriesTheStagedBaseline(t *testing.T) {
 
 	up := env.RunIn(dir, "gateway", "up")
 	testrig.WantExit(t, up, contract.ExitOK)
-	if got := lastCall(t, env).GatewayEnv("GATEWAY_RESTORE_ARGS"); got != "" {
+	fresh := lastCall(t, env)
+	if got := fresh.GatewayEnv("GATEWAY_RESTORE_ARGS"); got != "" {
 		t.Errorf("up without a staged Baseline handed the engine %q, want no restore argument", got)
+	}
+	// A fresh volume is commissioned from the admin credentials, and logs people
+	// in through the "temp" user source and identity provider that creates
+	// (igdev#69).
+	if fresh.GatewayEnv("GATEWAY_ADMIN_PASSWORD") == "" {
+		t.Error("up without a staged Baseline handed the engine no admin password")
+	}
+	for _, name := range []string{"IGDEV_SYSTEM_USER_SOURCE", "IGDEV_SYSTEM_IDENTITY_PROVIDER"} {
+		if got := fresh.GatewayEnv(name); got != "temp" {
+			t.Errorf("fresh up handed the engine %s=%q, want temp", name, got)
+		}
 	}
 
 	stage(t, env, dir, source)
@@ -459,6 +471,17 @@ func TestGatewayUpCarriesTheStagedBaseline(t *testing.T) {
 	call := lastCall(t, env)
 	if got := call.GatewayEnv("GATEWAY_RESTORE_ARGS"); got != baseline.Args() {
 		t.Errorf("up handed the engine GATEWAY_RESTORE_ARGS=%q, want %q", got, baseline.Args())
+	}
+	// A restored volume keeps the backup's users, so it is not commissioned
+	// (doing so with the seed present faults the Gateway). This backup is not a
+	// zip, so the login names fall back to "default".
+	if got := call.GatewayEnv("GATEWAY_ADMIN_PASSWORD"); got != "" {
+		t.Errorf("a restoring up handed the engine an admin password")
+	}
+	for _, name := range []string{"IGDEV_SYSTEM_USER_SOURCE", "IGDEV_SYSTEM_IDENTITY_PROVIDER"} {
+		if got := call.GatewayEnv(name); got != baseline.DefaultLoginName {
+			t.Errorf("restoring up handed the engine %s=%q, want %s", name, got, baseline.DefaultLoginName)
+		}
 	}
 
 	// The wiring is in the rendered Compose file the engine was given: the

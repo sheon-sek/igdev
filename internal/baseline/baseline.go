@@ -10,6 +10,7 @@
 package baseline
 
 import (
+	"archive/zip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -18,6 +19,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -273,3 +275,47 @@ func copyFile(source, dest string) (digest string, size int64, err error) {
 	}
 	return hex.EncodeToString(hash.Sum(nil)), size, nil
 }
+
+// securityPropertiesEntry is where a backup keeps the Gateway's general security
+// settings.
+const securityPropertiesEntry = "config/resources/core/ignition/security-properties/config.json"
+
+// DefaultLoginName is the user source and identity provider a commissioned 8.3
+// Gateway logs people in with, and what SystemLogin falls back to.
+const DefaultLoginName = "default"
+
+// SystemLogin reads the user source and identity provider the backup at file logs
+// people in with. A restored Gateway keeps them, and the seeded security settings
+// must name them too (ADR 0007, amendment 1). Anything igdev cannot read, or a
+// name outside the plain character set, falls back to DefaultLoginName.
+func SystemLogin(file string) (userSource, identityProvider string) {
+	userSource, identityProvider = DefaultLoginName, DefaultLoginName
+	archive, err := zip.OpenReader(file)
+	if err != nil {
+		return userSource, identityProvider
+	}
+	defer func() { _ = archive.Close() }()
+	entry, err := archive.Open(securityPropertiesEntry)
+	if err != nil {
+		return userSource, identityProvider
+	}
+	defer func() { _ = entry.Close() }()
+	var props struct {
+		SystemAuthProfile      string `json:"systemAuthProfile"`
+		SystemIdentityProvider string `json:"systemIdentityProvider"`
+	}
+	if json.NewDecoder(io.LimitReader(entry, 1<<20)).Decode(&props) != nil {
+		return userSource, identityProvider
+	}
+	if loginName.MatchString(props.SystemAuthProfile) {
+		userSource = props.SystemAuthProfile
+	}
+	if loginName.MatchString(props.SystemIdentityProvider) {
+		identityProvider = props.SystemIdentityProvider
+	}
+	return userSource, identityProvider
+}
+
+// loginName is the set of names SystemLogin passes on: they are substituted into
+// a JSON file by a shell script, so nothing that needs quoting gets through.
+var loginName = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)

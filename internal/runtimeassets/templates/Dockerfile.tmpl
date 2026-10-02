@@ -6,8 +6,9 @@
 # being baked into a layer. What the image does carry is generated next to this
 # file: the seed (the igdev security level and the Instance API token's hash,
 # never the token itself), which a fresh data volume takes as its initial content
-# so the token works on the Gateway's first start (ADR 0007), and the trial
-# keeper script (ADR 0008).
+# so the token works on the Gateway's first start (ADR 0007), the entrypoint
+# wrapper that names the login provider in that seed, and the trial keeper
+# script (ADR 0008).
 ARG IGNITION_VERSION={{ .IgnitionVersion }}
 FROM inductiveautomation/ignition:${IGNITION_VERSION}
 
@@ -16,3 +17,4 @@ USER root
 COPY --chown=2003:0 {{ .SeedDir }}/ /usr/local/bin/ignition/data/
 {{- end }}
 COPY trial-keeper.sh /usr/local/bin/igdev-trial-keeper.sh
+COPY gateway-entrypoint.sh /usr/local/bin/igdev-gateway-entrypoint.sh

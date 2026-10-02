@@ -59,7 +59,7 @@ if [ -n "$state" ]; then
   # service command has no compose CLI flag, and a credential, a restore argument,
   # or an accepted module id is only observable where the engine receives it.
   vars=""
-  for name in GATEWAY_ADMIN_USERNAME GATEWAY_ADMIN_PASSWORD GATEWAY_RESTORE_ARGS ACCEPT_MODULE_LICENSES ACCEPT_MODULE_CERTS; do
+  for name in GATEWAY_ADMIN_USERNAME GATEWAY_ADMIN_PASSWORD GATEWAY_RESTORE_ARGS IGDEV_SYSTEM_USER_SOURCE IGDEV_SYSTEM_IDENTITY_PROVIDER ACCEPT_MODULE_LICENSES ACCEPT_MODULE_CERTS; do
     eval "value=\${$name}"
     if [ -n "$vars" ]; then vars="$vars,"; fi
     vars="$vars\"$name\":\"$(escape "$value")\""

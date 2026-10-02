@@ -22,6 +22,15 @@ const SeedDir = "seed"
 // "Unable to create 'core' resource collection".
 const seedCollection = "config/resources/external/ignition"
 
+// Placeholders for the login names in the seeded security settings. The Gateway
+// entrypoint wrapper replaces them on a volume's first start with the names that
+// volume logs people in with, which igdev only knows at `gateway up` time
+// (ADR 0007, amendment 1).
+const (
+	SystemUserSourcePlaceholder       = "__IGDEV_SYSTEM_USER_SOURCE__"
+	SystemIdentityProviderPlaceholder = "__IGDEV_SYSTEM_IDENTITY_PROVIDER__"
+)
+
 // The levels a Gateway ships with, as the 8.3 commissioning writes them.
 var (
 	administratorPath = levelPath{Name: "Authenticated", Children: []levelPath{
@@ -53,7 +62,8 @@ type permission struct {
 
 // securityProperties mirrors the Gateway's general security settings as 8.3
 // commissioning writes them, with the igdev level added next to Administrator
-// wherever Administrator is required.
+// wherever Administrator is required. The system user source and identity
+// provider are placeholders the entrypoint wrapper fills in.
 type securityProperties struct {
 	AccessPermissions                  permission `json:"accessPermissions"`
 	AllowDesignerSSO                   bool       `json:"allowDesignerSSO"`
@@ -113,7 +123,9 @@ type attributes struct {
 // creates on its first start writes its own default security settings, which
 // would otherwise shadow these and leave the token without rights; the cost is
 // that a person cannot edit the general security settings of this development
-// Gateway from its web UI (ADR 0007).
+// Gateway from its web UI (ADR 0007). Being authoritative, it must name the user
+// source and identity provider that really exist, or every browser login fails
+// (igdev#69); those names are placeholders here and are filled in at start.
 func seedFiles(in Input) ([]File, error) {
 	if in.APITokenHash == "" {
 		return nil, nil
@@ -146,8 +158,8 @@ func seedFiles(in Input) ([]File, error) {
 			DesignerRoleName:                   "Administrator",
 			ForceIdpAuth:                       true,
 			ReadPermissions:                    allowed,
-			SystemAuthProfile:                  "default",
-			SystemIdentityProvider:             "default",
+			SystemAuthProfile:                  SystemUserSourcePlaceholder,
+			SystemIdentityProvider:             SystemIdentityProviderPlaceholder,
 			UserInactivityTimeout:              10,
 			WritePermissions:                   allowed,
 		}},

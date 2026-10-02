@@ -248,8 +248,23 @@ func (a *App) gatewayContext() (*gateway, error) {
 	// nothing is staged, so `reset` restores from the staged file and `up` after
 	// `baseline clear` restores nothing — the staged file is the state.
 	restoreArgs := ""
-	if baseline.Read(baseline.Dir(filepath.Join(found.Root, project.StateDir))).Staged {
+	// The seeded security settings name the login provider the volume really has
+	// (ADR 0007, amendment 1, igdev#69). A fresh volume is commissioned from the
+	// admin credentials, and with security settings already seeded Ignition puts
+	// that admin in a user source and identity provider named "temp". A restored
+	// volume keeps the backup's own names and users; it is started without the
+	// admin credentials, because commissioning a restored volume that carries the
+	// seed faults the Gateway (a CREATE conflict on security-properties).
+	userSource, identityProvider := freshLoginName, freshLoginName
+	seeded := validToken(credentials.APIToken)
+	baselineDir := baseline.Dir(filepath.Join(found.Root, project.StateDir))
+	if baseline.Read(baselineDir).Staged {
 		restoreArgs = baseline.Args()
+		userSource, identityProvider = baseline.SystemLogin(baseline.FilePath(baselineDir))
+	}
+	adminUsername, adminPassword := username, password
+	if restoreArgs != "" && seeded {
+		adminUsername, adminPassword = "", ""
 	}
 	// The private modules this checkout stages are the checkout's own artifacts, so
 	// the Gateway is told to accept their licenses and certificates as part of
@@ -275,8 +290,10 @@ func (a *App) gatewayContext() (*gateway, error) {
 			// why no rendered file carries a secret and no rendered file has to be
 			// rewritten when the staged set changes.
 			Env: []string{
-				"GATEWAY_ADMIN_USERNAME=" + username,
-				"GATEWAY_ADMIN_PASSWORD=" + password,
+				"GATEWAY_ADMIN_USERNAME=" + adminUsername,
+				"GATEWAY_ADMIN_PASSWORD=" + adminPassword,
+				"IGDEV_SYSTEM_USER_SOURCE=" + userSource,
+				"IGDEV_SYSTEM_IDENTITY_PROVIDER=" + identityProvider,
 				// The trial keeper resets an expired trial with the Instance's
 				// own API token (ADR 0008).
 				"IGDEV_GATEWAY_API_TOKEN=" + credentials.APIToken,
@@ -806,7 +823,10 @@ from the 0600 .igdev/local.toml setup wrote otherwise.
 The same envelope carries the Instance's own API token (api_token), the
 X-Ignition-API-Token value that administers this Gateway. setup mints it and the
 Gateway is seeded with its hash before its first start, so it works without a
-restart (ADR 0007).`,
+restart (ADR 0007).
+
+A Gateway restored from a staged Baseline keeps the backup's users, so its admin
+password is the backup's, not this one; the API token works on it all the same.`,
 		Example: `  igdev gateway credentials --json
   curl -u "$(igdev gateway credentials --json | jq -r '.data.username'):..." http://.../`,
 		Args: rejectArgs("gateway credentials"),
@@ -1060,6 +1080,11 @@ func (a *App) printCredentials(g *gateway) {
 	fmt.Fprint(a.Stdout, "password: <not printed; re-run with --json to read it>\n")
 	fmt.Fprintf(a.Stdout, "source:   %s\n", g.passwordSource)
 }
+
+// freshLoginName is the user source and identity provider Ignition 8.3 creates
+// when it commissions the admin of a fresh volume whose security settings were
+// seeded: its password-reset path, which names both "temp".
+const freshLoginName = "temp"
 
 // validToken reports whether value is an igdev API token setup could have seeded.
 func validToken(value string) bool {
