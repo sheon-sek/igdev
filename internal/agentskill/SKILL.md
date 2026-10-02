@@ -46,10 +46,24 @@ file below only when the task needs it; do not guess a flag or a code.
    Jython). Fix what it reports. Do not run `test`, `build`, or a Gateway on a
    checkout that has not passed.
 
-5. **Start a Gateway only when runtime matters.** Reach for `igdev gateway up` /
-   `wait` / `smoke` only when the task needs the running Ignition runtime. The
-   Gateway is disposable: stop it with `igdev gateway down --volumes` when done.
-   Ports are dynamic — read the recorded URL from the JSON, never assume 8088.
+5. **Start a Gateway only when runtime matters.** Drive it through igdev. When
+   the task needs the running Ignition runtime, call `igdev gateway ensure --json`:
+   it reuses a healthy Gateway, starts a stopped one, or resets a broken one, and
+   reports `action`, `url`, `container` and `trial`. Then reach the Gateway only with
+   igdev verbs:
+   - REST: `igdev gateway api <METHOD> <path> --json` sends the Instance API token
+     for you. Never write curl with `X-Ignition-API-Token` by hand.
+   - Inside the container: `igdev gateway exec -- <cmd>`, and `igdev gateway data
+     put|get` for files under the data directory.
+     Never `docker exec`, `docker cp` or `docker inspect` an Instance.
+   - Trial: `igdev gateway trial --json`. An expired trial is reset in place by the
+     trial keeper or `igdev gateway trial reset`; never rebuild a Gateway because its
+     trial ran out.
+   - Host services: the Gateway reaches the host at `host.docker.internal`.
+   Ports are dynamic: read the URL from the JSON, never assume 8088. The Gateway is
+   disposable: stop it with `igdev gateway down --volumes` when done.
+   `IGDEV_E_DOCKER_DAEMON` means Docker is not running: ask a person to start it,
+   and never reset the Gateway for it.
 
 6. **Never edit `.igdev/`.** Everything under `.igdev/` is generated and
    disposable; `igdev setup` re-renders it. Delete it rather than patch it, and

@@ -75,6 +75,26 @@ func TestBodyTeachesTheFrozenWorkflow(t *testing.T) {
 	}
 }
 
+// Every Gateway interaction goes through an igdev verb: the skill names them and
+// teaches no raw docker or token-carrying curl workflow against an Instance.
+func TestBodyTeachesTheGatewayVerbs(t *testing.T) {
+	doc := string(Content())
+	for _, want := range []string{
+		"igdev gateway ensure", "igdev gateway api", "igdev gateway exec", "igdev gateway data", "igdev gateway trial",
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("SKILL.md does not teach %q", want)
+		}
+	}
+	for _, line := range strings.Split(doc, "\n") {
+		for _, raw := range []string{"docker exec", "docker cp", "docker inspect", "X-Ignition-API-Token"} {
+			if strings.Contains(line, raw) && !strings.Contains(line, "Never") {
+				t.Errorf("SKILL.md teaches %q outside a prohibition: %q", raw, line)
+			}
+		}
+	}
+}
+
 // The skill is workflow, not a catalog: it must not duplicate the embedded
 // capability data, so it stays thin and cannot drift from the Core Catalog.
 func TestBodyCarriesNoCapabilityCatalog(t *testing.T) {

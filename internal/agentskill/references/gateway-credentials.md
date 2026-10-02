@@ -17,6 +17,9 @@ restart (ADR 0007).
 A Gateway restored from a staged Baseline keeps the backup's users, so its admin
 password is the backup's, not this one; the API token works on it all the same.
 
+For REST calls use `igdev gateway api`, which presents the token itself; read the token
+here only to hand it to a tool igdev does not drive, such as a browser test.
+
 ## Usage
 
 ```text
@@ -27,7 +30,7 @@ igdev gateway credentials [flags]
 
 ```text
   igdev gateway credentials --json
-  curl -u "$(igdev gateway credentials --json | jq -r '.data.username'):..." http://.../
+  igdev gateway credentials --json | jq -r '.data.password'
 ```
 
 ## Options
