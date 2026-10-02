@@ -153,6 +153,30 @@ jobs:
           kill "$server"
           [ "$status" = 200 ] || { echo "the Gateway could not reach the host (got '$status')"; exit 1; }
 
+      # Phase 4 (#52): ensure reuses a healthy Gateway and resets on --fresh, and
+      # a tracked seed's tag provider exists at the first RUNNING.
+      - name: Assert ensure and the project seed
+        working-directory: ${{ env.CHECKOUT }}
+        run: |
+          set -euo pipefail
+          igdev gateway ensure --json | jq -e '.data.action == "reused" and .data.reason == "healthy"' >/dev/null
+          mkdir -p tests/seed/ignition/tag-provider/igdev-sim
+          printf '%s\n' '{"scope":"A","version":1,"restricted":false,"overridable":true,"files":["config.json"],"attributes":{"uuid":"6a0d2c1e-4f6b-4c55-9a2e-1f00d5e0c0de"}}' \
+            > tests/seed/ignition/tag-provider/igdev-sim/resource.json
+          printf '%s\n' '{"profile":{"type":"STANDARD"},"settings":{"readOnly":false,"valuePersistence":"Database"}}' \
+            > tests/seed/ignition/tag-provider/igdev-sim/config.json
+          # [gateway] is the last table init renders, so the key lands in it.
+          printf 'seed = ["tests/seed"]\n' >> igdev.toml
+          igdev gateway url --json > stale.json || true
+          jq -e '.code == "IGDEV_E_SETUP_STALE"' stale.json >/dev/null
+          igdev setup --json | jq -e '.ok' >/dev/null
+          igdev gateway ensure --fresh --json | jq -e '.data.action == "reset" and .data.reason == "fresh"' >/dev/null
+          token="$(igdev gateway credentials --json | jq -r '.data.api_token')"
+          url="$(igdev gateway url)"
+          curl -fsS -H "X-Ignition-API-Token: $token" "$url/data/api/v1/resources/names/ignition/tag-provider" \
+            | jq -e '[.items[].name] | index("igdev-sim")' >/dev/null || { echo "the seeded tag provider is missing"; exit 1; }
+          igdev gateway ensure --json | jq -e '.data.action == "reused"' >/dev/null
+
       - name: Collect diagnostics on failure
         if: failure()
         working-directory: ${{ env.CHECKOUT }}

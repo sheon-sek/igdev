@@ -60,6 +60,10 @@ type Stamp struct {
 	// ContractDigest is project.Digest of the Project Contract bytes the setup
 	// was materialized from.
 	ContractDigest string `json:"contract_digest"`
+	// SeedDigest is projectseed.Digest of the project's tracked seed, or empty
+	// when the contract declares none (ADR 0009). A changed seed makes the
+	// checkout stale, so the image is rebuilt with it.
+	SeedDigest string `json:"seed_digest,omitempty"`
 	// ContractSchema is the Project Contract's declared schema version.
 	ContractSchema int `json:"contract_schema"`
 	// CLIContract is the CLI Contract Version that wrote the record.
@@ -122,6 +126,9 @@ type Input struct {
 	SetupRaw []byte
 	// SetupReadError names why an existing record could not be read.
 	SetupReadError string
+	// SeedDigest is the digest of the project seed in hand; empty when the
+	// contract declares none.
+	SeedDigest string
 	// CLIVersion is the release version of the running binary.
 	CLIVersion string
 	// CLIContract is the CLI Contract Version the running binary speaks.
@@ -231,7 +238,7 @@ func stampState(in Input, digest string, schema int) StampState {
 	if !ok {
 		return StampStale
 	}
-	if stamp.Schema != StampSchema || stamp.ContractDigest != digest ||
+	if stamp.Schema != StampSchema || stamp.ContractDigest != digest || stamp.SeedDigest != in.SeedDigest ||
 		stamp.ContractSchema != schema || stamp.CLIContract != in.CLIContract {
 		return StampStale
 	}
@@ -259,6 +266,8 @@ func staleReason(in Input, digest string, schema int) string {
 			stamp.ContractSchema, schema)
 	case stamp.ContractDigest != digest:
 		return "the Project Contract changed since the last setup (Contract Digest mismatch)"
+	case stamp.SeedDigest != in.SeedDigest:
+		return "the project seed ([gateway] seed) changed since the last setup"
 	case stamp.CLIContract != in.CLIContract:
 		return fmt.Sprintf("the Checkout Setup was made by CLI Contract Version %s, this binary speaks %s",
 			stamp.CLIContract, in.CLIContract)

@@ -276,6 +276,8 @@ func Fault(action, output string, err error) *contract.Fault {
 // to: a stopped daemon, a missing socket, or a context pointing nowhere.
 var daemonDown = []string{
 	"Cannot connect to the Docker daemon",
+	"failed to connect to the docker API",
+	"if the daemon is running",
 	"Is the docker daemon running?",
 	"error during connect",
 	"docker.sock: connect: no such file or directory",

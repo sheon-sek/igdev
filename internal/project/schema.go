@@ -162,6 +162,11 @@ type Gateway struct {
 	// or TrialResetOff. The key is additive to schema v1 and optional: it is
 	// omitted from the rendered contract while it holds the default.
 	TrialReset string `toml:"trial_reset"`
+	// Seed are repository-relative directories laid out like an Ignition resource
+	// collection (<module>/<type>/<name>/...), merged into the image's seed so the
+	// resources exist before the Gateway's first start (ADR 0009). The key is
+	// optional and omitted from the rendered contract while it is empty.
+	Seed []string `toml:"seed"`
 }
 
 // TrialAutoReset reports whether the contract asks for the trial keeper: any
@@ -355,6 +360,11 @@ func (d Doc) Validate(path string) error {
 				where, endpoint)
 		}
 	}
+	for _, dir := range d.Gateway.Seed {
+		if reason := overlayPathProblem(dir); reason != "" {
+			return contractInvalid("%sgateway.seed entry %q %s", where, dir, strings.Replace(reason, "tracked overlay files", "seed directories", 1))
+		}
+	}
 	switch d.Gateway.TrialReset {
 	case "", TrialResetAuto, TrialResetOff:
 	default:
@@ -439,6 +449,9 @@ func (d Doc) Render() []byte {
 	}
 	if d.Gateway.TrialReset == TrialResetOff {
 		fmt.Fprintf(&b, "trial_reset = %s\n", tomlString(d.Gateway.TrialReset))
+	}
+	if len(d.Gateway.Seed) > 0 {
+		fmt.Fprintf(&b, "seed = %s\n", tomlStrings(d.Gateway.Seed))
 	}
 	return []byte(b.String())
 }

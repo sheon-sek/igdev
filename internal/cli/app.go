@@ -18,6 +18,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/gate"
 	"github.com/sheon-sek/igdev/internal/project"
+	"github.com/sheon-sek/igdev/internal/projectseed"
 	"github.com/sheon-sek/igdev/internal/updater"
 	"github.com/sheon-sek/igdev/internal/xdg"
 )
@@ -165,9 +166,24 @@ func (a *App) gateInput(found project.Found) gate.Input {
 		SetupPath:      found.SetupPath,
 		SetupRaw:       found.SetupRaw,
 		SetupReadError: found.SetupReadError,
+		SeedDigest:     seedDigest(found),
 		CLIVersion:     Version(),
 		CLIContract:    contract.Version,
 	}
+}
+
+// seedDigest is the digest of the project seed the contract declares, so the
+// Gate reads a changed seed as a stale checkout. A contract that does not parse
+// declares no seed here; the Gate reports the contract itself.
+func seedDigest(found project.Found) string {
+	if !found.InProject() {
+		return ""
+	}
+	doc, err := project.ParseDoc(found.ContractTOML, found.Contract.Path)
+	if err != nil || len(doc.Gateway.Seed) == 0 {
+		return ""
+	}
+	return projectseed.Digest(found.Root, doc.Gateway.Seed)
 }
 
 // flagTier converts the reserved flags into flag-tier config values.

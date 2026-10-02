@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"path"
 	"strings"
 	"text/template"
 
@@ -98,6 +99,10 @@ type Input struct {
 	// TrialAutoReset is the contract's [gateway] trial_reset = "auto": the
 	// compose project then runs the trial keeper next to the Gateway (ADR 0008).
 	TrialAutoReset bool
+	// ProjectSeed are the project's tracked seed files (ADR 0009), each named by
+	// its path inside the resource collection. They are copied into the image
+	// next to igdev's own seed, which they cannot override.
+	ProjectSeed []File
 }
 
 // view is what a template sees: Input plus the derived strings that would
@@ -123,6 +128,9 @@ type view struct {
 	// TrialKeeper is whether the compose project runs the trial keeper: the
 	// contract asks for it and there is a token for it to reset with.
 	TrialKeeper bool
+	// Seeded is whether the image copies a seed: igdev's own, the project's, or
+	// both.
+	Seeded bool
 }
 
 // File is one rendered runtime file: its name inside `.igdev/runtime/` and its
@@ -149,7 +157,11 @@ func Materialize(in Input) ([]File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(out, seed...), nil
+	out = append(out, seed...)
+	for _, f := range in.ProjectSeed {
+		out = append(out, File{Name: path.Join(SeedDir, projectSeedCollection, f.Name), Data: f.Data})
+	}
+	return out, nil
 }
 
 // Compose renders the Instance's Compose file.
@@ -183,6 +195,7 @@ func render(name string, in Input) ([]byte, error) {
 		ModulesTarget:      ModulesTarget,
 		HostAddress:        HostAddress,
 		TrialKeeper:        in.TrialAutoReset && in.APITokenHash != "",
+		Seeded:             in.APITokenHash != "" || len(in.ProjectSeed) > 0,
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, out); err != nil {
