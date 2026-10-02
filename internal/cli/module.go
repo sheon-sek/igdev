@@ -98,7 +98,10 @@ references in project code and checks each one, reporting file:line.
 Whether a required module is satisfied depends on the contract's
 ` + "`[modules].enabled`" + ` whitelist and on the ` + "`.modl`" + ` artifacts staged in
 ` + "`.igdev/modules/`" + `. An empty whitelist means no whitelist: every module loads, which
-is the Gateway image's own semantics for GATEWAY_MODULES_ENABLED.
+is the Gateway image's own semantics for GATEWAY_MODULES_ENABLED. A staged private
+module is enabled by being staged — the rendered module list carries every staged id,
+because that id is local build output that does not belong in the tracked contract —
+so ` + "`module add`" + ` is all a private module needs.
 
 The write verbs change what the next Gateway sees. ` + "`enable`" + ` adds module ids to the
 tracked whitelist, which moves the Contract Digest and so makes the Checkout Setup
@@ -142,7 +145,9 @@ whitelist itself.
 A private artifact whose module.xml cannot be read is still listed, with status
 UNREADABLE: it is in the directory, so hiding it would hide a broken download. A
 whitelist entry that is neither built-in nor declared by an artifact is listed as
-MISSING-ARTIFACT, which is the state that makes a Gateway refuse to load.
+MISSING-ARTIFACT, which is the state that makes a Gateway refuse to load. A staged
+artifact the whitelist does not name is reported as ` + "`enabled (staged)`" + `: staging is
+what enables it, so the id never has to enter the contract.
 
 --built-in and --private select one group each; without them both are reported.
 
@@ -517,12 +522,6 @@ type moduleAddData struct {
 	// RuntimeDir is the build context the re-rendered runtime files live in.
 	RuntimeDir string       `json:"runtime_dir"`
 	Runtime    []setupWrite `json:"runtime"`
-	// Enable is the whitelist write `--enable` performed, and is absent when the
-	// run staged only: every other `add` envelope keeps its frozen key set.
-	Enable *moduleEnableData `json:"enable,omitempty"`
-	// SetupStale reports that this run moved the Contract Digest, which makes the
-	// Checkout Setup stale until `igdev setup` re-materializes it.
-	SetupStale bool `json:"setup_stale,omitempty"`
 }
 
 // moduleClearData is the `data` member of a successful `igdev module clear`
@@ -608,8 +607,7 @@ the Gateway mounts. That is the same rule a hand-edit of the contract follows.`,
 
 // enableModules adds the requested ids to the contract's [modules].enabled
 // whitelist and reports what the write did. It is the whole of `module enable`'s
-// logic, minus printing, and `module add --enable` runs it too, so both verbs
-// write the whitelist through one path.
+// logic, minus printing, so the verb writes the whitelist through one path.
 func enableModules(found project.Found, k *knowledge, requested []string) (moduleEnableData, error) {
 	doc := k.doc.Filled(project.DefaultDoc())
 	contractPath := filepath.Join(found.Root, project.ContractFile)
@@ -634,7 +632,10 @@ func enableModules(found project.Found, k *knowledge, requested []string) (modul
 	default:
 		added := make([]string, 0, len(requested))
 		for _, id := range requested {
-			if modules.Enabled(current, id) {
+			// A staged private module is enabled by being staged, so `enable`
+			// reports it as already enabled rather than writing a local artifact's
+			// id into the tracked contract (issue #34).
+			if modules.Enabled(current, id) || modules.Has(k.records, id) {
 				data.AlreadyEnabled = append(data.AlreadyEnabled, id)
 				continue
 			}
@@ -670,7 +671,6 @@ func enableModules(found project.Found, k *knowledge, requested []string) (modul
 func (a *App) newModuleAddCmd() *cobra.Command {
 	var (
 		wizard wizardFlags
-		enable bool
 	)
 	cmd := &cobra.Command{
 		Use:   "add <file.modl>",
@@ -691,20 +691,22 @@ with no backup file. That directory is what the rendered Compose file mounts, so
 next ` + "`igdev gateway up`" + ` hands the Gateway the new module; nothing about running a
 Gateway changes here. Staging does not touch the Project Contract, so the Setup Stamp
 stays current — what changed is what is staged, not what the contract asked for. Run
-` + "`igdev module enable <id>`" + ` to add the module to the whitelist as well.
+` + "`igdev module enable <id>`" + ` to add the module to the whitelist as well — although a
+staged private module is enabled by being staged, so its id never has to enter the
+tracked contract.
 
 Adding an artifact whose file name is already staged replaces it, which is how a
 newer build of the same module is staged.
 
 Without --json or --yes, add never prompts an invocation that named its file: an
 agent's fully specified invocation is the whole interface. A terminal that names no
-file gets the module add Wizard — four steps that ask for the archive, show what it
-declares, state what igdev does not verify, confirm the copy, and offer to whitelist
-the module. --interactive runs it even when the file was named; --yes takes the same
+file gets the module add Wizard — three steps that ask for the archive, show what it
+declares, and state what igdev does not verify before confirming the copy.
+--interactive runs it even when the file was named; --yes takes the same
 defaults without asking; on a non-terminal --interactive is a usage error, because a
 Wizard has no way to ask.`,
 		Example: `  igdev module add ~/Downloads/com.acme.vision.modl
-  igdev module add /mnt/vendor/acme-vision-1.2.3.modl --enable --json`,
+  igdev module add /mnt/vendor/acme-vision-1.2.3.modl --json`,
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return extraArguments("module add", 1, args)
@@ -773,28 +775,14 @@ Wizard has no way to ask.`,
 				RuntimeDir: setupPaths(found.Root).runtime,
 				Runtime:    runtime,
 			}
-			// The whitelist write runs after the staging, so the knowledge it
-			// checks against includes the artifact that just arrived.
-			if enable {
-				fresh, updated, err := a.projectWrite()
-				if err != nil {
-					return err
-				}
-				enabled, err := enableModules(fresh, updated, []string{staged.ID})
-				if err != nil {
-					return err
-				}
-				data.Enable = &enabled
-				data.SetupStale = enabled.SetupStale
-			}
+			// The whitelist needs no write: a staged private module is enabled by
+			// being staged, so its id never has to enter the tracked contract
+			// (issue #34).
 			a.emit(k.res, data, func() { a.printModuleAdd(data) })
 			return nil
 		},
 	}
-	flags := cmd.Flags()
 	wizard.register(cmd)
-	flags.BoolVar(&enable, "enable", false,
-		"also add the staged module to the contract's [modules].enabled whitelist")
 	return cmd
 }
 
@@ -1013,9 +1001,7 @@ func (a *App) printModuleAdd(data moduleAddData) {
 	fmt.Fprintf(a.Stdout, "artifact:  %s (%s, %d bytes)\n", data.Path, data.Action, data.Bytes)
 	fmt.Fprintf(a.Stdout, "staged:    %s\n", stagedLine(data.Count, data.ModulesDir))
 	fmt.Fprintf(a.Stdout, "runtime:   re-materialized (%s)\n", data.RuntimeDir)
-	if data.Enable != nil {
-		a.printModuleEnable(*data.Enable)
-	}
+	fmt.Fprintln(a.Stdout, "enabled:   by staging (a private module needs no whitelist entry)")
 }
 
 // printModuleClear shows a human what left the staging directory.

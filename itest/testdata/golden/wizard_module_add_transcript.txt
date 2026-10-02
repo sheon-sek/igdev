@@ -1,4 +1,3 @@
-[igdev] module add wizard 1/4: the artifact
-[igdev] module add wizard 2/4: the module notices
-[igdev] module add wizard 3/4: the copy
-[igdev] module add wizard 4/4: the module whitelist
+[igdev] module add wizard 1/3: the artifact
+[igdev] module add wizard 2/3: the module notices
+[igdev] module add wizard 3/3: the copy

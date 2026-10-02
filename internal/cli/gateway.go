@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -41,6 +42,17 @@ const (
 	gatewayProbeTimeout = 2 * time.Second
 	// gatewayLogTail is how many log lines a failed wait reports.
 	gatewayLogTail = 50
+	// readinessPath is the endpoint a Gateway serves its own state on, and
+	// readinessState is the state it reports once it is running. The root document
+	// answers 302 long before the Gateway is up — modules are mounted after it — so
+	// the status endpoint is the only answer that means "ready". These are the same
+	// two values the Ignition image's own health check reads.
+	readinessPath  = "/StatusPing"
+	readinessState = "RUNNING"
+	// readinessBodyLimit bounds how much of a status payload igdev reads: the real
+	// one is a short JSON object, and a Gateway answering something huge is not one
+	// igdev should buffer.
+	readinessBodyLimit = 4 << 10
 )
 
 // gatewayAddress is the recorded addressing of one Instance: what every
@@ -555,10 +567,17 @@ func (a *App) newGatewayWaitCmd() *cobra.Command {
 	var timeoutRaw string
 	cmd := &cobra.Command{
 		Use:   "wait",
-		Short: "Wait until this Instance's Gateway answers HTTP",
-		Long: `wait polls the recorded Gateway URL until it answers with anything below 400, or
-until the timeout (default 180s) expires. A redirect counts: a fresh Gateway answers
-its root document with a redirect to the web UI.
+		Short: "Wait until this Instance's Gateway reports running",
+		Long: `wait polls the Gateway's readiness endpoint until it reports RUNNING, or until the
+timeout (default 180s) expires.
+
+Answering HTTP is not being ready: Jetty serves the root document — a redirect to the
+web UI — while the Gateway is still starting and before modules are mounted, so a wait
+that stopped there would hand the caller a URL that is not usable yet. The readiness
+answer is the state the Gateway reports about itself on ` + "`/StatusPing`" + `, which is the
+same endpoint and state the Ignition image's own health check reads. Each poll is
+bounded by its own client timeout, so a socket that accepts and then hangs cannot
+swallow the deadline.
 
 On timeout the command reports the tail of the Gateway's own log, because the reason
 a Gateway never came up is in that log.`,
@@ -593,9 +612,10 @@ func (a *App) newGatewaySmokeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "smoke",
 		Short: "Check the Gateway's root document and this project's declared endpoints",
-		Long: `smoke waits (default 60s) for the recorded Gateway URL, then requests the root
-document and every path the Project Contract declares in ` + "`[gateway] smoke_endpoints`" + `,
-in that order. A contract that declares none checks the root alone.
+		Long: `smoke waits (default 60s) for the Gateway to report RUNNING — the same readiness
+gate ` + "`igdev gateway wait`" + ` applies — then requests the root document and every path the
+Project Contract declares in ` + "`[gateway] smoke_endpoints`" + `, in that order. A contract
+that declares none checks the root alone.
 
 A check fails when the Gateway answers 400 or above, or does not answer at all; the
 failure names the endpoint that failed.`,
@@ -764,16 +784,20 @@ from the 0600 .igdev/local.toml setup wrote otherwise.`,
 	return cmd
 }
 
-// waitForGateway polls the recorded URL until the Gateway answers or the deadline
-// passes, then reports the log tail: a Gateway that never came up says why only in
-// its own log.
+// waitForGateway polls the Gateway's readiness endpoint until it reports running or
+// the deadline passes, then reports the log tail: a Gateway that never came up says
+// why only in its own log.
+//
+// Answering HTTP is not being ready. Jetty serves the root document — a redirect to
+// the web UI — while the Gateway is still starting, which is why the readiness
+// answer is the state the Gateway reports about itself (issue #35).
 func (a *App) waitForGateway(g *gateway, timeout time.Duration) error {
-	url := g.url() + "/"
+	url := g.url() + readinessPath
 	client := &http.Client{Timeout: gatewayProbeTimeout}
 	deadline := time.Now().Add(timeout)
 	var last error
 	for {
-		_, last = probe(client, url)
+		last = readiness(client, url)
 		if last == nil {
 			return nil
 		}
@@ -786,10 +810,45 @@ func (a *App) waitForGateway(g *gateway, timeout time.Duration) error {
 		fmt.Fprintf(a.Stderr, "[igdev] last %d log lines of %s:\n%s", gatewayLogTail, g.compose.Namespace, tail)
 	}
 	return contract.NewFault(contract.CodeGatewayUnhealthy, contract.ExitFailure,
-		fmt.Sprintf("the Gateway at %s did not answer within %s (%v)", g.url(), timeout, last)).
+		fmt.Sprintf("the Gateway at %s did not report %s within %s (%v)", g.url(), readinessState, timeout, last)).
 		WithRemediation(
 			contract.Remediation{Command: "igdev gateway logs --tail 50", Why: "read the Gateway's own log"},
 			contract.Remediation{Command: "igdev gateway status --json", Why: "report the compose service state"})
+}
+
+// readiness performs one readiness check: GET the Gateway's status endpoint and
+// require the state it reports to be RUNNING. Nil means ready; anything else — a
+// starting state, a redirect, a dead socket — is an error saying what answered.
+func readiness(client *http.Client, url string) error {
+	resp, err := client.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, readinessBodyLimit))
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("answered %s", resp.Status)
+	}
+	if readErr != nil {
+		return readErr
+	}
+	if state := reportedState(body); state != readinessState {
+		return fmt.Errorf("reports state %q", state)
+	}
+	return nil
+}
+
+// reportedState reads the state a status payload carries. The payload Ignition
+// serves is JSON (`{"state":"RUNNING"}`); a payload that is not JSON reports
+// whatever it says, so a failure repeats it instead of hiding it.
+func reportedState(body []byte) string {
+	var payload struct {
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal(body, &payload); err == nil && payload.State != "" {
+		return payload.State
+	}
+	return strings.TrimSpace(string(body))
 }
 
 // probe performs one health check and returns the status the Gateway answered.

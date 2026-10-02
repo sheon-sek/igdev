@@ -2,9 +2,10 @@
 
 # `igdev gateway smoke`
 
-smoke waits (default 60s) for the recorded Gateway URL, then requests the root
-document and every path the Project Contract declares in `[gateway] smoke_endpoints`,
-in that order. A contract that declares none checks the root alone.
+smoke waits (default 60s) for the Gateway to report RUNNING — the same readiness
+gate `igdev gateway wait` applies — then requests the root document and every path the
+Project Contract declares in `[gateway] smoke_endpoints`, in that order. A contract
+that declares none checks the root alone.
 
 A check fails when the Gateway answers 400 or above, or does not answer at all; the
 failure names the endpoint that failed.
@@ -40,7 +41,9 @@ igdev gateway smoke [flags]
 
 pass --json for the machine contract. data carries instance_id, url, and
 checks: one entry per request in the order they ran, each with path, url, status, ok,
-and the error when it did not answer. A failing check is IGDEV_E_GATEWAY_UNHEALTHY with
-Remediation naming igdev gateway logs --tail 50 and igdev gateway status --json. The
-endpoints come from the contract's [gateway] smoke_endpoints, so the check is project-
-declared.
+and the error when it did not answer. The run begins with the same readiness gate
+igdev gateway wait applies — the Gateway must report RUNNING — so a passing check means
+the endpoint answered a Gateway that is up. A failing check is
+IGDEV_E_GATEWAY_UNHEALTHY with Remediation naming igdev gateway logs --tail 50 and
+igdev gateway status --json. The endpoints come from the contract's
+[gateway] smoke_endpoints, so the check is project-declared.

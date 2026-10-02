@@ -41,13 +41,13 @@
       {
         "path": "<ROOT>/repo/.igdev/runtime/compose.yaml",
         "kind": "file",
-        "action": "unchanged",
+        "action": "updated",
         "mode": "0644"
       },
       {
         "path": "<ROOT>/repo/.igdev/runtime/compose.env",
         "kind": "file",
-        "action": "unchanged",
+        "action": "updated",
         "mode": "0644"
       },
       {
