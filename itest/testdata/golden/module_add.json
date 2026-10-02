@@ -55,6 +55,48 @@
         "kind": "file",
         "action": "unchanged",
         "mode": "0644"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/runtime/trial-keeper.sh",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/runtime/seed/config/resources/external/ignition/security-levels/config.json",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/runtime/seed/config/resources/external/ignition/security-levels/resource.json",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/runtime/seed/config/resources/external/ignition/security-properties/config.json",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/runtime/seed/config/resources/external/ignition/security-properties/resource.json",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/runtime/seed/config/resources/external/ignition/api-token/igdev/config.json",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
+      },
+      {
+        "path": "<ROOT>/repo/.igdev/runtime/seed/config/resources/external/ignition/api-token/igdev/resource.json",
+        "kind": "file",
+        "action": "unchanged",
+        "mode": "0644"
       }
     ]
   }

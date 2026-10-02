@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sheon-sek/igdev/internal/apitoken"
 	"github.com/sheon-sek/igdev/internal/baseline"
 	"github.com/sheon-sek/igdev/internal/capacity"
 	"github.com/sheon-sek/igdev/internal/config"
@@ -25,6 +26,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/ports"
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/runtimeassets"
+	"github.com/sheon-sek/igdev/internal/trial"
 	"github.com/sheon-sek/igdev/internal/xdg"
 )
 
@@ -102,6 +104,9 @@ type gatewayStatusData struct {
 	gatewayAddress
 	State    string           `json:"state"`
 	Services []gatewayService `json:"services"`
+	// Trial is what the Gateway reports about its trial, or null when the Gateway
+	// is not running or did not answer.
+	Trial *trial.State `json:"trial"`
 }
 
 // gatewaySmokeCheck is one request `gateway smoke` made.
@@ -128,10 +133,15 @@ type gatewayLogsData struct {
 	Logs      string `json:"logs"`
 }
 
-// gatewayCredentialsData is the only machine-readable home of the admin password.
+// gatewayCredentialsData is the only machine-readable home of the admin password
+// and of the Instance's API token.
 type gatewayCredentialsData struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	// APIToken is the Instance's own API token (ADR 0007), the value an
+	// X-Ignition-API-Token header carries; empty for a checkout set up before
+	// igdev seeded one.
+	APIToken string `json:"api_token"`
 }
 
 // gateway is the validated state every gateway verb works from: the Project
@@ -147,6 +157,9 @@ type gateway struct {
 	password string
 	// passwordSource names where the password came from, for the human report.
 	passwordSource string
+	// token is the Instance's own API token (ADR 0007); empty for a checkout set
+	// up before igdev seeded one.
+	token string
 }
 
 // address is the recorded addressing this Instance reports.
@@ -251,6 +264,7 @@ func (a *App) gatewayContext() (*gateway, error) {
 	return &gateway{
 		found: found, res: res, doc: doc, stamp: stamp,
 		username: username, password: password, passwordSource: source,
+		token: credentials.APIToken,
 		compose: docker.Compose{
 			Namespace: stamp.Namespace(),
 			File:      filepath.Join(runtimeDir, runtimeassets.ComposeFileName),
@@ -263,10 +277,16 @@ func (a *App) gatewayContext() (*gateway, error) {
 			Env: []string{
 				"GATEWAY_ADMIN_USERNAME=" + username,
 				"GATEWAY_ADMIN_PASSWORD=" + password,
+				// The trial keeper resets an expired trial with the Instance's
+				// own API token (ADR 0008).
+				"IGDEV_GATEWAY_API_TOKEN=" + credentials.APIToken,
 				"GATEWAY_RESTORE_ARGS=" + restoreArgs,
 				"ACCEPT_MODULE_LICENSES=" + accepted,
 				"ACCEPT_MODULE_CERTS=" + accepted,
 			},
+			// The keeper is in the rendered project exactly when the contract asks
+			// for it and setup had a token to seed (runtimeassets.Input).
+			TrialKeeper: doc.Gateway.TrialAutoReset() && validToken(credentials.APIToken),
 			// The engine's own output goes to stderr as it arrives: `up --build`
 			// can spend minutes building or pulling before it creates anything,
 			// and a caller watching a blank terminal cannot tell a slow image
@@ -409,6 +429,7 @@ never from a file on disk.`,
 		a.newGatewayLogsCmd(),
 		a.newGatewayURLCmd(),
 		a.newGatewayCredentialsCmd(),
+		a.newGatewayTrialCmd(),
 	)
 	return cmd
 }
@@ -449,7 +470,7 @@ without them (ADR 0006).`,
 				return fault
 			}
 			a.stage("gateway up: starting %s (docker compose up --detach --build %s)",
-				g.stamp.Namespace(), docker.GatewayServiceName)
+				g.stamp.Namespace(), strings.Join(g.compose.UpServices(), " "))
 			if fault := g.compose.Up(); fault != nil {
 				return fault
 			}
@@ -535,7 +556,7 @@ costs the data that was about to be reset.`,
 				return fault
 			}
 			a.stage("gateway reset: starting %s (docker compose up --detach --build %s)",
-				g.stamp.Namespace(), docker.GatewayServiceName)
+				g.stamp.Namespace(), strings.Join(g.compose.UpServices(), " "))
 			if fault := g.compose.Up(); fault != nil {
 				return fault
 			}
@@ -705,6 +726,9 @@ assume a port.`,
 				})
 			}
 			data := gatewayStatusData{gatewayAddress: g.address(), State: gatewayState(reported), Services: reported}
+			if data.State == "running" {
+				data.Trial = readTrial(g.url())
+			}
 			a.emit(g.res, data, func() { a.printGatewayStatus(data) })
 			return nil
 		},
@@ -777,7 +801,12 @@ func (a *App) newGatewayCredentialsCmd() *cobra.Command {
 The password itself is printed only with --json, so it never lands in a terminal's
 scrollback, a shell history, or a CI log: this is the one machine-readable way to
 obtain it. The value comes from IGDEV_GATEWAY_ADMIN_PASSWORD when that is set, and
-from the 0600 .igdev/local.toml setup wrote otherwise.`,
+from the 0600 .igdev/local.toml setup wrote otherwise.
+
+The same envelope carries the Instance's own API token (api_token), the
+X-Ignition-API-Token value that administers this Gateway. setup mints it and the
+Gateway is seeded with its hash before its first start, so it works without a
+restart (ADR 0007).`,
 		Example: `  igdev gateway credentials --json
   curl -u "$(igdev gateway credentials --json | jq -r '.data.username'):..." http://.../`,
 		Args: rejectArgs("gateway credentials"),
@@ -795,7 +824,7 @@ from the 0600 .igdev/local.toml setup wrote otherwise.`,
 					})
 			}
 			if g.res.IsJSON() {
-				a.emit(g.res, gatewayCredentialsData{Username: g.username, Password: g.password}, func() {})
+				a.emit(g.res, gatewayCredentialsData{Username: g.username, Password: g.password, APIToken: g.token}, func() {})
 				return nil
 			}
 			a.printCredentials(g)
@@ -1003,6 +1032,9 @@ func (a *App) printGatewayDown(data gatewayDownData) {
 func (a *App) printGatewayStatus(data gatewayStatusData) {
 	fmt.Fprintf(a.Stdout, "gateway:  %s  %s\n", data.Namespace, data.State)
 	fmt.Fprintf(a.Stdout, "url:      %s\n", data.URL)
+	if data.Trial != nil {
+		fmt.Fprintf(a.Stdout, "trial:    %s\n", describeTrial(*data.Trial))
+	}
 	if len(data.Services) == 0 {
 		fmt.Fprint(a.Stdout, "services: none\n")
 		return
@@ -1027,4 +1059,10 @@ func (a *App) printCredentials(g *gateway) {
 	fmt.Fprintf(a.Stdout, "username: %s\n", g.username)
 	fmt.Fprint(a.Stdout, "password: <not printed; re-run with --json to read it>\n")
 	fmt.Fprintf(a.Stdout, "source:   %s\n", g.passwordSource)
+}
+
+// validToken reports whether value is an igdev API token setup could have seeded.
+func validToken(value string) bool {
+	_, err := apitoken.Hash(value)
+	return err == nil
 }

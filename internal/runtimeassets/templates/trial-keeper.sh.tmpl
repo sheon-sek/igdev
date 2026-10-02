@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# igdev trial keeper for Instance {{ .Namespace }} (generated; do not edit).
+#
+# Runs as the trial-keeper service of this Instance's compose project, so it
+# starts and stops with the Gateway and needs no process of its own on the host
+# (ADR 0008). It watches the Gateway's trial and resets it the moment it expires:
+# Ignition accepts POST /data/api/v1/trial only from an expired trial, and
+# answers 403 before that. The Gateway is never restarted or rebuilt, so its
+# tags, history, connections and projects stay where they are.
+#
+# GET /data/api/v1/trial needs no credential; the reset uses the Instance's own
+# API token, which reaches this container from the igdev process environment and
+# is never written to a rendered file.
+set -u
+
+url="${IGDEV_GATEWAY_URL:-http://gateway:8088}"
+token="${IGDEV_GATEWAY_API_TOKEN:-}"
+
+log() { printf '%s trial-keeper | %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
+
+if [ -z "$token" ]; then
+  log "no API token in the environment: run 'igdev setup', then 'igdev gateway up'"
+  exec sleep infinity
+fi
+
+log "watching ${url}/data/api/v1/trial"
+while true; do
+  if ! body="$(curl -fsS -m 10 -H 'Accept: application/json' "${url}/data/api/v1/trial" 2>/dev/null)"; then
+    sleep 15
+    continue
+  fi
+  if printf '%s\n' "$body" | grep -Eq '"expired"[[:space:]]*:[[:space:]]*true'; then
+    code="$(curl -s -o /dev/null -w '%{http_code}' -m 30 -X POST \
+      -H 'Accept: application/json' \
+      -H "Origin: ${url}" \
+      -H "Referer: ${url}/app/home" \
+      -H "X-Ignition-API-Token: ${token}" \
+      --data '' "${url}/data/api/v1/trial")"
+    log "trial expired; reset answered HTTP ${code}"
+    sleep 5
+    continue
+  fi
+  left="$(printf '%s\n' "$body" | sed -n 's/.*"trialSecondsLeft"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' | head -n 1)"
+  if [ -n "$left" ] && [ "$left" -le 120 ]; then
+    sleep 5
+  else
+    sleep 60
+  fi
+done

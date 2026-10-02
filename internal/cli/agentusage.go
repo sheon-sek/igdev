@@ -206,7 +206,20 @@ igdev gateway status --json. The endpoints come from the contract's
 	"igdev gateway status": `pass --json for the machine contract. data carries the address block plus
 state (the compose project's overall verdict) and services, one entry per service with
 name, service, state, and status as the container engine reports them, so an agent reads
-the engine's own words instead of parsing human output.`,
+the engine's own words instead of parsing human output. trial is the Gateway's own trial
+report (license_mode, seconds_left, expired) while it runs, and null otherwise.`,
+	"igdev gateway trial": `pass --json for the machine contract. data carries instance_id, url,
+trial_reset (the effective [gateway] trial_reset: auto or off), and trial (license_mode,
+seconds_left, expired), read from the Gateway's unauthenticated trial endpoint. A Gateway
+that does not answer is IGDEV_E_GATEWAY_UNHEALTHY. Never rebuild a Gateway because its
+trial runs low: with trial_reset = auto the trial keeper resets it in place the moment it
+expires, and igdev gateway trial reset does the same on demand.`,
+	"igdev gateway trial reset": `pass --json for the machine contract. data carries instance_id, url,
+reset, before, and after (null when not reset). A trial that has not expired is a
+successful no-op with reset false: Ignition accepts a reset only after expiry. A refused
+reset is IGDEV_E_TRIAL_RESET; HTTP 401 means the Gateway's data predates the Instance API
+token, and the Remediation is igdev gateway reset, which discards the Gateway's data, so
+confirm with a person before running it.`,
 	"igdev gateway logs": `pass --json for the machine contract. In human mode the log streams to
 stdout; with --json the same text arrives as data.logs with instance_id and namespace,
 because stdout may then carry nothing but the envelope. --tail limits how much of the
@@ -216,9 +229,11 @@ data.url is the only URL to script against: the port came from the Checkout Setu
 nothing in igdev or its callers may assume 8088.`,
 	"igdev gateway credentials": `pass --json for the machine contract, and --json is the only dialect that
 prints the password: human mode reports the username and where the password came from.
-data carries username and password. A missing password (IGDEV_E_CONFIG_INVALID) is
-repaired with igdev setup; IGDEV_GATEWAY_ADMIN_PASSWORD overrides both tiers for CI.
-Never log the envelope: it is a secret.`,
+data carries username, password, and api_token: the Instance's own API token, the
+X-Ignition-API-Token value that administers this Gateway (empty for a checkout set up
+before igdev seeded one). A missing password (IGDEV_E_CONFIG_INVALID) is repaired with
+igdev setup; IGDEV_GATEWAY_ADMIN_PASSWORD overrides both tiers for CI. Never log the
+envelope: it is a secret.`,
 	"igdev baseline": `pass --json for the machine contract. set and status report the staged
 Baseline as staged, path, bytes, source, sha256, staged_at, and restore_args (what a
 fresh launch applies); clear reports removed. The staged file is the state and the

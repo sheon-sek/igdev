@@ -1,12 +1,13 @@
 // Package runtimeassets renders the runtime files one Instance runs from:
-// the Compose file, the Compose environment, and the image build file.
+// the Compose file, the Compose environment, the image build file, the trial
+// keeper script, and the Gateway configuration seed the image carries.
 //
 // The templates are embedded in the binary with //go:embed, so `igdev setup`
 // materializes a checkout without reading any repository file and without a
 // network. Rendering is a pure function of the Instance identity, the allocated
-// ports, and the Project Contract: no timestamp, random value, or host path
-// outside Input reaches a rendered file, so identical inputs produce
-// byte-identical output.
+// ports, the Project Contract, and the hash of the Instance's API token: no
+// timestamp, random value, or host path outside Input reaches a rendered file, so
+// identical inputs produce byte-identical output.
 package runtimeassets
 
 import (
@@ -27,6 +28,8 @@ const (
 	EnvFileName = "compose.env"
 	// DockerfileFileName is the Instance image build file.
 	DockerfileFileName = "Dockerfile"
+	// KeeperFileName is the trial keeper script the image carries (ADR 0008).
+	KeeperFileName = "trial-keeper.sh"
 )
 
 //go:embed templates
@@ -69,6 +72,16 @@ type Input struct {
 	ModulesDir string
 	// BaselineDir is the absolute Baseline restore path, mounted read-only.
 	BaselineDir string
+	// APITokenHash is the hash of the Instance's own API token, which the seed
+	// gives the Gateway before its first start (ADR 0007). Empty renders no seed.
+	APITokenHash string
+	// CreatedAtMillis is when the Instance was created, in epoch milliseconds:
+	// the creation time the seeded token resource records. It comes from the
+	// Setup Stamp, so it is stable across setups.
+	CreatedAtMillis int64
+	// TrialAutoReset is the contract's [gateway] trial_reset = "auto": the
+	// compose project then runs the trial keeper next to the Gateway (ADR 0008).
+	TrialAutoReset bool
 }
 
 // view is what a template sees: Input plus the derived strings that would
@@ -84,6 +97,11 @@ type view struct {
 	// EnvFileName names the environment file, for the comment that tells the
 	// reader how it is consumed.
 	EnvFileName string
+	// SeedDir names the seed directory from inside the build context.
+	SeedDir string
+	// TrialKeeper is whether the compose project runs the trial keeper: the
+	// contract asks for it and there is a token for it to reset with.
+	TrialKeeper bool
 }
 
 // File is one rendered runtime file: its name inside `.igdev/runtime/` and its
@@ -95,17 +113,22 @@ type File struct {
 
 // Materialize renders every runtime file for one Instance, in the frozen order
 // they are written. It is what `igdev setup` writes; the per-file functions below
-// exist for tests that assert one rendering at a time.
+// exist for tests that assert one rendering at a time. A seed file's name is a
+// slash-separated path below the runtime directory.
 func Materialize(in Input) ([]File, error) {
-	out := make([]File, 0, 3)
-	for _, name := range []string{ComposeFileName, EnvFileName, DockerfileFileName} {
+	out := make([]File, 0, 10)
+	for _, name := range []string{ComposeFileName, EnvFileName, DockerfileFileName, KeeperFileName} {
 		data, err := render(name, in)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, File{Name: name, Data: data})
 	}
-	return out, nil
+	seed, err := seedFiles(in)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, seed...), nil
 }
 
 // Compose renders the Instance's Compose file.
@@ -135,6 +158,8 @@ func render(name string, in Input) ([]byte, error) {
 		ModuleList:         strings.Join(in.Modules, ","),
 		DockerfileFileName: DockerfileFileName,
 		EnvFileName:        EnvFileName,
+		SeedDir:            SeedDir,
+		TrialKeeper:        in.TrialAutoReset && in.APITokenHash != "",
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, out); err != nil {

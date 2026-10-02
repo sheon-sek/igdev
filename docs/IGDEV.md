@@ -86,8 +86,10 @@ and `packaging/install.sh` for real against a loopback file server.
 | `internal/capacity` | the Capacity Gate: `MemAvailable` measurement and the refusal arithmetic (ADR 0003) |
 | `internal/docker` | the `docker compose` client: one Instance's project, `up` / `down` / `ps` / `logs` / `restart`, and the running-project listing the Capacity Gate reports |
 | `internal/consent` | the machine-global human-only Consent record: term table, load/accept, the exit-3 check |
-| `internal/runtimeassets` | the embedded Compose / Compose-env / Dockerfile templates and their deterministic render |
+| `internal/runtimeassets` | the embedded Compose / Compose-env / Dockerfile / trial-keeper templates, the Gateway configuration seed, and their deterministic render |
 | `internal/localconfig` | the checkout-local tier `.igdev/local.toml`: Gateway credentials, password generation, key-preserving writes |
+| `internal/apitoken` | the Instance API token: generation, and the hash the Gateway stores (ADR 0007) |
+| `internal/trial` | the Gateway's trial over its REST API: read, and reset after expiry (ADR 0008) |
 | `internal/doctor` | the host prerequisite probes and their report |
 | `internal/atomicfile` | the temp-file-plus-rename write every generated file goes through |
 | `internal/textdiff` | the unified diff every tracked write prints |
@@ -193,16 +195,18 @@ name`, `[tool] min_version`, `[ignition] version|jython_version|edition`,
 `[modules] enabled|artifacts|require_private_module_consent`, `[scan] jython|capabilities`,
 `[catalog] overlay_paths`
 (omitted when empty), `[commands] check|test|build|smoke`
-(omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints|allow_unsigned_modules`.
+(omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints|allow_unsigned_modules|trial_reset`.
 A key igdev does not know is refused, and a version-like field holds a version. Fields
 the file leaves out fall back to the embedded defaults, so a minimal `schema = 1`
-contract is valid. Four keys are optional and omitted from the rendered contract while
+contract is valid. Five keys are optional and omitted from the rendered contract while
 they hold the schema default: `smoke_endpoints` (a checkout that does not state it smokes
 the root document alone), `modules.artifacts` (a contract that does not state it has
 `igdev build` stage nothing on its own), `gateway.allow_unsigned_modules` (default false:
 the Gateway loads only signed module artifacts), and
 `modules.require_private_module_consent` (default false: the private modules the checkout
-staged are accepted as part of starting the Gateway, ADR 0006). Optional means additive — a
+staged are accepted as part of starting the Gateway, ADR 0006), and `gateway.trial_reset`
+(default `"auto"`: a trial keeper resets an expired trial in place; `"off"` renders none,
+ADR 0008). Optional means additive — a
 contract written before either key existed parses, renders, and behaves exactly as it
 did, and stating an optional key is an edit of a tracked file, so it goes through
 `igdev init` and makes the Checkout Setup stale until `igdev setup` re-materializes it.
@@ -241,11 +245,16 @@ leaves the old stamp and setup simply runs again.
 .igdev/
   setup.json            the Setup Stamp (0600): instance_id, digest, schema, CLI
                         contract, ports, created_at
-  local.toml            checkout-local tier (0600): Gateway admin credentials
+  local.toml            checkout-local tier (0600): Gateway admin credentials and
+                        the Instance API token
   runtime/              the materialized build context
     compose.yaml        the Instance's Compose file
     compose.env         the environment docker compose reads with --env-file
     Dockerfile          the Instance image, FROM the Ignition version in the contract
+    trial-keeper.sh     the trial keeper's loop, copied into the image (ADR 0008)
+    seed/               Gateway configuration the image copies over its data
+                        directory: the igdev security level and the API token's hash
+                        (ADR 0007)
   modules/              staged Private Modules, mounted into the Gateway
   baseline/             the staged Baseline (.gwbk), mounted read-only at /restore
 ```
@@ -273,7 +282,7 @@ writes the two credential keys and preserves the rest, including any port pin.
 **Materialization.** The Compose file, the Compose environment, and the Dockerfile come
 from templates embedded in the binary (`internal/runtimeassets`), rendered into
 `.igdev/runtime/`. Rendering is a pure function of the Instance identity, the ports,
-and the contract: no timestamp, no random value, and no path outside that input reaches
+the contract, the API token's hash, and the Setup Stamp's `created_at`: no timestamp, no random value, and no path outside that input reaches
 a rendered file, so identical inputs are byte-identical and a second setup on a current
 checkout re-materializes nothing. Every referenced host path is absolute, the build
 context is `.igdev/runtime/` itself, and staged modules and the Baseline directory are
@@ -288,7 +297,13 @@ printable, quote-safe alphabet, `crypto/rand`) or takes `IGDEV_GATEWAY_ADMIN_PAS
 already holds). It is written to `.igdev/local.toml` mode 0600 and never printed: not
 in the JSON envelope, not on stdout, not on stderr. `igdev gateway credentials --json`
 is the only way to read it back out — human `credentials` prints the username and the
-source and says so. The rendered runtime files carry
+source and says so. setup also mints the Instance API token (`igdev:` plus 32 random
+bytes, base64url) once per checkout and keeps it in the same file. A re-setup keeps it.
+`credentials --json` reports it as `api_token`, and the human form never prints it.
+The Instance image carries only its hash, in a Gateway configuration seed under the
+`external` resource collection, so a fresh Gateway volume answers the token from its
+first start, with no restart (ADR 0007). A volume older than the token never learns it;
+`gateway reset` gives it one. The rendered runtime files carry
 no secret at all — the Compose environment only *references* the credential variables,
 which the igdev process supplies at `gateway up` time.
 
@@ -347,8 +362,12 @@ igdev gateway status                `docker compose ps` for this project plus th
 igdev gateway logs [--tail N]       the Gateway's log: streamed for humans, in
                                     data.logs with --json
 igdev gateway url                   the recorded URL, and nothing else
-igdev gateway credentials --json    {username, password}; human mode never prints the
-                                    password
+igdev gateway credentials --json    {username, password, api_token}; human mode never
+                                    prints a secret
+igdev gateway trial                 the Gateway's license mode, trial time left, and
+                                    whether it expired
+igdev gateway trial reset           reset an expired trial in place; a no-op while the
+                                    trial has time left
 ```
 
 Every engine call is `docker compose --project-name igdev-<instance> --file
@@ -375,6 +394,18 @@ stderr, because the reason a Gateway never came up is in its own log. `smoke` ap
 the same readiness gate before it checks anything, fails
 with the failing endpoint named in the message, and the transport error or status is
 in `data.checks[].error` for a passing run's report.
+
+**Trial.** An expired trial is reset in place with the Instance API token, never by a
+restart or rebuild, so the Gateway's data survives (ADR 0008). Ignition accepts
+`POST /data/api/v1/trial` only after the trial expired, and answers 403 before that. So
+`gateway trial reset` reports `reset: false` on a trial with time left, and
+`IGDEV_E_TRIAL_RESET` names the cause of any refusal: 401 is a volume that predates the
+token. Under the default `[gateway] trial_reset = "auto"`, `up` and `reset` also start
+the `trial-keeper` service. It runs from the Instance image with no port, reads the
+trial every 60 s (every 5 s in the last two minutes) and posts the reset as soon as the
+trial expires. It reads the token from `IGDEV_GATEWAY_API_TOKEN` in the process
+environment. `gateway status` lists it next to the Gateway and reports the `trial`
+object, and so does `agent context`.
 
 **Capacity Gate.** `up` and `reset` read `MemAvailable` from `/proc/meminfo` (ADR
 0003) and refuse to start another Gateway when it is below the contract's

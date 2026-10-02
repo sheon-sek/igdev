@@ -165,6 +165,12 @@ const (
 	// the tail of act's output, so a failing workflow is distinguishable from a
 	// failure of igdev itself.
 	CodeActFailed Code = "IGDEV_E_ACT_FAILED"
+	// CodeTrialReset covers a trial reset the Gateway refused or could not be
+	// asked for: the Gateway is unreachable, it does not know the igdev API token
+	// (its data volume predates the token), or it answered the reset with an
+	// error status. A trial that has not expired yet is not this fault: the reset
+	// is then a successful no-op, because Ignition only accepts it after expiry.
+	CodeTrialReset Code = "IGDEV_E_TRIAL_RESET"
 )
 
 // Remediation is a machine-readable next step: the exact command that clears

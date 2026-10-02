@@ -85,4 +85,6 @@ var CodeDocs = []CodeDoc{
 		"Ask a person to install act, as the Remediation says."},
 	{CodeActFailed, "act's exit code", "An act run exited non-zero or could not start. `data` carries the invocation and output tail.",
 		"Read the output tail in `data` and fix the failing workflow step."},
+	{CodeTrialReset, "1", "`gateway trial reset` could not reset an expired trial: the Gateway is unreachable, does not know the igdev API token, or refused the reset.",
+		"Follow the Remediation. A 401 means the Gateway's data predates the token: `igdev gateway reset` re-seeds it."},
 }

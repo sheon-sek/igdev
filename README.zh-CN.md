@@ -56,6 +56,7 @@ igdev jython check src/main/python                 # 单次 JVM 批量编译
 
 igdev gateway up && igdev gateway wait && igdev gateway smoke
 igdev gateway url                # 唯一可以直接脚本化的 URL
+igdev gateway trial              # trial 剩余时间；过期后原地自动重置
 igdev gateway down --volumes
 ```
 

@@ -269,7 +269,7 @@ func TestGatewayUpStartsTheNamespacedProject(t *testing.T) {
 	want := []string{
 		"compose", "--project-name", stamp.Namespace(),
 		"--file", composeFile, "--env-file", envFile,
-		"up", "--detach", "--build", "gateway",
+		"up", "--detach", "--build", "gateway", "trial-keeper",
 	}
 	if !slices.Equal(calls[0].Argv, want) {
 		t.Errorf("up argv =\n  %v\nwant\n  %v", calls[0].Argv, want)
@@ -783,20 +783,28 @@ func TestGatewayCredentialsAreMachineOnly(t *testing.T) {
 
 	res := env.RunIn(dir, "gateway", "credentials", "--json")
 	testrig.WantExit(t, res, contract.ExitOK)
-	env.Golden(t, "gateway_credentials.json", res.Stdout)
 	var data struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		APIToken string `json:"api_token"`
 	}
 	testrig.DataOf(t, res.Stdout, &data)
 	if data.Username != "admin" || data.Password != secret {
 		t.Errorf("credentials = %+v, want the recorded admin pair", data)
 	}
+	if !strings.HasPrefix(data.APIToken, "igdev:") {
+		t.Fatalf("api_token = %q, want the Instance API token", data.APIToken)
+	}
+	env.RegisterReplacement(data.APIToken, "<API_TOKEN>")
+	env.Golden(t, "gateway_credentials.json", res.Stdout)
 
 	// Human output reports where the credential lives and never the credential.
 	human := env.RunIn(dir, "gateway", "credentials")
 	testrig.WantExit(t, human, contract.ExitOK)
 	env.Golden(t, "gateway_credentials.txt", human.Stdout)
+	if strings.Contains(human.Stdout+human.Stderr, data.APIToken) {
+		t.Errorf("human credentials leaked the API token:\n%s", human.Stdout)
+	}
 	if strings.Contains(human.Stdout+human.Stderr, secret) {
 		t.Errorf("human credentials leaked the password:\n%s\n%s", human.Stdout, human.Stderr)
 	}
@@ -815,6 +823,9 @@ func TestGatewayCredentialsAreMachineOnly(t *testing.T) {
 		res := env.RunIn(dir, args...)
 		if strings.Contains(res.Stdout+res.Stderr, secret) {
 			t.Errorf("%v leaked the admin password", args)
+		}
+		if strings.Contains(res.Stdout+res.Stderr, data.APIToken) {
+			t.Errorf("%v leaked the API token", args)
 		}
 	}
 

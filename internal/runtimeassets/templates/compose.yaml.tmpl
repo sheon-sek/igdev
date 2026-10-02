@@ -53,6 +53,28 @@ services:
       options:
         max-size: "20m"
         max-file: "3"
+{{- if .TrialKeeper }}
+
+  # Resets the Gateway's trial the moment it expires, in place (ADR 0008).
+  trial-keeper:
+    image: {{ .Namespace }}:{{ .IgnitionVersion }}
+    pull_policy: never
+    depends_on:
+      - gateway
+    user: "2003:0"
+    entrypoint: ["bash", "/usr/local/bin/igdev-trial-keeper.sh"]
+    environment:
+      IGDEV_GATEWAY_URL: "http://gateway:8088"
+      IGDEV_GATEWAY_API_TOKEN: ${IGDEV_GATEWAY_API_TOKEN:-}
+    # The image's HEALTHCHECK probes a Gateway; the keeper is not one.
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    logging:
+      options:
+        max-size: "1m"
+        max-file: "2"
+{{- end }}
 
 volumes:
   gateway-data:

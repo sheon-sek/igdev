@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sheon-sek/igdev/internal/apitoken"
 	"github.com/sheon-sek/igdev/internal/atomicfile"
 	"github.com/sheon-sek/igdev/internal/baseline"
 	"github.com/sheon-sek/igdev/internal/config"
@@ -266,7 +267,13 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 				createdAt = now.Format(time.RFC3339)
 			}
 
-			writes, err := a.materializeRuntime(found, doc, instanceID, triplet)
+			// The credentials come before the runtime files: the seed the image
+			// carries holds the hash of the Instance's API token (ADR 0007).
+			creds, source, err := a.adminCredentials(found, adminUsername, adminPassword)
+			if err != nil {
+				return err
+			}
+			writes, err := a.materializeRuntime(found, doc, instanceID, triplet, creds.APIToken, createdAt)
 			if err != nil {
 				return err
 			}
@@ -285,10 +292,6 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 			}
 
 			stateDir := filepath.Join(found.Root, project.StateDir)
-			creds, source, err := a.adminCredentials(found, adminUsername, adminPassword)
-			if err != nil {
-				return err
-			}
 			localPath := filepath.Join(stateDir, project.LocalConfig)
 			changed, err := localconfig.Write(localPath, creds)
 			if err != nil {
@@ -421,21 +424,34 @@ func (a *App) adminCredentials(found project.Found, flagUsername, flagPassword s
 	existing, _ := localconfig.Load(found.LocalConfigTOML)
 	env := config.EnvironMap(a.Environ)
 
+	// The Instance's API token is kept across setups like the identity is: a
+	// re-setup must not orphan the token a running Gateway was seeded with. A
+	// value that is not an igdev token is replaced.
+	token := existing.APIToken
+	if _, err := apitoken.Hash(token); err != nil {
+		minted, err := apitoken.Generate()
+		if err != nil {
+			return localconfig.Credentials{}, "", contract.NewFault(contract.CodeInternal, contract.ExitFailure,
+				fmt.Sprintf("cannot generate the Gateway API token: %v", err)).WithCause(err)
+		}
+		token = minted
+	}
+
 	username := firstNonEmpty(flagUsername, env[localconfig.EnvUsername], existing.Username, localconfig.DefaultUsername)
 	switch {
 	case flagPassword != "":
-		return localconfig.Credentials{Username: username, Password: flagPassword}, "flag", nil
+		return localconfig.Credentials{Username: username, Password: flagPassword, APIToken: token}, "flag", nil
 	case env[localconfig.EnvPassword] != "":
-		return localconfig.Credentials{Username: username, Password: env[localconfig.EnvPassword]}, "environment", nil
+		return localconfig.Credentials{Username: username, Password: env[localconfig.EnvPassword], APIToken: token}, "environment", nil
 	case existing.Password != "":
-		return localconfig.Credentials{Username: username, Password: existing.Password}, "existing", nil
+		return localconfig.Credentials{Username: username, Password: existing.Password, APIToken: token}, "existing", nil
 	}
 	password, err := localconfig.GeneratePassword()
 	if err != nil {
 		return localconfig.Credentials{}, "", contract.NewFault(contract.CodeInternal, contract.ExitFailure,
 			fmt.Sprintf("cannot generate the Gateway admin password: %v", err)).WithCause(err)
 	}
-	return localconfig.Credentials{Username: username, Password: password}, "generated", nil
+	return localconfig.Credentials{Username: username, Password: password, APIToken: token}, "generated", nil
 }
 
 // repairableBySetup reports the two Gate faults setup exists to clear: no
@@ -518,8 +534,11 @@ func setupPaths(root string) runtimePaths {
 //
 // The Baseline directory is only created: what is staged inside it is user state
 // that outlives a re-materialization.
-func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceID string, triplet ports.Triplet) ([]setupWrite, error) {
+func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceID string, triplet ports.Triplet, token, createdAt string) ([]setupWrite, error) {
 	paths := setupPaths(found.Root)
+	// A missing or foreign token renders no seed, and the trial keeper is then
+	// left out too; setup always has one, and module verbs read the one it wrote.
+	tokenHash, _ := apitoken.Hash(token)
 	// The staged private artifacts are read here because they are part of the
 	// rendered environment: the module list the Gateway is told to load carries
 	// every staged id (a private module is enabled by being staged), so staging
@@ -542,6 +561,9 @@ func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceI
 		RuntimeDir:           paths.runtime,
 		ModulesDir:           paths.modules,
 		BaselineDir:          paths.baseline,
+		APITokenHash:         tokenHash,
+		CreatedAtMillis:      epochMillis(createdAt),
+		TrialAutoReset:       doc.Gateway.TrialAutoReset(),
 	}
 	files, err := runtimeassets.Materialize(rendered)
 	if err != nil {
@@ -633,4 +655,14 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// epochMillis reads an RFC 3339 creation time as epoch milliseconds, or zero when
+// it does not parse.
+func epochMillis(rfc3339 string) int64 {
+	at, err := time.Parse(time.RFC3339, rfc3339)
+	if err != nil {
+		return 0
+	}
+	return at.UnixMilli()
 }

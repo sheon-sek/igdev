@@ -43,3 +43,4 @@ human action required. At exit 3 an agent stops and hands the Remediation to a p
 | `IGDEV_E_COMMAND_FAILED` | the stage's exit code (1 if bash is missing) | A declared project stage (`[commands].check`, `.test`, `.build`) exited non-zero. | Read the stage output and fix the project code. |
 | `IGDEV_E_ACT_MISSING` | 1 | `ci-local` found no `act` on PATH. | Ask a person to install act, as the Remediation says. |
 | `IGDEV_E_ACT_FAILED` | act's exit code | An act run exited non-zero or could not start. `data` carries the invocation and output tail. | Read the output tail in `data` and fix the failing workflow step. |
+| `IGDEV_E_TRIAL_RESET` | 1 | `gateway trial reset` could not reset an expired trial: the Gateway is unreachable, does not know the igdev API token, or refused the reset. | Follow the Remediation. A 401 means the Gateway's data predates the token: `igdev gateway reset` re-seeds it. |

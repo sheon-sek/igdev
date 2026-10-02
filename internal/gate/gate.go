@@ -24,7 +24,12 @@ import (
 )
 
 // StampSchema is the format version of the Checkout Setup record igdev writes.
-const StampSchema = 1
+//
+// Schema 2 is the first Checkout Setup that seeds the Instance's API token and
+// runs the trial keeper (ADR 0007, ADR 0008). A schema 1 record reads as stale, so
+// an upgraded binary sends the checkout through `igdev setup` once, which renders
+// both.
+const StampSchema = 2
 
 // StampState is the Setup Stamp verdict for one checkout.
 type StampState string

@@ -75,6 +75,8 @@ no Instance before `setup`).
 | `gateway` | `object` | Whether the Gateway is running and its recorded URL; null when there is no Instance. Context never starts anything. |
 | `gateway.running` | `bool` | The container engine reports this Instance's Gateway running. |
 | `gateway.url` | `string` | The recorded Gateway URL, built from the Instance's allocated HTTP port. |
+| `gateway.trial_reset` | `string` | The effective [gateway] trial_reset: auto means the trial keeper resets an expired trial in place (ADR 0008); off means it is left alone. |
+| `gateway.trial` | `object` | The running Gateway's own trial report (license_mode, seconds_left, expired); null when it is not running or did not answer. |
 | `modules` | `object` | The private module artifacts this checkout stages, and what the contract lets the Gateway load. |
 | `modules.count` | `int` | How many artifacts are staged in .igdev/modules/. |
 | `modules.staged` | `array` | The module ids those artifacts declare. |

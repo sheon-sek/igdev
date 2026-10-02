@@ -37,4 +37,5 @@ igdev gateway status [flags]
 pass --json for the machine contract. data carries the address block plus
 state (the compose project's overall verdict) and services, one entry per service with
 name, service, state, and status as the container engine reports them, so an agent reads
-the engine's own words instead of parsing human output.
+the engine's own words instead of parsing human output. trial is the Gateway's own trial
+report (license_mode, seconds_left, expired) while it runs, and null otherwise.
