@@ -35,6 +35,91 @@ func TestRenderRoundTrips(t *testing.T) {
 	}
 }
 
+// [gateway] allow_unsigned_modules is additive to schema v1: a contract that does
+// not state it reports the default, renders byte-identically to a contract written
+// before the key existed (no key at all), and survives a round trip when stated.
+func TestAllowUnsignedModulesIsAdditive(t *testing.T) {
+	absent, err := ParseDoc([]byte("schema = 1\n\n[gateway]\nmemory_mb = 2048\ntimezone = \"UTC\"\n"), "igdev.toml")
+	if err != nil {
+		t.Fatalf("ParseDoc without the key: %v", err)
+	}
+	if absent.Gateway.AllowUnsignedModules {
+		t.Error("a contract that does not state the key reports the Gateway loading unsigned modules")
+	}
+	if rendered := string(absent.Render()); strings.Contains(rendered, "allow_unsigned_modules") {
+		t.Errorf("render emitted the key at its default:\n%s", rendered)
+	}
+
+	stated, err := ParseDoc([]byte("schema = 1\n\n[gateway]\nmemory_mb = 2048\ntimezone = \"UTC\"\nallow_unsigned_modules = true\n"), "igdev.toml")
+	if err != nil {
+		t.Fatalf("ParseDoc with the key: %v", err)
+	}
+	if !stated.Gateway.AllowUnsignedModules {
+		t.Error("the stated true did not parse")
+	}
+	rendered := string(stated.Render())
+	if !strings.Contains(rendered, "allow_unsigned_modules = true") {
+		t.Errorf("render dropped the stated key:\n%s", rendered)
+	}
+	if !strings.Contains(string(stated.Filled(DefaultDoc()).Render()), "allow_unsigned_modules = true") {
+		t.Error("Filled cleared the stated key")
+	}
+	if again, err := ParseDoc([]byte(rendered), "igdev.toml"); err != nil || !again.Gateway.AllowUnsignedModules {
+		t.Errorf("round trip lost the key: %v", err)
+	}
+}
+
+// The [modules] keys added after schema v1 are additive the same way: a contract
+// that does not state them renders no key and keeps the permissive default, and a
+// stated value round-trips.
+func TestModuleKeysAreAdditive(t *testing.T) {
+	absent, err := ParseDoc([]byte("schema = 1\n\n[modules]\nenabled = []\n"), "igdev.toml")
+	if err != nil {
+		t.Fatalf("ParseDoc without the keys: %v", err)
+	}
+	if !absent.Modules.ArtifactsEmpty() {
+		t.Errorf("artifacts = %v, want none declared", absent.Modules.Artifacts)
+	}
+	if absent.Modules.RequirePrivateModuleConsent {
+		t.Error("a contract that does not state the opt-in demands private-module Consent")
+	}
+	if rendered := string(absent.Render()); strings.Contains(rendered, "artifacts") ||
+		strings.Contains(rendered, "require_private_module_consent") {
+		t.Errorf("render emitted an optional key at its default:\n%s", rendered)
+	}
+
+	stated, err := ParseDoc([]byte("schema = 1\n\n[modules]\nenabled = []\nartifacts = [\"build/*.modl\"]\nrequire_private_module_consent = true\n"), "igdev.toml")
+	if err != nil {
+		t.Fatalf("ParseDoc with the keys: %v", err)
+	}
+	if got := strings.Join(stated.Modules.Artifacts, ","); got != "build/*.modl" {
+		t.Errorf("artifacts = %q, want the declared glob", got)
+	}
+	if !stated.Modules.RequirePrivateModuleConsent {
+		t.Error("the stated opt-in did not parse")
+	}
+	filled := stated.Filled(DefaultDoc())
+	if got := strings.Join(filled.Modules.Artifacts, ","); got != "build/*.modl" {
+		t.Errorf("Filled changed the declared globs to %q", got)
+	}
+	if !filled.Modules.RequirePrivateModuleConsent {
+		t.Error("Filled cleared the stated opt-in")
+	}
+	rendered := string(filled.Render())
+	for _, want := range []string{`artifacts = ["build/*.modl"]`, "require_private_module_consent = true"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("render dropped %s:\n%s", want, rendered)
+		}
+	}
+	again, err := ParseDoc([]byte(rendered), "igdev.toml")
+	if err != nil {
+		t.Fatalf("round trip: %v", err)
+	}
+	if again.Modules.ArtifactsEmpty() || !again.Modules.RequirePrivateModuleConsent {
+		t.Errorf("round trip lost the stated keys: %+v", again.Modules)
+	}
+}
+
 // A key igdev does not know is refused, not ignored: schema v1 is a closed
 // layout, and a typo must not silently do nothing.
 func TestParseDocRejectsUnknownKeys(t *testing.T) {
@@ -66,6 +151,11 @@ func TestValidateRejectsBadValues(t *testing.T) {
 		{"edition", func(d *Doc) { d.Ignition.Edition = "Standard Edition" }, "ignition.edition"},
 		{"tool min version", func(d *Doc) { d.Tool.MinVersion = "soon" }, "tool.min_version"},
 		{"module id", func(d *Doc) { d.Modules.Enabled = []string{"has space"} }, "modules.enabled"},
+		{"empty artifact glob", func(d *Doc) { d.Modules.Artifacts = []string{" "} }, "modules.artifacts"},
+		{"absolute artifact glob", func(d *Doc) { d.Modules.Artifacts = []string{"/tmp/*.modl"} }, "modules.artifacts"},
+		{"traversing artifact glob", func(d *Doc) { d.Modules.Artifacts = []string{"../*.modl"} }, "modules.artifacts"},
+		{"doublestar artifact glob", func(d *Doc) { d.Modules.Artifacts = []string{"build/**/*.modl"} }, "modules.artifacts"},
+		{"broken artifact glob", func(d *Doc) { d.Modules.Artifacts = []string{"build/[.modl"} }, "modules.artifacts"},
 		{"empty scan path", func(d *Doc) { d.Scan.Jython = []string{" "} }, "scan.jython"},
 		{"gateway heap", func(d *Doc) { d.Gateway.MemoryMB = -1 }, "gateway.memory_mb"},
 		{"empty overlay path", func(d *Doc) { d.Catalog.OverlayPaths = []string{" "} }, "catalog.overlay_paths"},

@@ -55,6 +55,11 @@ type Input struct {
 	MemoryMB int
 	// Timezone is the Gateway timezone.
 	Timezone string
+	// AllowUnsignedModules is the contract's request that the Gateway load a
+	// module artifact that carries no valid signature. It is rendered as
+	// IGNITION_ALLOW_UNSIGNED_MODULES, which the Compose file hands the Gateway as
+	// -Dignition.allowunsignedmodules.
+	AllowUnsignedModules bool
 	// Ports are the loopback ports allocated to this Instance.
 	Ports ports.Triplet
 	// RuntimeDir is the absolute path of the build context, `.igdev/runtime`.

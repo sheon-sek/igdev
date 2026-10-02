@@ -10,6 +10,13 @@ use `igdev gateway wait`, which is also the last step of `igdev gateway reset`.
 --force starts the Gateway even when the Capacity Gate refuses, which is the
 escape hatch for a machine where the measurement is wrong or the risk is accepted.
 
+The staged private modules this checkout holds are accepted by their module id —
+ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS — so a staged `.modl` that declares a
+license or carries a self-signed certificate loads here without a human step. A
+contract with `[modules] require_private_module_consent = true` demands the
+machine-global module-license and module-cert terms first and stops at exit level 3
+without them (ADR 0006).
+
 ## Usage
 
 ```text
@@ -45,4 +52,7 @@ url, ports, and capacity (measured, available_mb, required_mb, headroom_mb, forc
 returns as soon as the container is started: follow it with igdev gateway wait or igdev
 gateway smoke, and never assume the URL from the address block is answering yet. A
 refusal is IGDEV_E_CAPACITY at exit 3 — a human frees memory or passes --force — and a
-machine that was never set up is IGDEV_E_SETUP_REQUIRED, repaired with igdev setup.
+machine that was never set up is IGDEV_E_SETUP_REQUIRED, repaired with igdev setup. The
+staged private modules are accepted by module id as part of starting (ADR 0006); with
+[modules] require_private_module_consent the run stops at exit 3 until the
+module-license and module-cert terms are recorded.

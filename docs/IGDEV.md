@@ -174,7 +174,8 @@ state it.
 contract's declared schema version, whether this CLI supports that schema
 (`contract.schema_supported`), the Contract Digest, and the Checkout Setup's
 `setup.stamp_state` (`required` / `current` / `stale`) — plus the Instance the record
-names (`setup.instance_id`, `setup.namespace`, `setup.ports`), the machine Consent term
+names (`setup.instance_id`, `setup.namespace`, `setup.ports`), the Gateway option the contract
+states (`gateway.allow_unsigned_modules`), the machine Consent term
 by term (`consent`), and every config key with the tier that won. status reports the
 Gate's verdict, it never enforces it.
 
@@ -189,15 +190,25 @@ the new `digest`. A run that changes nothing writes nothing and prints nothing.
 
 The schema v1 layout is closed and version-checked: `schema = 1`, then `[project]
 name`, `[tool] min_version`, `[ignition] version|jython_version|edition`,
-`[modules] enabled`, `[scan] jython|capabilities`, `[catalog] overlay_paths`
+`[modules] enabled|artifacts|require_private_module_consent`, `[scan] jython|capabilities`,
+`[catalog] overlay_paths`
 (omitted when empty), `[commands] check|test|build|smoke`
-(omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints`. A key igdev does
-not know is refused, and a version-like field holds a version. Fields the file leaves
-out fall back to the embedded defaults, so a minimal `schema = 1` contract is valid.
-`smoke_endpoints` is the one optional list: it is omitted from the rendered contract
-unless it is non-empty, and a checkout that does not state it smokes the root document
-alone. `init` merges: a flag overrides the value it names and everything else the file
-holds is preserved; an empty value (`--modules ""`) clears a field.
+(omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints|allow_unsigned_modules`.
+A key igdev does not know is refused, and a version-like field holds a version. Fields
+the file leaves out fall back to the embedded defaults, so a minimal `schema = 1`
+contract is valid. Four keys are optional and omitted from the rendered contract while
+they hold the schema default: `smoke_endpoints` (a checkout that does not state it smokes
+the root document alone), `modules.artifacts` (a contract that does not state it has
+`igdev build` stage nothing on its own), `gateway.allow_unsigned_modules` (default false:
+the Gateway loads only signed module artifacts), and
+`modules.require_private_module_consent` (default false: the private modules the checkout
+staged are accepted as part of starting the Gateway, ADR 0006). Optional means additive — a
+contract written before either key existed parses, renders, and behaves exactly as it
+did, and stating an optional key is an edit of a tracked file, so it goes through
+`igdev init` and makes the Checkout Setup stale until `igdev setup` re-materializes it.
+`init` merges: a flag
+overrides the value it names and everything else the file holds is preserved; an empty
+value (`--modules ""`) clears a field.
 
 `[catalog] overlay_paths` is additive to schema v1, so a contract written before this
 key existed keeps parsing and behaves exactly as it did — the Effective Catalog is then
@@ -276,6 +287,15 @@ source and says so. The rendered runtime files carry
 no secret at all — the Compose environment only *references* the credential variables,
 which the igdev process supplies at `gateway up` time.
 
+**Gateway options.** One contract key reaches the Gateway through the rendered Compose
+environment: `[gateway] allow_unsigned_modules` becomes `IGNITION_ALLOW_UNSIGNED_MODULES`,
+which the rendered Compose file passes to the Gateway as
+`-Dignition.allowunsignedmodules`. It is the switch a module repository that builds
+unsigned artifacts needs — a `.modl` with no valid signature otherwise never loads. The
+rendered value is `false` unless a contract asks for `true`, so the file a checkout
+materializes without the key is byte-identical to the one it materialized before the key
+existed.
+
 **Consent.** The record is machine-global: `~/.config/igdev/accepted.toml`, keyed by
 term (`ignition-eula`, `module-license`, `module-cert`) and holding when each was
 accepted and by which CLI. Only a human-invoked command writes it — `igdev setup
@@ -284,6 +304,20 @@ at exit level 3, naming the exact command in Remediation. Consent is checked bef
 anything is written, so a refused setup leaves the tree untouched. Re-accepting on a
 machine that already consented is a successful no-op: the first acceptance is the
 legal fact, so its timestamp does not move.
+
+**Private module acceptance.** The private modules a checkout stages are its own
+artifacts — in a module repository the developer is their author — so starting a Gateway
+accepts them without a human step: `gateway up`/`reset` hand the module id of every
+staged artifact to the container as `ACCEPT_MODULE_LICENSES` and `ACCEPT_MODULE_CERTS`
+(comma-separated, the way the image reads them), which is what lets a `.modl` that
+declares a license or carries a self-signed certificate load. Built-in modules are never
+named, because only the checkout's own staging directory is read. A contract that wants
+the strict gate states `[modules] require_private_module_consent = true`: the
+machine-global `module-license` and `module-cert` terms are then required before any id
+is passed, and a checkout without them stops at exit level 3 naming
+`igdev setup --accept-module-license` and `--accept-module-certificate`. `agent context`
+reports the ids igdev would pass (`modules.auto_accepted`) and whether the opt-in is in
+force, so an unattended run knows which behaviour it gets (ADR 0006).
 
 ## The Gateway lifecycle
 
@@ -313,9 +347,10 @@ igdev gateway credentials --json    {username, password}; human mode never print
 
 Every engine call is `docker compose --project-name igdev-<instance> --file
 <runtime>/compose.yaml --env-file <runtime>/compose.env <verb>`, with the admin
-credentials and the staged Baseline's restore arguments supplied from the process
-environment — so a parallel worktree's Instance can never be addressed by mistake, and
-no rendered file carries a secret.
+credentials, the staged Baseline's restore arguments, and the accepted private module
+ids supplied from the process environment — so a parallel worktree's Instance can never
+be addressed by mistake, and no rendered file carries a secret or has to be rewritten
+when the staged set changes.
 
 `wait` accepts bare seconds (`--timeout 240`) or a Go duration (`--timeout 3m`);
 180 s is the default, 60 s for `smoke`. A failed wait reports the last 50 log lines on
@@ -571,6 +606,19 @@ whitelist survives, so a whitelisted module whose artifact was cleared reads as
 
 Both write verbs pass the full Gate, so they need a current Checkout Setup, and both
 report what the re-materialization did to each runtime file.
+
+A repository whose own build produces the artifacts declares that instead of staging by
+hand: `[modules].artifacts` holds repository-relative globs, and after a successful
+build stage `igdev build` resolves each one against the Project Root and stages every
+match exactly as `module add` would — id, name, and version read the same way, the copy
+atomic, and no contract change. Staging an artifact also removes any other staged file
+that declares the same module id, so a version bump (a new file name for the same
+module) replaces the previous build instead of leaving two builds of one module mounted
+beside each other. A glob that matches nothing fails the build with
+`IGDEV_E_MODULE_ARTIFACT_MISSING`: a contract that declares what its build produces and
+finds none of it has nothing to stage, and silence would look like success. Artifacts
+whose module id the build no longer produces are left alone — they are still cleared
+with `module clear`.
 
 `igdev module cache-path` prints the machine-wide module cache directory for the
 resolved Ignition version (`<XDG cache>/igdev/modules/<version>`), as a bare path in the
@@ -960,9 +1008,11 @@ The verb is not part of the check pipeline and has no e2e tier of its own.
 
 `module validate` as its own verb is not part of ticket 14: what it used to mean is the
 pipeline's first stage (`module-validate`), and the predecessor's REST-catalog structural
-validation is covered instead by the embedded Core Catalog's digest tests. No command
-demands the module-license or module-certificate terms yet (the Consent terms exist and
-`setup` records them), so the module surface is otherwise read-only.
+validation is covered instead by the embedded Core Catalog's digest tests. The
+module-license and module-certificate Consent terms are demanded only where a contract
+opts in with `[modules] require_private_module_consent = true`; by default igdev accepts
+the private modules a checkout staged itself when it starts a Gateway (ADR 0006), and the
+module surface is otherwise read-only.
 
 Ticket 19 is the cutover, and the "not yet dogfooding" state above is gone: this
 repository carries its own Project Contract and runs on the installed binary. `igdev.toml`

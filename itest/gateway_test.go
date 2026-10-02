@@ -38,6 +38,22 @@ timezone = "UTC"
 smoke_endpoints = ["/system/gateway/info", "/data/api/v1/gateway-info"]
 `
 
+// strictConsentContract opts into the human gate for the private modules it stages
+// (ADR 0006).
+const strictConsentContract = `schema = 1
+
+[project]
+name = "fixture"
+
+[modules]
+enabled = []
+require_private_module_consent = true
+
+[gateway]
+memory_mb = 2048
+timezone = "UTC"
+`
+
 // freeTriplet asks the kernel for a port triplet the test then pins into the
 // Checkout Setup, so a gateway test knows its own addresses.
 func freeTriplet(t *testing.T) ports.Triplet {
@@ -285,6 +301,82 @@ func TestGatewayUpStartsTheNamespacedProject(t *testing.T) {
 	}
 
 	// down --volumes retires both, so the fixture leaves no docker litter.
+	testrig.WantExit(t, env.RunIn(dir, "gateway", "down", "--volumes"), contract.ExitOK)
+	env.AssertNoDockerOrphans(t)
+}
+
+// The private modules a checkout stages are its own artifacts, so starting a
+// Gateway accepts them by module id — no human step for the module's license or
+// certificate (ADR 0006). Built-ins are never named: only the staging directory is
+// read.
+func TestGatewayAcceptsTheStagedPrivateModules(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.ShimDocker()
+	env.ShimMeminfo(65536)
+	dir, _ := gatewayFixture(t, env, testrig.MinimalContract)
+	for _, staged := range []struct{ rel, id string }{
+		{"downloads/acme-vision.modl", "com.acme.vision"},
+		{"downloads/acme-plc.modl", "com.acme.plc"},
+	} {
+		path := modl(t, env, staged.rel, "<MODL_"+staged.id+">", moduleXML(staged.id, "Acme", "1.0.0"))
+		testrig.WantExit(t, env.RunIn(dir, "module", "add", path), contract.ExitOK)
+	}
+
+	testrig.WantExit(t, env.RunIn(dir, "gateway", "up", "--json"), contract.ExitOK)
+	// The image reads both variables as a comma-separated list of module ids, in
+	// the order the staging directory reports them.
+	const want = "com.acme.plc,com.acme.vision"
+	call := env.DockerCalls(t)[0]
+	for _, name := range []string{"ACCEPT_MODULE_LICENSES", "ACCEPT_MODULE_CERTS"} {
+		if got := call.GatewayEnv(name); got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+
+	// A checkout that stages nothing names nothing.
+	testrig.WantExit(t, env.RunIn(dir, "module", "clear"), contract.ExitOK)
+	empty := env.RunIn(dir, "gateway", "up", "--json")
+	testrig.WantExit(t, empty, contract.ExitOK)
+	calls := env.DockerCalls(t)
+	last := calls[len(calls)-1]
+	for _, name := range []string{"ACCEPT_MODULE_LICENSES", "ACCEPT_MODULE_CERTS"} {
+		if got := last.GatewayEnv(name); got != "" {
+			t.Errorf("%s = %q with nothing staged, want empty", name, got)
+		}
+	}
+
+	testrig.WantExit(t, env.RunIn(dir, "gateway", "down", "--volumes"), contract.ExitOK)
+	env.AssertNoDockerOrphans(t)
+}
+
+// [modules] require_private_module_consent puts the machine-global terms back in
+// front of that: nothing is passed until a person recorded both, and the refusal
+// names both accept commands so one pass records them (ADR 0004, ADR 0006).
+func TestGatewayRequiresConsentForStagedPrivateModules(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.ShimDocker()
+	env.ShimMeminfo(65536)
+	dir, _ := gatewayFixture(t, env, strictConsentContract)
+	path := modl(t, env, "downloads/acme-vision.modl", "<MODL>", moduleXML("com.acme.vision", "Acme Vision", "1.0.0"))
+	testrig.WantExit(t, env.RunIn(dir, "module", "add", path), contract.ExitOK)
+
+	// The EULA is on record (the fixture recorded it); the module terms are not.
+	refused := env.RunIn(dir, "gateway", "up", "--json")
+	testrig.WantExit(t, refused, contract.ExitHumanAction)
+	envelope := testrig.Envelope(t, refused.Stdout)
+	testrig.WantCode(t, envelope, contract.CodeConsentRequired)
+	testrig.WantRemediation(t, envelope, "igdev setup --accept-module-license")
+	testrig.WantRemediation(t, envelope, "igdev setup --accept-module-certificate")
+	env.AssertNoDockerCalls(t)
+
+	// A person records both terms; then the id is passed like any other.
+	testrig.WantExit(t, env.RunIn(dir, "setup", "--accept-module-license", "--accept-module-certificate"), contract.ExitOK)
+	accepted := env.RunIn(dir, "gateway", "up", "--json")
+	testrig.WantExit(t, accepted, contract.ExitOK)
+	if got := env.DockerCalls(t)[0].GatewayEnv("ACCEPT_MODULE_LICENSES"); got != "com.acme.vision" {
+		t.Errorf("ACCEPT_MODULE_LICENSES = %q, want the staged module after the human accepted", got)
+	}
+
 	testrig.WantExit(t, env.RunIn(dir, "gateway", "down", "--volumes"), contract.ExitOK)
 	env.AssertNoDockerOrphans(t)
 }

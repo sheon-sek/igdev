@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "stages": [
+      {
+        "stage": "declared-build",
+        "status": "passed",
+        "command": "mkdir -p build && cp build-src/*.modl build/"
+      },
+      {
+        "stage": "module-restage",
+        "status": "passed",
+        "modules_dir": "<ROOT>/repo/.igdev/modules",
+        "staged": [
+          "com.acme.vision"
+        ],
+        "runtime_dir": "<ROOT>/repo/.igdev/runtime",
+        "artifacts": [
+          {
+            "glob": "build/*.modl",
+            "source": "<ROOT>/repo/build/com.acme.vision-1.2.3.modl",
+            "artifact": "com.acme.vision-1.2.3.modl",
+            "id": "com.acme.vision",
+            "name": "Acme Vision",
+            "version": "1.2.3",
+            "action": "created"
+          }
+        ]
+      }
+    ]
+  }
+}

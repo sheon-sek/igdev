@@ -20,6 +20,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/docker"
 	"github.com/sheon-sek/igdev/internal/gate"
 	"github.com/sheon-sek/igdev/internal/localconfig"
+	"github.com/sheon-sek/igdev/internal/modules"
 	"github.com/sheon-sek/igdev/internal/ports"
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/runtimeassets"
@@ -225,6 +226,16 @@ func (a *App) gatewayContext() (*gateway, error) {
 	if baseline.Read(baseline.Dir(filepath.Join(found.Root, project.StateDir))).Staged {
 		restoreArgs = baseline.Args()
 	}
+	// The private modules this checkout stages are the checkout's own artifacts, so
+	// the Gateway is told to accept their licenses and certificates as part of
+	// starting it (ADR 0006) — a staged `.modl` that declares a license otherwise
+	// never loads. `[modules] require_private_module_consent` puts the
+	// machine-global terms back in front of that, and the ids are then passed only
+	// once a human recorded them.
+	accepted, fault := moduleAcceptance(found, doc)
+	if fault != nil {
+		return nil, fault
+	}
 	return &gateway{
 		found: found, res: res, doc: doc, stamp: stamp,
 		username: username, password: password, passwordSource: source,
@@ -233,17 +244,48 @@ func (a *App) gatewayContext() (*gateway, error) {
 			File:      filepath.Join(runtimeDir, runtimeassets.ComposeFileName),
 			EnvFile:   filepath.Join(runtimeDir, runtimeassets.EnvFileName),
 			Dir:       found.Root,
-			// The credentials and the Baseline restore arguments reach Compose
-			// from the process environment, which is why no rendered file carries
-			// a secret and no rendered file has to be rewritten when the staged
-			// Baseline changes.
+			// The credentials, the Baseline restore arguments, and the accepted
+			// private modules reach Compose from the process environment, which is
+			// why no rendered file carries a secret and no rendered file has to be
+			// rewritten when the staged set changes.
 			Env: []string{
 				"GATEWAY_ADMIN_USERNAME=" + username,
 				"GATEWAY_ADMIN_PASSWORD=" + password,
 				"GATEWAY_RESTORE_ARGS=" + restoreArgs,
+				"ACCEPT_MODULE_LICENSES=" + accepted,
+				"ACCEPT_MODULE_CERTS=" + accepted,
 			},
 		},
 	}, nil
+}
+
+// moduleAcceptance decides what the Gateway is told to accept for the private
+// modules this checkout stages: the module id of every staged artifact, joined the
+// way the image reads the two variables (`ACCEPT_MODULE_LICENSES` and
+// `ACCEPT_MODULE_CERTS` take a comma-separated list), or empty when nothing private
+// is staged. Built-in modules are never named — only artifacts in the checkout's
+// own staging directory are read.
+//
+// With `[modules] require_private_module_consent` the machine-global module-license
+// and module-cert terms gate that, and a missing term is the human-required fault
+// every other Consent refusal is (ADR 0004): the ids are passed only once a person
+// has recorded them, and the remediation names the exact command.
+func moduleAcceptance(found project.Found, doc project.Doc) (string, *contract.Fault) {
+	records, fault := modules.Scan(modules.Dir(found.Root))
+	if fault != nil {
+		return "", fault
+	}
+	ids := modules.IDs(records)
+	if len(ids) == 0 {
+		return "", nil
+	}
+	if doc.Modules.RequirePrivateModuleConsent {
+		required := []consent.Term{consent.ModuleLicense, consent.ModuleCert}
+		if fault := consent.CheckAll(consent.Path(xdg.Resolve().Config), required...); fault != nil {
+			return "", fault
+		}
+	}
+	return strings.Join(ids, ","), nil
 }
 
 // admit applies the Capacity Gate (ADR 0003) and reports the numbers it saw. A
@@ -308,6 +350,14 @@ Capacity Gate: when the host's free memory is below the requested heap plus 512 
 headroom, starting another Gateway is refused with IGDEV_E_CAPACITY at exit level 3
 until memory is freed or ` + "`--force`" + ` accepts the risk.
 
+The private modules this checkout stages are accepted as part of starting it: their ids
+reach the Gateway as ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS, so a staged
+` + "`.modl`" + ` that declares a license or carries a self-signed certificate loads without a
+human step (ADR 0006). ` + "`[modules] require_private_module_consent = true`" + ` puts the
+machine-global module-license and module-cert terms back in front of that: without them
+the run stops with IGDEV_E_CONSENT_REQUIRED at exit level 3, naming the commands that
+record them.
+
 The container engine is only ever addressed through this Instance's project:
 ` + "`docker compose`" + ` is given the project name, the Compose file ` + "`igdev setup`" + `
 rendered, and that file's environment file (` + "`--project-name`" + `, ` + "`--file`" + `,
@@ -348,7 +398,14 @@ recorded ports and the generated admin credentials. The Gateway is not waited fo
 use ` + "`igdev gateway wait`" + `, which is also the last step of ` + "`igdev gateway reset`" + `.
 
 --force starts the Gateway even when the Capacity Gate refuses, which is the
-escape hatch for a machine where the measurement is wrong or the risk is accepted.`,
+escape hatch for a machine where the measurement is wrong or the risk is accepted.
+
+The staged private modules this checkout holds are accepted by their module id —
+ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS — so a staged ` + "`.modl`" + ` that declares a
+license or carries a self-signed certificate loads here without a human step. A
+contract with ` + "`[modules] require_private_module_consent = true`" + ` demands the
+machine-global module-license and module-cert terms first and stops at exit level 3
+without them (ADR 0006).`,
 		Example: `  igdev gateway up
   igdev gateway up --force
   igdev gateway up --json`,
