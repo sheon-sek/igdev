@@ -41,7 +41,9 @@ home=""
 if [ -n "$state" ]; then
   home="$(dirname "$state")/docker"
 fi
-escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+# JSON-escape one argument; a multi-line argument (a script passed with -c)
+# keeps its newlines as \n.
+escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' | awk 'NR > 1 { printf "\\n" } { printf "%s", $0 }'; }
 n=1
 if [ -n "$state" ] && [ -f "$state" ]; then
   mkdir -p "$(dirname "$state")"
@@ -132,6 +134,18 @@ case "$verb" in
       sep=","
     done
     printf ']\n'
+    ;;
+  exec)
+    # A running Gateway answers; the command itself is not run. A data put's
+    # stdin is drained, a data get answers a fixed file, anything else echoes its
+    # argv, and IGDEV_SHIM_EXEC_EXIT is the command's exit code.
+    [ -f "$home/containers/$container" ] || { echo "service \"gateway\" is not running" >&2; exit 1; }
+    case " $* " in
+      *" igdev-data-put "*) cat >/dev/null ;;
+      *" igdev-data-get "*) printf 'shim data file\n' ;;
+      *) printf 'shim exec:'; for a in "$@"; do printf ' %s' "$a"; done; printf '\n' ;;
+    esac
+    exit "${IGDEV_SHIM_EXEC_EXIT:-0}"
     ;;
   logs)
     printf '%s  | igdev shim: gateway log line 1\n' "$container"

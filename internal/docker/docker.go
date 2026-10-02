@@ -135,6 +135,49 @@ func (c Compose) Logs(tail int) (string, *contract.Fault) {
 	return stdout, nil
 }
 
+// ExecRequest is one command run inside the Gateway container.
+type ExecRequest struct {
+	// User is the container user, `ignition`, `root`, or a uid:gid.
+	User string
+	// Workdir, when set, is the working directory inside the container.
+	Workdir string
+	// Argv is the command and its arguments.
+	Argv []string
+	// Stdin, Stdout, and Stderr are the command's streams; a nil Stdin sends none.
+	Stdin          io.Reader
+	Stdout, Stderr io.Writer
+}
+
+// Exec runs one command in the Gateway container without a TTY and reports its
+// exit code. A non-nil error means the command could not be run at all (no
+// docker); a command that ran and failed is exit != 0 with a nil error, because
+// `docker compose exec` passes the command's own exit code through.
+func (c Compose) Exec(req ExecRequest) (int, error) {
+	verb := []string{"exec", "-T"}
+	if req.User != "" {
+		verb = append(verb, "--user", req.User)
+	}
+	if req.Workdir != "" {
+		verb = append(verb, "--workdir", req.Workdir)
+	}
+	verb = append(verb, GatewayServiceName)
+	verb = append(verb, req.Argv...)
+	cmd := exec.Command("docker", c.args(verb...)...)
+	cmd.Dir = c.Dir
+	cmd.Env = append(os.Environ(), c.Env...)
+	cmd.Stdin = req.Stdin
+	cmd.Stdout, cmd.Stderr = req.Stdout, req.Stderr
+	err := cmd.Run()
+	if err == nil {
+		return 0, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), nil
+	}
+	return -1, err
+}
+
 // args renders the frozen prefix every compose call carries.
 func (c Compose) args(verb ...string) []string {
 	out := []string{"compose", "--project-name", c.Namespace, "--file", c.File, "--env-file", c.EnvFile}

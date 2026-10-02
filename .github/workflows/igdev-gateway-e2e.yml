@@ -127,6 +127,32 @@ jobs:
           igdev gateway status --json | jq -e '.data.host_address == "host.docker.internal" and (.data.container | endswith("-gateway-1"))' >/dev/null \
             || { echo "gateway status does not report the container and host address"; exit 1; }
 
+      # Phase 3 (#49, #31): reach inside through igdev, never raw docker. The
+      # engineering-tools proof places a marker and reads a report this way; the
+      # host check proves host.docker.internal (#48) from inside the Gateway.
+      - name: Assert exec, data put/get, and the host address
+        working-directory: ${{ env.CHECKOUT }}
+        run: |
+          set -euo pipefail
+          igdev gateway exec -- ls /usr/local/bin/ignition/data | grep -x config >/dev/null \
+            || { echo "gateway exec did not list the data directory"; exit 1; }
+          echo "run" > marker.once
+          igdev gateway data put marker.once engineering-tools/proof/run-udt-sdk-proof.once --json \
+            | jq -e '.ok and .data.bytes == 4' >/dev/null
+          igdev gateway exec -- stat -c '%u:%g' /usr/local/bin/ignition/data/engineering-tools/proof/run-udt-sdk-proof.once \
+            | grep -x '2003:0' >/dev/null || { echo "the put file is not owned by the Gateway"; exit 1; }
+          igdev gateway data get engineering-tools/proof/run-udt-sdk-proof.once back.once
+          cmp marker.once back.once
+          code=0; igdev gateway data get ../etc/passwd --json >/dev/null || code=$?
+          [ "$code" = 2 ] || { echo "a .. path was not refused as usage (exit $code)"; exit 1; }
+
+          python3 -m http.server 18777 --bind 0.0.0.0 >/dev/null 2>&1 &
+          server=$!
+          for _ in 1 2 3 4 5; do curl -fs -o /dev/null http://127.0.0.1:18777/ && break; sleep 1; done
+          status="$(igdev gateway exec -- curl -s -o /dev/null -w '%{http_code}' http://host.docker.internal:18777/ || true)"
+          kill "$server"
+          [ "$status" = 200 ] || { echo "the Gateway could not reach the host (got '$status')"; exit 1; }
+
       - name: Collect diagnostics on failure
         if: failure()
         working-directory: ${{ env.CHECKOUT }}

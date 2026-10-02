@@ -451,6 +451,8 @@ never from a file on disk.`,
 		a.newGatewayURLCmd(),
 		a.newGatewayCredentialsCmd(),
 		a.newGatewayTrialCmd(),
+		a.newGatewayExecCmd(),
+		a.newGatewayDataCmd(),
 	)
 	return cmd
 }

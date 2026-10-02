@@ -47,7 +47,11 @@ Orient before acting: igdev status --json works everywhere, and igdev agent cont
 | [`igdev doctor`](doctor.md) | Audit the host prerequisites igdev's runtime work depends on |
 | [`igdev gateway`](gateway.md) | Control this Instance's Ignition Gateway |
 | [`igdev gateway credentials`](gateway-credentials.md) | Read the Gateway admin credentials (the password only as JSON) |
+| [`igdev gateway data`](gateway-data.md) | Move files into and out of the Gateway's data directory |
+| [`igdev gateway data get`](gateway-data-get.md) | Copy a file out of the Gateway's data directory |
+| [`igdev gateway data put`](gateway-data-put.md) | Copy a host file into the Gateway's data directory |
 | [`igdev gateway down`](gateway-down.md) | Stop this Instance's Gateway |
+| [`igdev gateway exec`](gateway-exec.md) | Run a command inside this Instance's Gateway container |
 | [`igdev gateway logs`](gateway-logs.md) | Print this Instance's Gateway log |
 | [`igdev gateway reset`](gateway-reset.md) | Recreate this Instance's Gateway from scratch |
 | [`igdev gateway restart`](gateway-restart.md) | Restart this Instance's Gateway container |
