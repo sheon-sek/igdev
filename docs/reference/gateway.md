@@ -39,7 +39,7 @@ never from a file on disk.
 | [`igdev gateway status`](gateway-status.md) | Report this Instance's compose state and recorded URL |
 | [`igdev gateway up`](gateway-up.md) | Build if needed and start this Instance's Gateway |
 | [`igdev gateway url`](gateway-url.md) | Print this Instance's recorded Gateway URL |
-| [`igdev gateway wait`](gateway-wait.md) | Wait until this Instance's Gateway answers HTTP |
+| [`igdev gateway wait`](gateway-wait.md) | Wait until this Instance's Gateway reports running |
 
 ## Usage
 

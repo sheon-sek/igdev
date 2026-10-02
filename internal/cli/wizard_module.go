@@ -13,10 +13,12 @@ import (
 	"github.com/sheon-sek/igdev/internal/xdg"
 )
 
-// The `module add` Wizard, in the frozen step sequence (4 steps, Q19): the
-// artifact and its metadata, the notices a private module carries, the
-// confirmation to copy it, and the offer to enable it.
-const moduleAddWizardSteps = 4
+// The `module add` Wizard, in the frozen step sequence (3 steps, Q19): the
+// artifact and its metadata, the notices a private module carries, and the
+// confirmation to copy it. Enabling is not a step: a staged module is enabled by
+// being staged (issue #34), so a question about the whitelist could not change
+// anything.
+const moduleAddWizardSteps = 3
 
 // setupModuleAddWizard runs the `module add` steps that do not need the Project
 // Contract: the artifact the invocation did not name, and the metadata it
@@ -46,8 +48,8 @@ func (a *App) setupModuleAddWizard(cmd *cobra.Command, run wizardRun, file strin
 
 // moduleAddWizardSteps runs the rest of the `module add` Wizard, once the Gate
 // has admitted the checkout: what the artifact declares, what a private module
-// carries with it, the confirmation to copy, and the offer to enable.
-func (a *App) moduleAddWizardSteps(cmd *cobra.Command, run wizardRun, file string) error {
+// carries with it, and the confirmation to copy.
+func (a *App) moduleAddWizardSteps(_ *cobra.Command, run wizardRun, file string) error {
 	if !run.prompt {
 		return nil
 	}
@@ -95,26 +97,5 @@ func (a *App) moduleAddWizardSteps(cmd *cobra.Command, run wizardRun, file strin
 	if !copyIt {
 		return a.wizardDeclined("module add", fmt.Sprintf("%s was copied", record.Artifact))
 	}
-
-	// Step 4: the whitelist, which is a tracked change and makes the Checkout
-	// Setup stale until `igdev setup` re-materializes it.
-	a.wizardBanner("module add", 4, moduleAddWizardSteps, "the module whitelist")
-	a.wizardNote("an empty [modules].enabled loads every module; a whitelist restricts the Gateway to it")
-	var enable bool
-	if err := a.ask("module add", huh.NewConfirm().
-		Title(fmt.Sprintf("Also add %s to [modules].enabled?", record.ID)).
-		Description("This rewrites igdev.toml, so the Checkout Setup becomes stale until `igdev setup` runs.").
-		Affirmative("Enable it").
-		Negative("Stage only").
-		Value(&enable)); err != nil {
-		return err
-	}
-	if !enable {
-		return nil
-	}
-	if err := cmd.Flags().Set("enable", "true"); err != nil {
-		return wizardFlagFault("enable", err)
-	}
-	a.wizardNote("enabling %s: the contract is rewritten, and `igdev setup` re-materializes the checkout", record.ID)
 	return nil
 }

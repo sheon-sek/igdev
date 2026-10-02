@@ -391,14 +391,19 @@ func TestModuleAddStagesArtifact(t *testing.T) {
 	res.AssertNoLeaksOutside(t, dir)
 	assertNoLitter(t, env)
 
-	// The staged id is enable-able and require-able: a private module is a
-	// first-class module id once its artifact is there.
+	// The staged id needs no enable: staging is what enables it, and its id is local
+	// build output, so `enable` reports it as already enabled and writes nothing
+	// (issue #34).
 	stagedEnable := env.RunIn(dir, "module", "enable", "com.acme.vision", "--json")
 	testrig.WantExit(t, stagedEnable, contract.ExitOK)
-	if data := enableData(t, stagedEnable.Stdout); len(data.Added) != 1 || data.Added[0] != "com.acme.vision" {
-		t.Errorf("enabling the staged module reported %+v", data)
+	if data := enableData(t, stagedEnable.Stdout); len(data.Added) != 0 ||
+		len(data.AlreadyEnabled) != 1 || data.AlreadyEnabled[0] != "com.acme.vision" ||
+		data.Contract.Action != "unchanged" {
+		t.Errorf("enabling the staged module reported %+v, want an unchanged contract", data)
 	}
-	testrig.WantExit(t, env.RunIn(dir, "setup", "--json"), contract.ExitOK)
+	if body := readFile(t, filepath.Join(dir, project.ContractFile)); strings.Contains(body, "com.acme.vision") {
+		t.Errorf("enabling the staged module wrote its id to the contract:\n%s", body)
+	}
 	testrig.WantExit(t, env.RunIn(dir, "module", "require", "module:com.acme.vision"), contract.ExitOK)
 
 	// A second artifact, declaring a different module id, is a second module:
@@ -749,6 +754,53 @@ func modlBytes(t *testing.T, env *testrig.Env, rel, token string, size int, rand
 	}
 	env.RegisterReplacement(path, token)
 	return path
+}
+
+// A staged private module is enabled by being staged: the rendered module list
+// carries its id, so a whitelisted contract needs no `module enable` and no local
+// artifact id in the tracked contract (issue #34).
+func TestStagedPrivateModuleIsImplicitlyEnabled(t *testing.T) {
+	env := testrig.NewEnv(t)
+	dir := moduleFixture(t, env, "com.inductiveautomation.perspective")
+	path := modl(t, env, "downloads/acme-vision.modl", "<MODL>", moduleXML("com.acme.vision", "Acme Vision", "1.2.3"))
+	testrig.WantExit(t, env.RunIn(dir, "module", "add", path), contract.ExitOK)
+
+	envFile := readFile(t, filepath.Join(dir, project.StateDir, "runtime", "compose.env"))
+	want := "GATEWAY_MODULES_ENABLED=com.inductiveautomation.perspective,com.acme.vision"
+	if !strings.Contains(envFile, want) {
+		t.Errorf("compose.env does not carry %q:\n%s", want, envFile)
+	}
+	// The id is local build output: staging it must not write it to the contract.
+	if body := readFile(t, filepath.Join(dir, project.ContractFile)); strings.Contains(body, "com.acme.vision") {
+		t.Errorf("the staged id reached the tracked contract:\n%s", body)
+	}
+
+	// `enable` agrees: the staged id is already enabled, so nothing is written.
+	enabled := env.RunIn(dir, "module", "enable", "com.acme.vision", "com.inductiveautomation.opcua", "--json")
+	testrig.WantExit(t, enabled, contract.ExitOK)
+	state := enableData(t, enabled.Stdout)
+	if len(state.Added) != 1 || state.Added[0] != "com.inductiveautomation.opcua" {
+		t.Errorf("added = %v, want the built-in id alone", state.Added)
+	}
+	if len(state.AlreadyEnabled) != 1 || state.AlreadyEnabled[0] != "com.acme.vision" {
+		t.Errorf("already_enabled = %v, want the staged id", state.AlreadyEnabled)
+	}
+
+	// module list reports the staged module as enabled, not as switched off.
+	listed := env.RunIn(dir, "module", "list", "--private", "--json")
+	testrig.WantExit(t, listed, contract.ExitOK)
+	var data struct {
+		Private []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"private"`
+	}
+	testrig.DataOf(t, listed.Stdout, &data)
+	if len(data.Private) != 1 || data.Private[0].ID != "com.acme.vision" ||
+		data.Private[0].Status != "enabled (staged)" {
+		t.Errorf("private rows = %+v, want the staged module reported as enabled (staged)", data.Private)
+	}
+	listed.AssertNoLeaksOutside(t, dir, env.Home, env.Path("state"))
 }
 
 // argvFlagValue is the value of `--flag value` or `--flag=value` in a recorded

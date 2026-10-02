@@ -2,9 +2,16 @@
 
 # `igdev gateway wait`
 
-wait polls the recorded Gateway URL until it answers with anything below 400, or
-until the timeout (default 180s) expires. A redirect counts: a fresh Gateway answers
-its root document with a redirect to the web UI.
+wait polls the Gateway's readiness endpoint until it reports RUNNING, or until the
+timeout (default 180s) expires.
+
+Answering HTTP is not being ready: Jetty serves the root document — a redirect to the
+web UI — while the Gateway is still starting and before modules are mounted, so a wait
+that stopped there would hand the caller a URL that is not usable yet. The readiness
+answer is the state the Gateway reports about itself on `/StatusPing`, which is the
+same endpoint and state the Ignition image's own health check reads. Each poll is
+bounded by its own client timeout, so a socket that accepts and then hangs cannot
+swallow the deadline.
 
 On timeout the command reports the tail of the Gateway's own log, because the reason
 a Gateway never came up is in that log.
@@ -39,7 +46,11 @@ igdev gateway wait [flags]
 
 ## Agent usage
 
-pass --json for the machine contract. data is the address block. On timeout
-the command fails with the tail of the Gateway's own log in the message, because that
-log holds the reason; the Remediation names igdev gateway logs and igdev gateway status
-for the follow-up. --timeout takes seconds or a duration like 3m (default 180s).
+pass --json for the machine contract. data is the address block. The
+wait ends when the Gateway reports RUNNING on its readiness endpoint (/StatusPing) —
+the root document answering is not readiness, Jetty serves it while the Gateway is
+still starting — so a returned wait means the Gateway is usable, including its module
+routes. On timeout the command fails with the tail of the Gateway's own log in the
+message, because that log holds the reason; the Remediation names igdev gateway logs and
+igdev gateway status for the follow-up. --timeout takes seconds or a duration like 3m
+(default 180s).
