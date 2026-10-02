@@ -131,8 +131,9 @@ legal term) and `IGDEV_E_PORT_ALLOC` (the host refused three loopback binds). Th
 Gateway suite adds `IGDEV_E_CAPACITY` (exit 3: the Capacity Gate refused to start a
 Gateway and a person frees memory or passes `--force`), `IGDEV_E_GATEWAY_UNHEALTHY`
 (a Gateway did not answer before the deadline, or answered a smoke check with an error
-status) and `IGDEV_E_DOCKER` (a container-engine call failed, or the engine is not
-installed). The Baseline commands add `IGDEV_E_BASELINE_MISSING` (the `baseline set`
+status), `IGDEV_E_DOCKER` (a container-engine call failed, or the engine is not
+installed) and `IGDEV_E_DOCKER_DAEMON` (the docker CLI is there but its daemon is
+stopped or unreachable: start Docker, never `gateway reset`). The Baseline commands add `IGDEV_E_BASELINE_MISSING` (the `baseline set`
 source path is not there) and `IGDEV_E_BASELINE_INVALID` (the source exists but cannot
 be staged as a backup file); a source that is not a `.gwbk` is a usage error. The
 knowledge layer (ticket 12) adds `IGDEV_E_UNKNOWN_CAPABILITY` (nothing in the
@@ -353,6 +354,8 @@ refused verb is the same frozen shape `setup` produces, and no verb ever talks t
 engine before both hold.
 
 ```
+igdev gateway ensure [--fresh] [--min-trial D]   reuse a healthy Gateway, start a
+                                    stopped one, or reset a broken one; reports which
 igdev gateway up [--force]          build if needed, then `docker compose up --detach
                                     --build` for this Instance's project
 igdev gateway down [--volumes]      stop and remove the containers; --volumes also
@@ -404,6 +407,19 @@ stderr, because the reason a Gateway never came up is in its own log. `smoke` ap
 the same readiness gate before it checks anything, fails
 with the failing endpoint named in the message, and the transport error or status is
 in `data.checks[].error` for a passing run's report.
+
+**One call before e2e.** `ensure` is what a harness or an agent runs instead of chaining
+`status`, `up`, `wait`, and `reset`. It reuses the Gateway (`action: reused`) when the
+container runs, `/StatusPing` reports RUNNING, and the Instance API token is accepted;
+it starts it (`started`) when the container is not running; and it resets it (`reset`)
+when the Gateway reports FAULTED, rejects the token because its volume predates it,
+`--fresh` was passed, or — only with `trial_reset = "off"` — the trial has less left
+than `--min-trial`. Under the default `trial_reset = "auto"` the trial keeper resets an
+expired trial in place, so `--min-trial` is accepted, never forces a reset, and the
+report's `note` says so. The report adds `reason`, `container`, `host_address`, `trial`
+and `capacity`. The Capacity Gate and Consent are applied before anything is
+discarded, so a refusal costs nothing. A Docker daemon that is not running is
+`IGDEV_E_DOCKER_DAEMON` from every verb: start Docker, never reset.
 
 **Reaching inside.** `exec` and `data` are how a workflow touches the running
 Gateway's container without rebuilding the compose call or bypassing the Gate (#31).

@@ -45,6 +45,8 @@ var CodeDocs = []CodeDoc{
 		"Read `igdev gateway logs --tail 200`, then fix the cause."},
 	{CodeDocker, "1", "A container-engine call failed, or the engine is missing or not compose v2.",
 		"Run `igdev doctor` and report what it finds."},
+	{CodeDockerDaemon, "1", "The docker CLI is installed but cannot reach the Docker daemon: it is stopped or its socket is unreachable.",
+		"Start Docker, then run `igdev doctor`. Never `gateway reset` for this."},
 	{CodeBaselineMissing, "1", "The `baseline set` source path does not exist.",
 		"Pass the path of an existing `.gwbk`."},
 	{CodeBaselineInvalid, "1", "The `baseline set` source is a directory or cannot be read.",

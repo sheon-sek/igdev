@@ -166,6 +166,14 @@ modules this checkout staged, by module id (ACCEPT_MODULE_LICENSES and
 ACCEPT_MODULE_CERTS); a contract with [modules] require_private_module_consent = true
 instead requires the machine-global module-license and module-cert terms, and without
 them the run stops at exit 3 (ADR 0006).`,
+	"igdev gateway ensure": `pass --json for the machine contract. data carries action
+(reused, started, reset), reason (healthy, not_running, fresh, faulted, token_rejected,
+trial_short), instance_id, namespace, url, ports, container, host_address, trial (or
+null), capacity (null when reused), and note when --min-trial did not apply. Call it
+once before e2e work instead of chaining up, wait, and status: when it returns the
+Gateway answered RUNNING. A refusal is IGDEV_E_CAPACITY or IGDEV_E_CONSENT_REQUIRED at
+exit 3 and discards nothing. IGDEV_E_DOCKER_DAEMON means Docker is not running: start
+it, never reset. Pass --fresh to discard the data on purpose.`,
 	"igdev gateway up": `pass --json for the machine contract. data carries instance_id, namespace,
 url, ports, and capacity (measured, available_mb, required_mb, headroom_mb, forced). up
 returns as soon as the container is started: follow it with igdev gateway wait or igdev

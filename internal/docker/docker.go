@@ -258,9 +258,39 @@ func Fault(action, output string, err error) *contract.Fault {
 	if detail == "" {
 		detail = err.Error()
 	}
+	if DaemonDown(output) {
+		return contract.NewFault(contract.CodeDockerDaemon, contract.ExitFailure,
+			fmt.Sprintf("%s failed: the Docker daemon is not reachable: %s", action, detail)).
+			WithCause(err).
+			WithRemediation(contract.Remediation{
+				Command: "igdev doctor",
+				Why:     "start Docker first; this audits that the engine answers again",
+			})
+	}
 	return contract.NewFault(contract.CodeDocker, contract.ExitFailure,
 		fmt.Sprintf("%s failed: %s", action, detail)).
 		WithCause(err).WithRemediation(doctorRemediation())
+}
+
+// daemonDown matches what the docker CLI prints when it has no engine to talk
+// to: a stopped daemon, a missing socket, or a context pointing nowhere.
+var daemonDown = []string{
+	"Cannot connect to the Docker daemon",
+	"Is the docker daemon running?",
+	"error during connect",
+	"docker.sock: connect: no such file or directory",
+	"docker.sock: connect: connection refused",
+}
+
+// DaemonDown reports whether engine output says the daemon is unreachable, as
+// opposed to a compose call the engine received and refused.
+func DaemonDown(output string) bool {
+	for _, marker := range daemonDown {
+		if strings.Contains(output, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // Running names the igdev compose projects this machine is running, so the
