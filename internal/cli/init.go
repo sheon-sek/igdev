@@ -65,21 +65,24 @@ type initData struct {
 
 func (a *App) newInitCmd() *cobra.Command {
 	var (
-		wizard           wizardFlags
-		name             string
-		ignitionVersion  string
-		jythonVersion    string
-		edition          string
-		modules          []string
-		scanJython       []string
-		scanCapabilities []string
-		commandCheck     string
-		commandTest      string
-		commandBuild     string
-		commandSmoke     string
-		gatewayMemoryMB  int
-		gatewayTimezone  string
-		minVersion       string
+		wizard                wizardFlags
+		name                  string
+		ignitionVersion       string
+		jythonVersion         string
+		edition               string
+		modules               []string
+		moduleArtifacts       []string
+		scanJython            []string
+		scanCapabilities      []string
+		commandCheck          string
+		commandTest           string
+		commandBuild          string
+		commandSmoke          string
+		gatewayMemoryMB       int
+		gatewayTimezone       string
+		allowUnsigned         bool
+		requirePrivateConsent bool
+		minVersion            string
 	)
 
 	cmd := &cobra.Command{
@@ -97,6 +100,12 @@ maintains a minimal, version-free managed block in ` + agentsFile + `. A later r
 flag overrides the value it names, everything else the contract already holds is
 preserved, and a run that changes nothing writes nothing and prints nothing.
 Pass an empty value (--modules "" or --command-check "") to clear a field.
+A module repository can also declare what its own build produces —
+--modules-artifacts 'build/libs/*.modl' — and igdev build then stages every match,
+so the build command never has to chain igdev module add itself. A checkout that wants
+the strict Consent gate for its private modules states
+--require-private-module-consent: the machine-global module-license and module-cert
+terms are then required before a staged module's id is accepted (ADR 0006).
 
 Without --json or --yes, init never prompts an invocation that already has a contract
 to preserve: an agent's fully specified invocation is the whole interface. In a
@@ -135,15 +144,17 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 						JythonVersion: jythonVersion,
 						Edition:       edition,
 					},
-					Modules: project.Modules{Enabled: nonEmpty(modules)},
-					Scan:    project.Scan{Jython: nonEmpty(scanJython), Capabilities: nonEmpty(scanCapabilities)},
+					Modules: project.Modules{Enabled: nonEmpty(modules), Artifacts: nonEmpty(moduleArtifacts),
+						RequirePrivateModuleConsent: requirePrivateConsent},
+					Scan: project.Scan{Jython: nonEmpty(scanJython), Capabilities: nonEmpty(scanCapabilities)},
 					Commands: project.Commands{
 						Check: commandCheck,
 						Test:  commandTest,
 						Build: commandBuild,
 						Smoke: commandSmoke,
 					},
-					Gateway: project.Gateway{MemoryMB: gatewayMemoryMB, Timezone: gatewayTimezone},
+					Gateway: project.Gateway{MemoryMB: gatewayMemoryMB, Timezone: gatewayTimezone,
+						AllowUnsignedModules: allowUnsigned},
 				}
 			}
 			// initDoc is the one merge the command and the Wizard share: the
@@ -211,6 +222,8 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 	flags.StringVar(&edition, "edition", "", "Ignition module edition (default "+project.DefaultEdition+")")
 	flags.StringSliceVar(&modules, "modules", nil,
 		"module ids to enable, comma-separated or repeated (default: none)")
+	flags.StringSliceVar(&moduleArtifacts, "modules-artifacts", nil,
+		"globs of the module artifacts the build produces, repository-relative, comma-separated (default: none)")
 	flags.StringSliceVar(&scanJython, "scan-jython", nil,
 		"directories scanned for Jython sources, comma-separated (default "+strings.Join(project.DefaultScanPaths, ",")+")")
 	flags.StringSliceVar(&scanCapabilities, "scan-capabilities", nil,
@@ -223,6 +236,10 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 		"Gateway heap in MiB (default "+fmt.Sprint(project.DefaultGatewayMemoryMB)+")")
 	flags.StringVar(&gatewayTimezone, "gateway-timezone", "",
 		"Gateway timezone, e.g. UTC (default "+project.DefaultTimezone+")")
+	flags.BoolVar(&allowUnsigned, "allow-unsigned-modules", false,
+		"let the Gateway load a module artifact that carries no valid signature (default false)")
+	flags.BoolVar(&requirePrivateConsent, "require-private-module-consent", false,
+		"require the machine-global module-license and module-cert terms before a staged private module's id is accepted (default false)")
 	flags.StringVar(&minVersion, "tool-min-version", "",
 		"oldest igdev version this project accepts, recorded as [tool].min_version")
 
@@ -254,6 +271,10 @@ func initDoc(cmd *cobra.Command, found project.Found, flagValues project.Doc) pr
 	set("jython-version", func() { doc.Ignition.JythonVersion = flagValues.Ignition.JythonVersion })
 	set("edition", func() { doc.Ignition.Edition = flagValues.Ignition.Edition })
 	set("modules", func() { doc.Modules.Enabled = flagValues.Modules.Enabled })
+	set("modules-artifacts", func() { doc.Modules.Artifacts = flagValues.Modules.Artifacts })
+	set("require-private-module-consent", func() {
+		doc.Modules.RequirePrivateModuleConsent = flagValues.Modules.RequirePrivateModuleConsent
+	})
 	set("scan-jython", func() { doc.Scan.Jython = flagValues.Scan.Jython })
 	set("scan-capabilities", func() { doc.Scan.Capabilities = flagValues.Scan.Capabilities })
 	set("command-check", func() { doc.Commands.Check = flagValues.Commands.Check })
@@ -262,6 +283,9 @@ func initDoc(cmd *cobra.Command, found project.Found, flagValues project.Doc) pr
 	set("command-smoke", func() { doc.Commands.Smoke = flagValues.Commands.Smoke })
 	set("gateway-memory-mb", func() { doc.Gateway.MemoryMB = flagValues.Gateway.MemoryMB })
 	set("gateway-timezone", func() { doc.Gateway.Timezone = flagValues.Gateway.Timezone })
+	set("allow-unsigned-modules", func() {
+		doc.Gateway.AllowUnsignedModules = flagValues.Gateway.AllowUnsignedModules
+	})
 	return doc
 }
 

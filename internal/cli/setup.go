@@ -484,18 +484,19 @@ func setupPaths(root string) runtimePaths {
 func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceID string, triplet ports.Triplet) ([]setupWrite, error) {
 	paths := setupPaths(found.Root)
 	rendered := runtimeassets.Input{
-		InstanceID:      instanceID,
-		Namespace:       instance.Namespace(instanceID),
-		IgnitionVersion: doc.Ignition.Version,
-		JythonVersion:   doc.Ignition.JythonVersion,
-		Edition:         doc.Ignition.Edition,
-		Modules:         doc.Modules.Enabled,
-		MemoryMB:        doc.Gateway.MemoryMB,
-		Timezone:        doc.Gateway.Timezone,
-		Ports:           triplet,
-		RuntimeDir:      paths.runtime,
-		ModulesDir:      paths.modules,
-		BaselineDir:     paths.baseline,
+		InstanceID:           instanceID,
+		Namespace:            instance.Namespace(instanceID),
+		IgnitionVersion:      doc.Ignition.Version,
+		JythonVersion:        doc.Ignition.JythonVersion,
+		Edition:              doc.Ignition.Edition,
+		Modules:              doc.Modules.Enabled,
+		MemoryMB:             doc.Gateway.MemoryMB,
+		Timezone:             doc.Gateway.Timezone,
+		AllowUnsignedModules: doc.Gateway.AllowUnsignedModules,
+		Ports:                triplet,
+		RuntimeDir:           paths.runtime,
+		ModulesDir:           paths.modules,
+		BaselineDir:          paths.baseline,
 	}
 	files, err := runtimeassets.Materialize(rendered)
 	if err != nil {

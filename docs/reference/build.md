@@ -2,14 +2,19 @@
 
 # `igdev build`
 
-build dispatches [commands].build at the Project Root, then re-materializes the
-module staging the Gateway mounts. The re-staging is why a build is worth running
-before `gateway up`: whatever the project produced is what the next Gateway
-launch sees.
+build dispatches [commands].build at the Project Root, then brings the module
+staging the Gateway mounts up to date. Every glob in the contract's
+`[modules].artifacts` is resolved against the Project Root and every match is staged
+exactly as `module add` would — replacing a previously staged artifact that declares
+the same module id, so a version bump does not leave two builds of one module mounted.
+The re-staging is why a build is worth running before `gateway up`: whatever the
+project produced is what the next Gateway launch sees. A declared glob that matches
+nothing fails the run with IGDEV_E_MODULE_ARTIFACT_MISSING, because a contract that
+declares its build outputs and finds none of them has nothing to stage.
 
 An undeclared build stage is skipped and reported as skipped. A stage that exits
 non-zero propagates its own exit code and stops the run before anything is
-re-staged.
+re-staged. An undeclared artifacts list stages nothing on its own.
 
 ## Usage
 
@@ -40,7 +45,12 @@ igdev build [flags]
 ## Agent usage
 
 pass --json for the machine contract. data.stages carries the declared-
-check stage and the module re-staging that follows it, with the status of each; an
-undeclared build stage is reported skipped. A failing stage propagates its own exit code
-and stops the run before anything is re- staged, so a build that failed never
-republishes modules.
+build stage and the module re-staging that follows it (stage module-restage), with
+the status of each; an undeclared build stage is reported skipped. The re-staging
+stages every match of the contract's [modules].artifacts globs — stage.artifacts
+names each glob, the source it matched, the module id it declares, and the staged
+file, with superseded listing any staged file it replaced — and then re-materializes
+the runtime. A declared glob that matches nothing fails with
+IGDEV_E_MODULE_ARTIFACT_MISSING. A failing stage propagates its own exit code and
+stops the run before anything is re-staged, so a build that failed never republishes
+modules.

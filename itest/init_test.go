@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sheon-sek/igdev/internal/contract"
+	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/testrig"
 )
 
@@ -138,6 +139,49 @@ func TestInitSecondRunEditsAndPrintsDiff(t *testing.T) {
 	}
 	if data.Gitignore.Action != "unchanged" {
 		t.Errorf("gitignore action = %q, want unchanged on the second run", data.Gitignore.Action)
+	}
+}
+
+// --allow-unsigned-modules is the only writer of the [gateway] option: an
+// untyped run leaves it out, stating it writes it, and stating false clears it
+// again. The flag names the value, exactly as the other bool-shaped edits do.
+func TestInitAllowUnsignedModulesFlag(t *testing.T) {
+	env := testrig.NewEnv(t)
+	dir := env.Mkdir("repo")
+	testrig.WantExit(t, env.RunIn(dir, "init"), contract.ExitOK)
+	if got := readFile(t, filepath.Join(dir, project.ContractFile)); strings.Contains(got, "allow_unsigned_modules") {
+		t.Errorf("init wrote the option at its default:\n%s", got)
+	}
+
+	base := env.Snapshot()
+	res := env.RunIn(dir, "init", "--allow-unsigned-modules", "--json")
+	testrig.WantExit(t, res, contract.ExitOK)
+	after := readFile(t, filepath.Join(dir, project.ContractFile))
+	if !strings.Contains(after, "allow_unsigned_modules = true") {
+		t.Errorf("init did not state the option:\n%s", after)
+	}
+	// The write moves the Contract Digest, which is the Setup Stamp's business.
+	var data struct {
+		Contract struct {
+			Action string `json:"action"`
+			Digest string `json:"digest"`
+			Diff   string `json:"diff"`
+		} `json:"contract"`
+	}
+	testrig.DataOf(t, res.Stdout, &data)
+	if data.Contract.Action != "updated" || data.Contract.Digest != project.Digest([]byte(after)) {
+		t.Errorf("contract write = %+v, want an updated file and its new digest", data.Contract)
+	}
+	if !strings.Contains(data.Contract.Diff, "+allow_unsigned_modules = true") {
+		t.Errorf("the diff does not show the option:\n%s", data.Contract.Diff)
+	}
+	if added := env.Added(base); len(added) != 0 {
+		t.Errorf("init --allow-unsigned-modules added %v, want an edit only", added)
+	}
+
+	testrig.WantExit(t, env.RunIn(dir, "init", "--allow-unsigned-modules=false"), contract.ExitOK)
+	if got := readFile(t, filepath.Join(dir, project.ContractFile)); strings.Contains(got, "allow_unsigned_modules") {
+		t.Errorf("the option survived being cleared:\n%s", got)
 	}
 }
 

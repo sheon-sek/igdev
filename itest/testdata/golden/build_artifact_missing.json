@@ -1,0 +1,31 @@
+{
+  "ok": false,
+  "contract": "1",
+  "code": "IGDEV_E_MODULE_ARTIFACT_MISSING",
+  "message": "[modules].artifacts glob \"build/*.modl\" matched no module artifact in the Project Root",
+  "remediation": [
+    {
+      "command": "igdev build",
+      "why": "run the project's build stage, which produces the declared artifacts"
+    },
+    {
+      "command": "igdev init --modules-artifacts ''",
+      "why": "clear the globs when the project no longer produces a staged artifact"
+    }
+  ],
+  "data": {
+    "stages": [
+      {
+        "stage": "declared-build",
+        "status": "passed",
+        "command": "printf 'built nothing\n'"
+      },
+      {
+        "stage": "module-restage",
+        "status": "failed",
+        "message": "[modules].artifacts glob \"build/*.modl\" matched no module artifact in the Project Root"
+      }
+    ],
+    "failed": "module-restage"
+  }
+}

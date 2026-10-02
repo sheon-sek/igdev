@@ -94,6 +94,39 @@ func Dir(root string) string {
 // keeps the first file's position, exactly as the bash specification's
 // private_records deduped them.
 func Scan(dir string) ([]Record, *contract.Fault) {
+	records, fault := scanFiles(dir)
+	if fault != nil {
+		return nil, fault
+	}
+	// Artifacts that declare the same module id are collapsed: the last file wins
+	// and keeps the first file's position, exactly as the bash specification's
+	// private_records deduped them.
+	var order []string
+	byID := map[string]Record{}
+	out := make([]Record, 0, len(records))
+	for _, record := range records {
+		if record.ID == "" {
+			// An unreadable artifact has no id to collapse on; report it as it
+			// is found.
+			out = append(out, record)
+			continue
+		}
+		if _, seen := byID[record.ID]; !seen {
+			order = append(order, record.ID)
+		}
+		byID[record.ID] = record
+	}
+	for _, id := range order {
+		out = append(out, byID[id])
+	}
+	return out, nil
+}
+
+// scanFiles reads every `.modl` in dir in file-name order without collapsing
+// artifacts that declare the same module id. Staging needs the uncollapsed set:
+// replacing "the artifact for this module id" means knowing about every file that
+// declares it, not only the one a report would show.
+func scanFiles(dir string) ([]Record, *contract.Fault) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -111,24 +144,9 @@ func Scan(dir string) ([]Record, *contract.Fault) {
 	}
 	sort.Strings(names)
 
-	var order []string
-	byID := map[string]Record{}
-	var out []Record
+	out := make([]Record, 0, len(names))
 	for _, name := range names {
-		record := read(filepath.Join(dir, name), name)
-		if record.ID == "" {
-			// An unreadable artifact has no id to collapse on; report it as it
-			// is found.
-			out = append(out, record)
-			continue
-		}
-		if _, seen := byID[record.ID]; !seen {
-			order = append(order, record.ID)
-		}
-		byID[record.ID] = record
-	}
-	for _, id := range order {
-		out = append(out, byID[id])
+		out = append(out, read(filepath.Join(dir, name), name))
 	}
 	return out, nil
 }

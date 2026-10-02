@@ -25,6 +25,7 @@ type statusData struct {
 	WorkingDir  string         `json:"working_dir"`
 	Contract    statusContract `json:"contract"`
 	Setup       statusSetup    `json:"setup"`
+	Gateway     statusGateway  `json:"gateway"`
 	Modules     statusModules  `json:"modules"`
 	Consent     statusConsent  `json:"consent"`
 	Config      statusConfig   `json:"config"`
@@ -60,6 +61,17 @@ type statusSetup struct {
 	// Ports are the loopback ports allocated to this Instance, or null before
 	// setup. Nothing may assume 8088 (ADR 0003).
 	Ports *ports.Triplet `json:"ports"`
+}
+
+// statusGateway reports the Gateway the Project Contract asks for. The address,
+// the ports, and the credentials come from the Checkout Setup (ADR 0003); what a
+// contract states about the runtime is reported here, after defaults.
+type statusGateway struct {
+	// AllowUnsignedModules is the effective [gateway] allow_unsigned_modules:
+	// what `igdev setup` renders as IGNITION_ALLOW_UNSIGNED_MODULES, and what lets
+	// the Gateway load a module artifact that carries no valid signature. Absent
+	// from the contract means the default, false.
+	AllowUnsignedModules bool `json:"allow_unsigned_modules"`
 }
 
 // statusModules reports the private module artifacts this checkout stages. It is
@@ -127,6 +139,10 @@ module licenses, and the module certificates this machine has accepted, with whe
 by which igdev. A term that is not accepted is a human action; the command that records
 it is named in the remediation of every command that needs it (ADR 0004).
 
+gateway reports the Gateway option the contract states: allow_unsigned_modules, which
+is the effective value ` + "`igdev setup`" + ` renders as IGNITION_ALLOW_UNSIGNED_MODULES. It
+is false unless a contract asks for it, which is the schema default.
+
 The config block shows every key igdev resolves, its value, and the tier that won:
 flag > IGDEV_* environment > .igdev/local.toml > igdev.toml > embedded defaults.`,
 		Example: "  igdev status --json\n  igdev status --config ignition.version=8.1.21",
@@ -151,6 +167,7 @@ flag > IGDEV_* environment > .igdev/local.toml > igdev.toml > embedded defaults.
 					Digest:          state.Digest,
 				},
 				Setup:   setupStatus(found, state),
+				Gateway: gatewayStatus(found),
 				Modules: modulesStatus(found),
 				Consent: consentStatus(),
 				Config: statusConfig{
@@ -180,6 +197,20 @@ func setupStatus(found project.Found, state gate.State) statusSetup {
 		out.Ports = &stamp.Ports
 	}
 	return out
+}
+
+// gatewayStatus reads the Gateway options the contract states. The decode is
+// lenient on purpose: a contract igdev cannot parse is the Gate's verdict to
+// report in the contract block, not this block's, and a contract that states
+// nothing reports the schema defaults.
+func gatewayStatus(found project.Found) statusGateway {
+	var doc project.Doc
+	if len(found.ContractTOML) > 0 {
+		if parsed, err := project.DecodeDoc(found.ContractTOML); err == nil {
+			doc = parsed
+		}
+	}
+	return statusGateway{AllowUnsignedModules: doc.Gateway.AllowUnsignedModules}
 }
 
 // modulesStatus reads the staged module artifacts. A directory igdev cannot read
@@ -240,6 +271,7 @@ func (a *App) printStatus(found project.Found, res *config.Resolution, state gat
 		} else {
 			fmt.Fprintf(out, "modules:   %d staged (%s)\n", data.Modules.Count, strings.Join(data.Modules.Staged, ", "))
 		}
+		fmt.Fprintf(out, "gateway:   unsigned modules %s\n", allowedWord(data.Gateway.AllowUnsignedModules))
 	} else {
 		fmt.Fprint(out, "project:   not initialized\n")
 		fmt.Fprintf(out, "root:      none (no %s found at or above %s)\n", project.ContractFile, found.StartDir)
@@ -267,6 +299,15 @@ func supportedWord(supported bool) string {
 		return "supported"
 	}
 	return "unsupported"
+}
+
+// allowedWord renders a boolean permission in the vocabulary the human report
+// reads.
+func allowedWord(allowed bool) string {
+	if allowed {
+		return "allowed"
+	}
+	return "refused"
 }
 
 // rejectArgs freezes "this command takes no positional arguments".
