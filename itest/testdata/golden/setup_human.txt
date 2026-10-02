@@ -9,5 +9,12 @@ materialized:
   file created   0644  <ROOT>/repo/.igdev/runtime/compose.yaml
   file created   0644  <ROOT>/repo/.igdev/runtime/compose.env
   file created   0644  <ROOT>/repo/.igdev/runtime/Dockerfile
+  file created   0644  <ROOT>/repo/.igdev/runtime/trial-keeper.sh
+  file created   0644  <ROOT>/repo/.igdev/runtime/seed/config/resources/external/ignition/security-levels/config.json
+  file created   0644  <ROOT>/repo/.igdev/runtime/seed/config/resources/external/ignition/security-levels/resource.json
+  file created   0644  <ROOT>/repo/.igdev/runtime/seed/config/resources/external/ignition/security-properties/config.json
+  file created   0644  <ROOT>/repo/.igdev/runtime/seed/config/resources/external/ignition/security-properties/resource.json
+  file created   0644  <ROOT>/repo/.igdev/runtime/seed/config/resources/external/ignition/api-token/igdev/config.json
+  file created   0644  <ROOT>/repo/.igdev/runtime/seed/config/resources/external/ignition/api-token/igdev/resource.json
   file created   0600  <ROOT>/repo/.igdev/local.toml
   file created   0600  <ROOT>/repo/.igdev/setup.json

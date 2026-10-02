@@ -96,6 +96,7 @@ igdev jython check src/main/python
 igdev gateway up && igdev gateway wait && igdev gateway smoke
 igdev gateway url                     # the only URL to script against
 igdev gateway logs --tail 200
+igdev gateway trial                   # trial time left; an expired trial resets in place
 igdev gateway down --volumes
 ```
 

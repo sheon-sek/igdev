@@ -12,6 +12,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/catalog"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/gate"
+	"github.com/sheon-sek/igdev/internal/localconfig"
 	"github.com/sheon-sek/igdev/internal/modules"
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/xdg"
@@ -902,7 +903,8 @@ func (a *App) restage(found project.Found, doc project.Doc) ([]setupWrite, error
 				Why:     "re-materialize the Checkout Setup",
 			})
 	}
-	return a.materializeRuntime(found, doc.Filled(project.DefaultDoc()), stamp.InstanceID, stamp.Ports)
+	credentials, _ := localconfig.Load(found.LocalConfigTOML)
+	return a.materializeRuntime(found, doc.Filled(project.DefaultDoc()), stamp.InstanceID, stamp.Ports, credentials.APIToken, stamp.CreatedAt)
 }
 
 // distinctIDs trims and deduplicates requested module ids, keeping the caller's

@@ -171,7 +171,8 @@ func TestComposeEnvRendersTheUnsignedModulesSwitch(t *testing.T) {
 
 // The Dockerfile derives from the Ignition image the contract asked for, and
 // copies nothing out of the repository: the build context is the disposable
-// runtime directory alone.
+// runtime directory alone, and the only files it copies are the ones setup
+// generates there — the seed and the trial keeper script.
 func TestDockerfilePinsTheRequestedImage(t *testing.T) {
 	raw, err := Dockerfile(sampleInput())
 	if err != nil {
@@ -184,13 +185,26 @@ func TestDockerfilePinsTheRequestedImage(t *testing.T) {
 	if !strings.Contains(body, "ARG IGNITION_VERSION=8.3.8") {
 		t.Errorf("Dockerfile does not default the image tag from the contract:\n%s", body)
 	}
-	if strings.Contains(body, "COPY") {
-		t.Errorf("Dockerfile copies from the build context:\n%s", body)
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "COPY") && line != "COPY trial-keeper.sh /usr/local/bin/igdev-trial-keeper.sh" {
+			t.Errorf("Dockerfile copies something other than the generated files: %q", line)
+		}
+	}
+
+	seeded := sampleInput()
+	seeded.APITokenHash = "c2VlZA"
+	raw, err = Dockerfile(seeded)
+	if err != nil {
+		t.Fatalf("Dockerfile: %v", err)
+	}
+	if !strings.Contains(string(raw), "COPY --chown=2003:0 seed/ /usr/local/bin/ignition/data/") {
+		t.Errorf("a seeded Dockerfile does not copy the seed over the data directory:\n%s", raw)
 	}
 }
 
-// Materialize is the write list setup consumes: the three files, in the frozen
-// order, named as they appear inside .igdev/runtime/.
+// Materialize is the write list setup consumes: the runtime files, in the frozen
+// order, named as they appear inside .igdev/runtime/, then the seed when there is
+// a token to seed.
 func TestMaterializeReturnsTheRuntimeFiles(t *testing.T) {
 	files, err := Materialize(sampleInput())
 	if err != nil {
@@ -203,7 +217,30 @@ func TestMaterializeReturnsTheRuntimeFiles(t *testing.T) {
 			t.Errorf("%s is empty or unterminated", file.Name)
 		}
 	}
-	if strings.Join(names, ",") != "compose.yaml,compose.env,Dockerfile" {
-		t.Errorf("Materialize produced %v, want compose.yaml,compose.env,Dockerfile", names)
+	if strings.Join(names, ",") != "compose.yaml,compose.env,Dockerfile,trial-keeper.sh" {
+		t.Errorf("Materialize produced %v, want compose.yaml,compose.env,Dockerfile,trial-keeper.sh", names)
+	}
+
+	seeded := sampleInput()
+	seeded.APITokenHash = "c2VlZA"
+	files, err = Materialize(seeded)
+	if err != nil {
+		t.Fatalf("Materialize: %v", err)
+	}
+	names = names[:0]
+	for _, file := range files {
+		names = append(names, file.Name)
+	}
+	want := []string{
+		"compose.yaml", "compose.env", "Dockerfile", "trial-keeper.sh",
+		"seed/config/resources/external/ignition/security-levels/config.json",
+		"seed/config/resources/external/ignition/security-levels/resource.json",
+		"seed/config/resources/external/ignition/security-properties/config.json",
+		"seed/config/resources/external/ignition/security-properties/resource.json",
+		"seed/config/resources/external/ignition/api-token/igdev/config.json",
+		"seed/config/resources/external/ignition/api-token/igdev/resource.json",
+	}
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Errorf("Materialize produced\n%v\nwant\n%v", names, want)
 	}
 }

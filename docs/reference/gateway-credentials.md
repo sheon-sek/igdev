@@ -9,6 +9,11 @@ scrollback, a shell history, or a CI log: this is the one machine-readable way t
 obtain it. The value comes from IGDEV_GATEWAY_ADMIN_PASSWORD when that is set, and
 from the 0600 .igdev/local.toml setup wrote otherwise.
 
+The same envelope carries the Instance's own API token (api_token), the
+X-Ignition-API-Token value that administers this Gateway. setup mints it and the
+Gateway is seeded with its hash before its first start, so it works without a
+restart (ADR 0007).
+
 ## Usage
 
 ```text
@@ -39,6 +44,8 @@ igdev gateway credentials [flags]
 
 pass --json for the machine contract, and --json is the only dialect that
 prints the password: human mode reports the username and where the password came from.
-data carries username and password. A missing password (IGDEV_E_CONFIG_INVALID) is
-repaired with igdev setup; IGDEV_GATEWAY_ADMIN_PASSWORD overrides both tiers for CI.
-Never log the envelope: it is a secret.
+data carries username, password, and api_token: the Instance's own API token, the
+X-Ignition-API-Token value that administers this Gateway (empty for a checkout set up
+before igdev seeded one). A missing password (IGDEV_E_CONFIG_INVALID) is repaired with
+igdev setup; IGDEV_GATEWAY_ADMIN_PASSWORD overrides both tiers for CI. Never log the
+envelope: it is a secret.

@@ -1,12 +1,13 @@
 // Package localconfig owns the checkout-local tier `.igdev/local.toml`: the
 // settings a checkout needs on this machine that the tracked Project Contract
-// must never hold — today the Gateway admin credentials.
+// must never hold — the Gateway admin credentials and the Instance's own API
+// token.
 //
 // The file is mode 0600 inside the gitignored Checkout Setup, and its contents
 // are never rendered into output. Ports and secrets are machine-local by design
 // (ADR 0003), which is why they live here and not in `igdev.toml`. igdev owns
-// only the two credential keys: any other line the file carries — a comment, a
-// port pin a person wrote — is preserved across a write.
+// only its credential keys: any other line the file carries — a comment, a port
+// pin a person wrote — is preserved across a write.
 package localconfig
 
 import (
@@ -53,6 +54,9 @@ const gatewaySection = "gateway"
 const (
 	usernameKey = "admin_username"
 	passwordKey = "admin_password"
+	// apiTokenKey is the Instance's own Ignition API token (ADR 0007): the
+	// Gateway holds only its hash, seeded before the first start.
+	apiTokenKey = "api_token"
 	// PortKey is the machine-local Gateway HTTP port pin. It is igdev-owned
 	// because the Wizard and `igdev setup --gateway-port` record it, and because
 	// a pin has to survive the next credential write unchanged (ADR 0003: ports
@@ -64,10 +68,12 @@ const (
 // character that would need escaping inside a TOML string or a shell word.
 const passwordAlphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
-// Credentials are the Gateway admin credentials recorded for one checkout.
+// Credentials are the Gateway admin credentials recorded for one checkout,
+// plus the Instance's own API token.
 type Credentials struct {
 	Username string `toml:"admin_username" json:"username"`
 	Password string `toml:"admin_password" json:"-"`
+	APIToken string `toml:"api_token" json:"-"`
 }
 
 // GeneratePassword returns a cryptographically random password drawn uniformly
@@ -117,6 +123,9 @@ func Render(c Credentials) []byte {
 	b.WriteString("\n[" + gatewaySection + "]\n")
 	fmt.Fprintf(&b, "%s = %s\n", usernameKey, tomlString(c.Username))
 	fmt.Fprintf(&b, "%s = %s\n", passwordKey, tomlString(c.Password))
+	if c.APIToken != "" {
+		fmt.Fprintf(&b, "%s = %s\n", apiTokenKey, tomlString(c.APIToken))
+	}
 	return []byte(b.String())
 }
 
@@ -212,12 +221,17 @@ type ownedKey struct {
 	line string
 }
 
-// credentialKeys are the two keys every setup writes.
+// credentialKeys are the keys every setup writes: the admin credentials, and the
+// API token once there is one.
 func credentialKeys(c Credentials) []ownedKey {
-	return []ownedKey{
+	keys := []ownedKey{
 		{key: usernameKey, line: credentialLine(usernameKey, c.Username)},
 		{key: passwordKey, line: credentialLine(passwordKey, c.Password)},
 	}
+	if c.APIToken != "" {
+		keys = append(keys, ownedKey{key: apiTokenKey, line: credentialLine(apiTokenKey, c.APIToken)})
+	}
+	return keys
 }
 
 // merge rewrites the keys igdev owns inside existing content, leaving every other

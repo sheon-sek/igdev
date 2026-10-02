@@ -32,7 +32,9 @@
     },
     "gateway": {
       "running": false,
-      "url": "http://127.0.0.1:<PORT_HTTP>"
+      "url": "http://127.0.0.1:<PORT_HTTP>",
+      "trial_reset": "auto",
+      "trial": null
     },
     "modules": {
       "count": 0,

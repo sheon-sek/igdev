@@ -21,6 +21,7 @@
         "state": "running",
         "status": "Up 1 second"
       }
-    ]
+    ],
+    "trial": null
   }
 }

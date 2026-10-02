@@ -22,6 +22,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/ports"
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/runtimeassets"
+	"github.com/sheon-sek/igdev/internal/trial"
 	"github.com/sheon-sek/igdev/internal/xdg"
 )
 
@@ -98,6 +99,10 @@ type agentInstance struct {
 type agentGateway struct {
 	Running bool   `json:"running"`
 	URL     string `json:"url"`
+	// TrialReset is the effective [gateway] trial_reset (ADR 0008).
+	TrialReset string `json:"trial_reset"`
+	// Trial is the running Gateway's own trial report, or null.
+	Trial *trial.State `json:"trial"`
 }
 
 // agentModules reports the private module artifacts this checkout stages, and
@@ -198,6 +203,8 @@ var AgentContextFields = []AgentContextField{
 	{"gateway", "object", "Whether the Gateway is running and its recorded URL; null when there is no Instance. Context never starts anything."},
 	{"gateway.running", "bool", "The container engine reports this Instance's Gateway running."},
 	{"gateway.url", "string", "The recorded Gateway URL, built from the Instance's allocated HTTP port."},
+	{"gateway.trial_reset", "string", "The effective [gateway] trial_reset: auto means the trial keeper resets an expired trial in place (ADR 0008); off means it is left alone."},
+	{"gateway.trial", "object", "The running Gateway's own trial report (license_mode, seconds_left, expired); null when it is not running or did not answer."},
 	{"modules", "object", "The private module artifacts this checkout stages, and what the contract lets the Gateway load."},
 	{"modules.count", "int", "How many artifacts are staged in .igdev/modules/."},
 	{"modules.staged", "array", "The module ids those artifacts declare."},
@@ -329,8 +336,12 @@ func agentContextOf(found project.Found, res *config.Resolution, state gate.Stat
 			Ports:     stamp.Ports,
 		}
 		data.Gateway = &agentGateway{
-			Running: agentGatewayRunning(found.Root, stamp),
-			URL:     fmt.Sprintf("http://%s:%d", ports.BindAddress, stamp.Ports.HTTP),
+			Running:    agentGatewayRunning(found.Root, stamp),
+			URL:        fmt.Sprintf("http://%s:%d", ports.BindAddress, stamp.Ports.HTTP),
+			TrialReset: doc.Gateway.EffectiveTrialReset(),
+		}
+		if data.Gateway.Running {
+			data.Gateway.Trial = readTrial(data.Gateway.URL)
 		}
 	}
 	return data

@@ -31,6 +31,15 @@ const (
 	DefaultTimezone = "UTC"
 )
 
+// The [gateway] trial_reset values. "auto" runs the trial keeper next to the
+// Gateway, which resets an expired trial in place (ADR 0008); "off" leaves the
+// trial alone, so an expired Gateway stays expired until `igdev gateway trial
+// reset` or `igdev gateway reset`.
+const (
+	TrialResetAuto = "auto"
+	TrialResetOff  = "off"
+)
+
 // DefaultScanPaths are the sample scan roots `igdev init` writes: the layout an
 // Ignition project repository usually keeps its project scripts in.
 var DefaultScanPaths = []string{"src/main/python"}
@@ -149,6 +158,23 @@ type Gateway struct {
 	// contract written before this key existed renders byte-identically to one
 	// written after it, and the rendered runtime is unchanged too.
 	AllowUnsignedModules bool `toml:"allow_unsigned_modules"`
+	// TrialReset is how the Gateway's trial is kept: TrialResetAuto (the default)
+	// or TrialResetOff. The key is additive to schema v1 and optional: it is
+	// omitted from the rendered contract while it holds the default.
+	TrialReset string `toml:"trial_reset"`
+}
+
+// TrialAutoReset reports whether the contract asks for the trial keeper: any
+// value but "off", so a contract that does not state the key gets it.
+func (g Gateway) TrialAutoReset() bool { return g.TrialReset != TrialResetOff }
+
+// EffectiveTrialReset is the trial_reset value in force: the stated one, or
+// "auto" when the contract does not state it.
+func (g Gateway) EffectiveTrialReset() string {
+	if g.TrialAutoReset() {
+		return TrialResetAuto
+	}
+	return TrialResetOff
 }
 
 // Empty reports whether every stage is undeclared.
@@ -171,7 +197,7 @@ func DefaultDoc() Doc {
 			Jython:       append([]string(nil), DefaultScanPaths...),
 			Capabilities: append([]string(nil), DefaultScanPaths...),
 		},
-		Gateway: Gateway{MemoryMB: DefaultGatewayMemoryMB, Timezone: DefaultTimezone},
+		Gateway: Gateway{MemoryMB: DefaultGatewayMemoryMB, Timezone: DefaultTimezone, TrialReset: TrialResetAuto},
 	}
 }
 
@@ -254,6 +280,9 @@ func (d Doc) Filled(defaults Doc) Doc {
 	if out.Gateway.Timezone == "" {
 		out.Gateway.Timezone = defaults.Gateway.Timezone
 	}
+	if out.Gateway.TrialReset == "" {
+		out.Gateway.TrialReset = defaults.Gateway.TrialReset
+	}
 	return out
 }
 
@@ -325,6 +354,12 @@ func (d Doc) Validate(path string) error {
 			return contractInvalid("%sgateway.smoke_endpoints entry %q is not a request path like /web/home",
 				where, endpoint)
 		}
+	}
+	switch d.Gateway.TrialReset {
+	case "", TrialResetAuto, TrialResetOff:
+	default:
+		return contractInvalid("%sgateway.trial_reset = %q, want %q or %q",
+			where, d.Gateway.TrialReset, TrialResetAuto, TrialResetOff)
 	}
 	if d.Gateway.MemoryMB < 0 {
 		return contractInvalid("%sgateway.memory_mb = %d, want a positive heap in MiB",
@@ -401,6 +436,9 @@ func (d Doc) Render() []byte {
 	}
 	if d.Gateway.AllowUnsignedModules {
 		fmt.Fprintf(&b, "allow_unsigned_modules = %t\n", d.Gateway.AllowUnsignedModules)
+	}
+	if d.Gateway.TrialReset == TrialResetOff {
+		fmt.Fprintf(&b, "trial_reset = %s\n", tomlString(d.Gateway.TrialReset))
 	}
 	return []byte(b.String())
 }

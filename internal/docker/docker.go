@@ -28,6 +28,10 @@ import (
 // one Gateway, so every mode-specific verb names it.
 const GatewayServiceName = "gateway"
 
+// TrialKeeperServiceName is the service that resets the Gateway's expired trial in
+// place, when the contract asks for it (ADR 0008).
+const TrialKeeperServiceName = "trial-keeper"
+
 // Compose addresses one Instance's compose project.
 type Compose struct {
 	// Namespace is the project name, igdev-<short instance id>.
@@ -49,6 +53,9 @@ type Compose struct {
 	// output here rather than leaving the caller with a blank terminal until the
 	// call returns. Verbs whose output igdev parses (`ps`, `logs`) never use it.
 	Progress io.Writer
+	// TrialKeeper is whether the rendered project runs the trial keeper, which
+	// `up` then starts next to the Gateway.
+	TrialKeeper bool
 }
 
 // Service is one compose service as `compose ps` reports it.
@@ -59,9 +66,18 @@ type Service struct {
 	Status  string `json:"status"`
 }
 
+// UpServices are the services `up` starts: the Gateway, and the trial keeper
+// when the project runs one.
+func (c Compose) UpServices() []string {
+	if c.TrialKeeper {
+		return []string{GatewayServiceName, TrialKeeperServiceName}
+	}
+	return []string{GatewayServiceName}
+}
+
 // Up builds if needed and starts the Gateway detached.
 func (c Compose) Up() *contract.Fault {
-	stdout, stderr, err := c.exec("up", "--detach", "--build", GatewayServiceName)
+	stdout, stderr, err := c.exec(append([]string{"up", "--detach", "--build"}, c.UpServices()...)...)
 	return c.faultOf("up", stdout, stderr, err)
 }
 
