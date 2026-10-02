@@ -296,7 +296,7 @@ envelope with initialized false. It never prompts and never changes state.`,
 			// The Gate's verdict is reported, never enforced: context has to
 			// work on the uninitialized and the stale checkout it is describing.
 			state, _ := gate.Evaluate(a.gateInput(found))
-			data := agentContextOf(found, res, state)
+			data := agentContextOf(found, res, state, a.consentLocation())
 			a.emit(res, data, func() { a.printAgentContext(data) })
 			return nil
 		},
@@ -305,7 +305,7 @@ envelope with initialized false. It never prompts and never changes state.`,
 
 // agentContextOf assembles the orientation data. Every part is best-effort: the
 // call reports what it can see and never fails on the state it is describing.
-func agentContextOf(found project.Found, res *config.Resolution, state gate.State) agentContextData {
+func agentContextOf(found project.Found, res *config.Resolution, state gate.State, location consent.Location) agentContextData {
 	// A contract igdev cannot parse or does not speak is still worth orienting
 	// on, so the document is decoded leniently here; the Gate's verdict, not
 	// this decode, is what reports a broken contract.
@@ -321,7 +321,7 @@ func agentContextOf(found project.Found, res *config.Resolution, state gate.Stat
 		Lifecycle: agentLifecycle{
 			Initialized: found.InProject(),
 			SetupState:  agentSetupState(found, state),
-			Consent:     agentConsentState(),
+			Consent:     agentConsentState(location),
 		},
 		Versions: agentVersions{
 			CLI:         Version(),
@@ -367,8 +367,8 @@ func agentSetupState(found project.Found, state gate.State) string {
 // agentConsentState reads the machine-global Consent record. An unreadable
 // record proves nothing, so every term reports unaccepted, exactly as status
 // treats it.
-func agentConsentState() agentConsent {
-	record, _ := consent.Load(consent.Path(xdg.Resolve().Config))
+func agentConsentState(location consent.Location) agentConsent {
+	record, _ := location.Load()
 	accepted := func(term consent.Term) bool {
 		_, ok := record.Accepted(term)
 		return ok

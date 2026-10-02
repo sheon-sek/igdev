@@ -48,6 +48,14 @@ ports), gateway (allow_unsigned_modules — the effective IGNITION_ALLOW_UNSIGNE
 modules, consent (per-term acceptance), and config (tier_files plus every resolved key
 with the tier that won). It succeeds before init and setup and outside a Project Root,
 so it is always the safe first call; branch on the blocks, never on the exit level.`,
+	"igdev consent": `consent carries a person's Consent record to an unattended runner. It never
+records consent: only a person runs igdev setup --accept-eula. Use igdev consent export.`,
+	"igdev consent export": `pass --json for the machine contract. data carries source, output,
+terms (the accepted term ids exported), and record (the file's content). Agents may run it
+only to hand the file to a person: storing it as a CI secret for IGDEV_CONSENT_FILE is
+the person's step. A machine that has not accepted the EULA is IGDEV_E_CONSENT_REQUIRED
+at exit 3. With IGDEV_CONSENT_FILE set, setup reads that file, refuses --accept-* with a
+usage error, and a missing or invalid term is IGDEV_E_CONSENT_REQUIRED naming the file.`,
 	"igdev doctor": `pass --json for the machine contract. data carries ready plus
 prerequisites, one entry per tool with name, command, required, state (present, missing,
 or failed), the version line the probe printed, and the error when there is none. doctor

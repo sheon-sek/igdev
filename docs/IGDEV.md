@@ -333,6 +333,14 @@ anything is written, so a refused setup leaves the tree untouched. Re-accepting 
 machine that already consented is a successful no-op: the first acceptance is the
 legal fact, so its timestamp does not move.
 
+**Consent on a runner.** A CI runner has no person, so it never records Consent. A
+person runs `igdev consent export --output igdev-consent.toml` on their own machine and
+stores the file as a CI secret; the runner points `IGDEV_CONSENT_FILE` at it. igdev then
+reads Consent from that file only, never writes a record, and refuses `setup --accept-*`
+as a usage error. Each term in the file needs a known id, a past RFC 3339 `accepted_at`
+and a `cli_version`; a missing or invalid term is `IGDEV_E_CONSENT_REQUIRED` naming the
+file (ADR 0004, amendment 1).
+
 **Private module acceptance.** The private modules a checkout stages are its own
 artifacts — in a module repository the developer is their author — so starting a Gateway
 accepts them without a human step: `gateway up`/`reset` hand the module id of every

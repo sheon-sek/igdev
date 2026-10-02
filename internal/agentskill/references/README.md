@@ -44,6 +44,8 @@ Orient before acting: igdev status --json works everywhere, and igdev agent cont
 | [`igdev check`](check.md) | Run the fixed preflight pipeline before anything else |
 | [`igdev ci-local`](ci-local.md) | Run this project's GitHub Actions workflows locally through act |
 | [`igdev completion`](completion.md) | Print the shell completion script for igdev |
+| [`igdev consent`](consent.md) | Carry a person's Consent record to an unattended runner |
+| [`igdev consent export`](consent-export.md) | Export this machine's Consent record for IGDEV_CONSENT_FILE |
 | [`igdev doctor`](doctor.md) | Audit the host prerequisites igdev's runtime work depends on |
 | [`igdev gateway`](gateway.md) | Control this Instance's Ignition Gateway |
 | [`igdev gateway credentials`](gateway-credentials.md) | Read the Gateway admin credentials (the password only as JSON) |

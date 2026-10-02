@@ -15,7 +15,6 @@ import (
 	"github.com/sheon-sek/igdev/internal/localconfig"
 	"github.com/sheon-sek/igdev/internal/ports"
 	"github.com/sheon-sek/igdev/internal/project"
-	"github.com/sheon-sek/igdev/internal/xdg"
 )
 
 // The setup Wizard, in the frozen step sequence (7 steps, Q19): the Consent
@@ -46,7 +45,7 @@ func (a *App) setupNeedsWizard(found project.Found) bool {
 	if creds, err := localconfig.Load(found.LocalConfigTOML); err != nil || creds.Password == "" {
 		return true
 	}
-	return consent.Check(consent.Path(xdg.Resolve().Config), consent.EULA) != nil
+	return a.consentLocation().Check(consent.EULA) != nil
 }
 
 // runSetupWizard is setup's value source: the Consent gate, the heap, the admin
@@ -122,9 +121,9 @@ func (a *App) runSetupWizard(cmd *cobra.Command, found project.Found, run wizard
 // runs, and the run stops with the frozen IGDEV_E_CONSENT_REQUIRED fault at exit
 // level 3 until the record itself says the term is accepted.
 func (a *App) setupConsentStep() error {
-	consentPath := consent.Path(xdg.Resolve().Config)
-	if fault := consent.Check(consentPath, consent.EULA); fault == nil {
-		if record, err := consent.Load(consentPath); err == nil {
+	location := a.consentLocation()
+	if fault := location.Check(consent.EULA); fault == nil {
+		if record, err := location.Load(); err == nil {
 			if accepted, ok := record.Accepted(consent.EULA); ok {
 				a.wizardNote("the Ignition EULA is accepted on this machine (accepted %s)", accepted.AcceptedAt)
 			}
@@ -147,7 +146,7 @@ func (a *App) setupConsentStep() error {
 	}
 	// Whatever was answered, the record decides: a Wizard answer is never an
 	// acceptance.
-	return consent.Check(consentPath, consent.EULA)
+	return location.Check(consent.EULA)
 }
 
 // setupPasswordStep asks what to do about the Gateway admin password. Keeping a

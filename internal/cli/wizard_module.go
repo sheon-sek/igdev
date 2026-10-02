@@ -10,7 +10,6 @@ import (
 
 	"github.com/sheon-sek/igdev/internal/consent"
 	"github.com/sheon-sek/igdev/internal/modules"
-	"github.com/sheon-sek/igdev/internal/xdg"
 )
 
 // The `module add` Wizard, in the frozen step sequence (3 steps, Q19): the
@@ -71,7 +70,7 @@ func (a *App) moduleAddWizardSteps(_ *cobra.Command, run wizardRun, file string)
 	// commands that record the terms a Gateway needs.
 	a.wizardBanner("module add", 2, moduleAddWizardSteps, "the module notices")
 	a.wizardNote("signature: igdev does not verify module signatures; stage only artifacts you trust")
-	record2, _ := consent.Load(consent.Path(xdg.Resolve().Config))
+	record2, _ := a.consentLocation().Load()
 	for _, term := range []consent.Term{consent.ModuleLicense, consent.ModuleCert} {
 		if accepted, ok := record2.Accepted(term); ok {
 			a.wizardNote("%s: accepted on this machine (accepted %s)", term.Title, accepted.AcceptedAt)

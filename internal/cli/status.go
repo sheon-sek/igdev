@@ -14,7 +14,6 @@ import (
 	"github.com/sheon-sek/igdev/internal/modules"
 	"github.com/sheon-sek/igdev/internal/ports"
 	"github.com/sheon-sek/igdev/internal/project"
-	"github.com/sheon-sek/igdev/internal/xdg"
 )
 
 // statusData is the `data` member of a successful `igdev status` envelope. The
@@ -169,7 +168,7 @@ flag > IGDEV_* environment > .igdev/local.toml > igdev.toml > embedded defaults.
 				Setup:   setupStatus(found, state),
 				Gateway: gatewayStatus(found),
 				Modules: modulesStatus(found),
-				Consent: consentStatus(),
+				Consent: consentStatus(a.consentLocation()),
 				Config: statusConfig{
 					TierFiles: res.TierFiles,
 					Resolved:  res.Values(),
@@ -229,9 +228,9 @@ func modulesStatus(found project.Found) statusModules {
 // consentStatus reads the machine-global Consent record. A record igdev cannot
 // read reports every term unaccepted rather than failing: status is a report, and
 // "nothing is proven accepted" is exactly what an unreadable record means.
-func consentStatus() statusConsent {
-	path := consent.Path(xdg.Resolve().Config)
-	record, _ := consent.Load(path)
+func consentStatus(location consent.Location) statusConsent {
+	path := location.Path
+	record, _ := location.Load()
 	out := statusConsent{Path: path, Terms: make([]statusTerm, 0, len(consent.Terms()))}
 	for _, term := range consent.Terms() {
 		entry := statusTerm{ID: term.ID}
