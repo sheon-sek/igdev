@@ -352,6 +352,13 @@ ids supplied from the process environment — so a parallel worktree's Instance 
 be addressed by mistake, and no rendered file carries a secret or has to be rewritten
 when the staged set changes.
 
+A verb that drives the engine reports what it is doing. The engine's own output is
+streamed to stderr as it arrives, and each step is announced on stderr before it runs
+(`[igdev] gateway up: starting igdev-<instance> …`), so a first `up` that builds or
+pulls an image shows progress instead of a blank terminal that cannot be told from a
+hung command. The verbs whose output igdev parses (`status`, `logs`) are not streamed:
+`status --json` writes nothing to stderr.
+
 `wait` accepts bare seconds (`--timeout 240`) or a Go duration (`--timeout 3m`);
 180 s is the default, 60 s for `smoke`. A failed wait reports the last 50 log lines on
 stderr, because the reason a Gateway never came up is in its own log. `smoke` fails
