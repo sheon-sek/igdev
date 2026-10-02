@@ -15,7 +15,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/sheon-sek/igdev/internal/apitoken"
+	"github.com/sheon-sek/igdev/internal/gatewayapi"
 )
 
 // Path is the trial endpoint, relative to the Gateway URL.
@@ -72,15 +72,10 @@ func Read(client *http.Client, baseURL string) (State, error) {
 // error. The request carries the Origin and Referer the Gateway's own web UI
 // sends, because the Gateway checks where a state-changing request came from.
 func Reset(client *http.Client, baseURL, token string) (int, error) {
-	base := strings.TrimRight(baseURL, "/")
-	req, err := http.NewRequest(http.MethodPost, base+Path, strings.NewReader(""))
+	req, err := gatewayapi.NewRequest(http.MethodPost, baseURL, Path, nil, token, nil)
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Origin", base)
-	req.Header.Set("Referer", base+"/app/home")
-	req.Header.Set(apitoken.Header, token)
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err

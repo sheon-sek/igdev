@@ -453,6 +453,7 @@ never from a file on disk.`,
 		a.newGatewayTrialCmd(),
 		a.newGatewayExecCmd(),
 		a.newGatewayDataCmd(),
+		a.newGatewayAPICmd(),
 	)
 	return cmd
 }

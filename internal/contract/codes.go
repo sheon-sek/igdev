@@ -91,4 +91,6 @@ var CodeDocs = []CodeDoc{
 		"Follow the Remediation. A 401 means the Gateway's data predates the token: `igdev gateway reset` re-seeds it."},
 	{CodeExecFailed, "the command's exit code", "A `gateway exec` command exited non-zero, or `gateway data` could not read or write the file in the Gateway container.",
 		"Read `data` (exit_code, stdout, stderr) or the message, and fix the command or the path."},
+	{CodeGatewayAPI, "1", "The Gateway answered a `gateway api` request with a 4xx or 5xx status.",
+		"Read `data` (status, body) and fix the request, or read `igdev gateway logs`."},
 }

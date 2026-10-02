@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "method": "GET",
+    "path": "/data/api/v1/gateway-info",
+    "url": "http://127.0.0.1:<PORT_HTTP>/data/api/v1/gateway-info",
+    "status": 200,
+    "headers": {
+      "content-length": "37",
+      "content-type": "application/json"
+    },
+    "body": {
+      "name": "igdev-gw",
+      "version": "8.3.8"
+    },
+    "body_bytes": 37,
+    "truncated": false
+  }
+}

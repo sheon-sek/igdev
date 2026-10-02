@@ -1,0 +1,224 @@
+package cli
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/sheon-sek/igdev/internal/contract"
+	"github.com/sheon-sek/igdev/internal/gatewayapi"
+)
+
+// The bounds of one `gateway api` call: a request body larger than the first, or
+// a response larger than the second, is refused or reported, never cut silently.
+const (
+	apiRequestLimit  = 16 << 20
+	apiResponseLimit = 4 << 20
+	apiTimeout       = 60 * time.Second
+)
+
+// apiResponseHeaders are the response headers `gateway api --json` reports.
+var apiResponseHeaders = []string{"Content-Type", "Content-Length", "Location", "Etag"}
+
+// gatewayAPIData is what `gateway api` reports.
+type gatewayAPIData struct {
+	Method string `json:"method"`
+	Path   string `json:"path"`
+	URL    string `json:"url"`
+	Status int    `json:"status"`
+	// Headers are the selected response headers that were present.
+	Headers map[string]string `json:"headers"`
+	// Body is the response parsed as JSON when it is JSON, otherwise its text,
+	// or null when it was empty.
+	Body any `json:"body"`
+	// BodyBytes is the full response size, read to the end even past the cap.
+	BodyBytes int64 `json:"body_bytes"`
+	// Truncated is true when the body was larger than the cap: Body then holds
+	// the first bytes as text, and BodyBytes the full size.
+	Truncated bool `json:"truncated"`
+}
+
+func (a *App) newGatewayAPICmd() *cobra.Command {
+	var (
+		data    string
+		headers []string
+	)
+	cmd := &cobra.Command{
+		Use:   "api <METHOD> <path>",
+		Short: "Call this Instance's Gateway REST API with its own token",
+		Long: `api sends one request to this Instance's Gateway, at the recorded loopback URL, with
+the Instance API token (ADR 0007) and the Origin, Referer and Accept headers the
+Gateway's own web UI sends. The path must start with /: a full URL or another host is
+refused, so the token never leaves this Instance. --header adds a header; it cannot
+replace X-Ignition-API-Token, Origin, Referer or Host.
+
+--data sends a body: @file reads a file, - reads stdin, anything else is sent as
+given, as application/json unless a --header names another Content-Type. A body over
+16 MiB is refused.
+
+Human mode prints the response body and fails on a 4xx or 5xx answer. --json
+reports {method, path, url, status, headers, body, body_bytes, truncated}: body is
+parsed when it is JSON, and a response over 4 MiB is reported as truncated with its
+full size rather than cut silently.`,
+		Example: `  igdev gateway api GET /data/api/v1/gateway-info
+  igdev gateway api GET /data/api/v1/resources/names/ignition/tag-provider --json
+  igdev gateway api PUT /data/api/v1/resources/ignition/tag-provider --data @provider.json`,
+		RunE: func(_ *cobra.Command, args []string) error {
+			if len(args) < 2 {
+				return missingArgument("gateway api", "path",
+					"igdev gateway api GET /data/api/v1/gateway-info", "name the method and the Gateway path")
+			}
+			if len(args) > 2 {
+				return extraArguments("gateway api", 2, args)
+			}
+			method, path := strings.ToUpper(args[0]), args[1]
+			if !validMethod(method) {
+				return contract.UsageFault(fmt.Sprintf("%q is not an HTTP method", args[0]),
+					contract.Remediation{Command: "igdev help gateway api", Why: "use GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS"})
+			}
+			if reason := gatewayapi.PathProblem(path); reason != "" {
+				return contract.UsageFault(fmt.Sprintf("path %q %s", path, reason),
+					contract.Remediation{Command: "igdev gateway api GET /data/api/v1/gateway-info", Why: "pass a path on this Instance's Gateway"})
+			}
+			extra, fault := apiHeaders(headers)
+			if fault != nil {
+				return fault
+			}
+			body, fault := a.apiBody(data)
+			if fault != nil {
+				return fault
+			}
+			g, err := a.gatewayContext()
+			if err != nil {
+				return err
+			}
+			var reader io.Reader
+			if body != nil {
+				reader = bytes.NewReader(body)
+			}
+			req, err := gatewayapi.NewRequest(method, g.url(), path, reader, g.token, extra)
+			if err != nil {
+				return contract.UsageFault(err.Error(),
+					contract.Remediation{Command: "igdev help gateway api", Why: "show what gateway api accepts"})
+			}
+			resp, err := (&http.Client{Timeout: apiTimeout}).Do(req)
+			if err != nil {
+				return contract.NewFault(contract.CodeGatewayUnhealthy, contract.ExitFailure,
+					fmt.Sprintf("the Gateway at %s did not answer %s %s (%v)", g.url(), method, path, err)).
+					WithCause(err).
+					WithRemediation(contract.Remediation{Command: "igdev gateway ensure", Why: "leave this Instance with a running Gateway"})
+			}
+			defer resp.Body.Close()
+			out, raw := readAPIResponse(resp, method, path, req.URL.String())
+			if resp.StatusCode >= 400 {
+				return contract.NewFault(contract.CodeGatewayAPI, contract.ExitFailure,
+					fmt.Sprintf("%s %s answered %s", method, path, resp.Status)).
+					WithData(out).
+					WithRemediation(contract.Remediation{Command: "igdev gateway logs --tail 50", Why: "read why the Gateway refused it"})
+			}
+			a.emit(g.res, out, func() {
+				_, _ = a.Stdout.Write(raw)
+				if len(raw) > 0 && raw[len(raw)-1] != '\n' {
+					fmt.Fprintln(a.Stdout)
+				}
+				if out.Truncated {
+					fmt.Fprintf(a.Stderr, "[igdev] the response was %d bytes; the first %d are shown\n", out.BodyBytes, apiResponseLimit)
+				}
+			})
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&data, "data", "", "request body: @file, - for stdin, or the body itself")
+	cmd.Flags().StringArrayVar(&headers, "header", nil, "extra request header, Name: value (repeatable)")
+	return cmd
+}
+
+func validMethod(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	return false
+}
+
+// apiHeaders parses --header values, refusing the ones igdev sets itself.
+func apiHeaders(raw []string) (http.Header, *contract.Fault) {
+	out := http.Header{}
+	for _, h := range raw {
+		name, value, ok := strings.Cut(h, ":")
+		name = strings.TrimSpace(name)
+		if !ok || name == "" || strings.ContainsAny(name, " \t\r\n") {
+			return nil, contract.UsageFault(fmt.Sprintf("--header %q is not Name: value", h),
+				contract.Remediation{Command: "igdev help gateway api", Why: "pass headers as Name: value"})
+		}
+		if gatewayapi.Reserved(name) {
+			return nil, contract.UsageFault(fmt.Sprintf("--header %s is set by igdev and cannot be replaced", name),
+				contract.Remediation{Command: "igdev help gateway api", Why: "the token and origin headers always belong to this Instance"})
+		}
+		out.Add(name, strings.TrimSpace(value))
+	}
+	return out, nil
+}
+
+// apiBody reads --data: @file, - for stdin, or the literal body.
+func (a *App) apiBody(data string) ([]byte, *contract.Fault) {
+	if data == "" {
+		return nil, nil
+	}
+	var src io.Reader
+	switch {
+	case data == "-":
+		src = a.Stdin
+	case strings.HasPrefix(data, "@"):
+		f, err := os.Open(data[1:])
+		if err != nil {
+			return nil, contract.UsageFault(fmt.Sprintf("--data %s cannot be read: %v", data, err),
+				contract.Remediation{Command: "igdev help gateway api", Why: "pass a readable file after @"})
+		}
+		defer func() { _ = f.Close() }()
+		src = f
+	default:
+		return []byte(data), nil
+	}
+	body, err := io.ReadAll(io.LimitReader(src, apiRequestLimit+1))
+	if err != nil {
+		return nil, contract.UsageFault(fmt.Sprintf("--data %s cannot be read: %v", data, err),
+			contract.Remediation{Command: "igdev help gateway api", Why: "pass a readable body"})
+	}
+	if len(body) > apiRequestLimit {
+		return nil, contract.UsageFault(fmt.Sprintf("--data %s is over the %d-byte limit", data, apiRequestLimit),
+			contract.Remediation{Command: "igdev help gateway api", Why: "send a smaller body"})
+	}
+	return body, nil
+}
+
+// readAPIResponse reads the answer up to the cap, counts the rest, and decodes it
+// for the report. raw is what human mode prints.
+func readAPIResponse(resp *http.Response, method, path, url string) (gatewayAPIData, []byte) {
+	out := gatewayAPIData{Method: method, Path: path, URL: url, Status: resp.StatusCode, Headers: map[string]string{}}
+	for _, name := range apiResponseHeaders {
+		if v := resp.Header.Get(name); v != "" {
+			out.Headers[strings.ToLower(name)] = v
+		}
+	}
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, apiResponseLimit))
+	rest, _ := io.Copy(io.Discard, resp.Body)
+	out.BodyBytes = int64(len(raw)) + rest
+	out.Truncated = rest > 0
+	switch {
+	case len(raw) == 0:
+		out.Body = nil
+	case !out.Truncated && json.Valid(raw):
+		out.Body = json.RawMessage(raw)
+	default:
+		out.Body = string(raw)
+	}
+	return out, raw
+}

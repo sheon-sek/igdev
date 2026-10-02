@@ -181,6 +181,9 @@ const (
 	// exit level of `gateway exec` is the command's own exit code, so a failing
 	// command stays distinguishable from a failure of igdev itself.
 	CodeExecFailed Code = "IGDEV_E_EXEC_FAILED"
+	// CodeGatewayAPI covers a `gateway api` request the Gateway answered with a
+	// 4xx or 5xx status. The envelope's data carries the whole answer.
+	CodeGatewayAPI Code = "IGDEV_E_GATEWAY_API"
 )
 
 // Remediation is a machine-readable next step: the exact command that clears
