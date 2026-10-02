@@ -28,6 +28,12 @@ import (
 // one Gateway, so every mode-specific verb names it.
 const GatewayServiceName = "gateway"
 
+// GatewayContainer is the name Compose gives the Gateway container of the
+// Instance whose project is namespace: one replica, so always index 1.
+func GatewayContainer(namespace string) string {
+	return namespace + "-" + GatewayServiceName + "-1"
+}
+
 // TrialKeeperServiceName is the service that resets the Gateway's expired trial in
 // place, when the contract asks for it (ADR 0008).
 const TrialKeeperServiceName = "trial-keeper"

@@ -29,8 +29,15 @@ services:
       - "{{ .BindAddress }}:{{ .Ports.HTTP }}:8088"
       - "{{ .BindAddress }}:{{ .Ports.HTTPS }}:8043"
       - "{{ .BindAddress }}:{{ .Ports.Debug }}:8000"
+    # Each staged private module is mounted as one read-only file, so the
+    # image's built-in modules stay where they are.
     volumes:
-      - {{ .ModulesDir }}:/usr/local/bin/ignition/user-lib/modules
+{{- range .ModuleFiles }}
+      - type: bind
+        source: {{ quote (printf "%s/%s" $.ModulesDir .) }}
+        target: {{ quote (printf "%s/%s" $.ModulesTarget .) }}
+        read_only: true
+{{- end }}
       - {{ .BaselineDir }}:/restore:ro
       - gateway-data:/usr/local/bin/ignition/data
     environment:
@@ -53,6 +60,10 @@ services:
       ${GATEWAY_RESTORE_ARGS:-}
       --
       -Dignition.allowunsignedmodules=${IGNITION_ALLOW_UNSIGNED_MODULES:-false}
+    # The Gateway reaches services on the host, a simulator's OPC UA server for
+    # one, at {{ .HostAddress }}.
+    extra_hosts:
+      - "{{ .HostAddress }}:host-gateway"
     restart: unless-stopped
     logging:
       options:

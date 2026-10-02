@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -63,6 +65,9 @@ type Entry struct {
 	Version string `json:"version"`
 	// Error explains a missing or failed prerequisite; empty when present.
 	Error string `json:"error"`
+	// Warning is set when the tool works but is too old for part of what igdev
+	// does with it. It never makes the report unready.
+	Warning string `json:"warning,omitempty"`
 }
 
 // Report is the whole audit.
@@ -120,7 +125,34 @@ func probe(p Prerequisite, run Runner) Entry {
 			entry.Error = "printed no version line"
 		}
 	}
+	if entry.State == StatePresent && p.Name == "docker" {
+		entry.Warning = dockerWarning(entry.Version)
+	}
 	return entry
+}
+
+// hostGatewayEngine is the first Docker Engine that maps the special
+// `host-gateway` address, which the Gateway reaches the host through.
+var hostGatewayEngine = [2]int{20, 10}
+
+// dockerVersion reads major.minor out of a `docker --version` line such as
+// "Docker version 29.6.2, build abc".
+var dockerVersion = regexp.MustCompile(`^Docker version v?(\d+)\.(\d+)`)
+
+// dockerWarning reports an engine too old for `host-gateway`; an unreadable
+// version line warns nothing, since the audit cannot tell.
+func dockerWarning(version string) string {
+	m := dockerVersion.FindStringSubmatch(version)
+	if m == nil {
+		return ""
+	}
+	major, _ := strconv.Atoi(m[1])
+	minor, _ := strconv.Atoi(m[2])
+	if major > hostGatewayEngine[0] || (major == hostGatewayEngine[0] && minor >= hostGatewayEngine[1]) {
+		return ""
+	}
+	return fmt.Sprintf("Docker %d.%d is older than %d.%d: the Gateway cannot reach the host at host.docker.internal",
+		major, minor, hostGatewayEngine[0], hostGatewayEngine[1])
 }
 
 // firstLine returns the first non-empty line of output, trimmed and bounded so a

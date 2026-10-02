@@ -4,7 +4,9 @@
 
 status reports what the container engine says about this Instance's compose project
 and the URL the Checkout Setup recorded, so an agent never has to read setup.json or
-assume a port.
+assume a port. --json also names the Gateway container (container) and the address the
+Gateway reaches the host by (host_address, host.docker.internal), so a caller never
+rebuilds the container name or looks up an IP with docker inspect.
 
 ## Usage
 

@@ -32,5 +32,8 @@ fi
 # request to commission, so an empty one is removed instead.
 [ -n "${GATEWAY_ADMIN_USERNAME:-}" ] || unset GATEWAY_ADMIN_USERNAME
 [ -n "${GATEWAY_ADMIN_PASSWORD:-}" ] || unset GATEWAY_ADMIN_PASSWORD
+# An empty module whitelist means "every module loads" to igdev, but the image
+# reads a set-but-empty GATEWAY_MODULES_ENABLED as "load none".
+[ -n "${GATEWAY_MODULES_ENABLED:-}" ] || unset GATEWAY_MODULES_ENABLED
 
 exec docker-entrypoint.sh "$@"

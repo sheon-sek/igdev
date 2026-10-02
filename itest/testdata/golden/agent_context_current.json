@@ -34,7 +34,9 @@
       "running": false,
       "url": "http://127.0.0.1:<PORT_HTTP>",
       "trial_reset": "auto",
-      "trial": null
+      "trial": null,
+      "container": "igdev-<SHORT_ID>-gateway-1",
+      "host_address": "host.docker.internal"
     },
     "modules": {
       "count": 0,

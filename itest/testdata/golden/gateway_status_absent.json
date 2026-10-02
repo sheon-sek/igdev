@@ -15,6 +15,8 @@
     },
     "state": "absent",
     "services": [],
+    "container": "igdev-<SHORT_ID>-gateway-1",
+    "host_address": "host.docker.internal",
     "trial": null
   }
 }
