@@ -341,8 +341,8 @@ func agentContextOf(found project.Found, res *config.Resolution, state gate.Stat
 			Ports:     stamp.Ports,
 		}
 		data.Gateway = &agentGateway{
-			Running:    agentGatewayRunning(found.Root, stamp),
-			URL:        fmt.Sprintf("http://%s:%d", ports.BindAddress, stamp.Ports.HTTP),
+			Running:     agentGatewayRunning(found.Root, stamp),
+			URL:         fmt.Sprintf("http://%s:%d", ports.BindAddress, stamp.Ports.HTTP),
 			TrialReset:  doc.Gateway.EffectiveTrialReset(),
 			Container:   docker.GatewayContainer(instance.Namespace(stamp.InstanceID)),
 			HostAddress: runtimeassets.HostAddress,
@@ -420,18 +420,18 @@ func agentCatalogOf(found project.Found, res *config.Resolution, doc project.Doc
 	overlayCounts := eff.OverlayCounts()
 	effective := eff.Counts()
 	return agentCatalog{
-		CoreDigest: eff.CoreDigest(),
-		Overlay: agentCatalogLayer{
-			Present: len(paths) > 0,
-			Digest:  eff.OverlayDigest(),
-			Paths:   paths,
-		},
-	}, agentCapabilities{
-		NativeFunctions: effective.NativeFunctions,
-		RestOperations:  effective.RestOperations,
-		OverlayRows: overlayCounts.BuiltinModules + overlayCounts.NativeFunctions +
-			overlayCounts.CapabilityRules + overlayCounts.RestOperations,
-	}
+			CoreDigest: eff.CoreDigest(),
+			Overlay: agentCatalogLayer{
+				Present: len(paths) > 0,
+				Digest:  eff.OverlayDigest(),
+				Paths:   paths,
+			},
+		}, agentCapabilities{
+			NativeFunctions: effective.NativeFunctions,
+			RestOperations:  effective.RestOperations,
+			OverlayRows: overlayCounts.BuiltinModules + overlayCounts.NativeFunctions +
+				overlayCounts.CapabilityRules + overlayCounts.RestOperations,
+		}
 }
 
 // agentCommandsOf reports which project verbs can do work here. The pipeline
