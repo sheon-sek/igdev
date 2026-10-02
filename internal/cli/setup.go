@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -560,6 +561,7 @@ func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceI
 		Ports:                triplet,
 		RuntimeDir:           paths.runtime,
 		ModulesDir:           paths.modules,
+		ModuleFiles:          moduleFiles(records),
 		BaselineDir:          paths.baseline,
 		APITokenHash:         tokenHash,
 		CreatedAtMillis:      epochMillis(createdAt),
@@ -587,6 +589,18 @@ func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceI
 		writes = append(writes, write)
 	}
 	return writes, nil
+}
+
+// moduleFiles are the staged artifacts the Gateway mounts, one file each: the
+// artifacts Scan kept (it collapses two files that declare one module id), sorted
+// by file name so rendering stays deterministic.
+func moduleFiles(records []modules.Record) []string {
+	out := make([]string, 0, len(records))
+	for _, record := range records {
+		out = append(out, record.Artifact)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // materializeFile writes one generated file, reporting what happened. Generated

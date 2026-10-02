@@ -36,6 +36,13 @@ const (
 	EntrypointFileName = "gateway-entrypoint.sh"
 )
 
+// ModulesTarget is the Gateway image's own modules directory.
+const ModulesTarget = "/usr/local/bin/ignition/user-lib/modules"
+
+// HostAddress is the name the Gateway container reaches the host by: Compose maps
+// it to the engine's host gateway (Docker Engine 20.10+, native on Docker Desktop).
+const HostAddress = "host.docker.internal"
+
 //go:embed templates
 var files embed.FS
 
@@ -74,6 +81,11 @@ type Input struct {
 	// ModulesDir is the absolute staged-modules path, mounted into the Gateway.
 	// The staging content is later tickets; setup creates the mount point.
 	ModulesDir string
+	// ModuleFiles are the file names of the private module artifacts staged in
+	// ModulesDir, sorted. Each is mounted read-only as one file into the image's
+	// modules directory, so the image's built-in modules stay visible next to
+	// them; a staged file named like a built-in one replaces that one only.
+	ModuleFiles []string
 	// BaselineDir is the absolute Baseline restore path, mounted read-only.
 	BaselineDir string
 	// APITokenHash is the hash of the Instance's own API token, which the seed
@@ -103,6 +115,11 @@ type view struct {
 	EnvFileName string
 	// SeedDir names the seed directory from inside the build context.
 	SeedDir string
+	// ModulesTarget is the image's modules directory each staged file is
+	// mounted into.
+	ModulesTarget string
+	// HostAddress is the name the Gateway reaches the host by.
+	HostAddress string
 	// TrialKeeper is whether the compose project runs the trial keeper: the
 	// contract asks for it and there is a token for it to reset with.
 	TrialKeeper bool
@@ -163,6 +180,8 @@ func render(name string, in Input) ([]byte, error) {
 		DockerfileFileName: DockerfileFileName,
 		EnvFileName:        EnvFileName,
 		SeedDir:            SeedDir,
+		ModulesTarget:      ModulesTarget,
+		HostAddress:        HostAddress,
 		TrialKeeper:        in.TrialAutoReset && in.APITokenHash != "",
 	}
 	var buf bytes.Buffer

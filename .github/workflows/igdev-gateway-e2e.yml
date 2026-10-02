@@ -112,6 +112,21 @@ jobs:
             *) echo "the login route answered '$location', want a redirect to /idp/temp/"; exit 1 ;;
           esac
 
+      # Phase 2 (#46): staged modules no longer hide the image's own, so a
+      # checkout with nothing staged and no whitelist runs every built-in module.
+      - name: Assert the built-in modules load
+        working-directory: ${{ env.CHECKOUT }}
+        run: |
+          set -euo pipefail
+          url="$(igdev gateway status --json | jq -r '.data.url')"
+          token="$(igdev gateway credentials --json | jq -r '.data.api_token')"
+          echo "::add-mask::$token"
+          modules="$(curl -fsS -H "X-Ignition-API-Token: $token" "$url/data/api/v1/modules/healthy")"
+          echo "$modules" | jq -e '[.items[].id] | index("com.inductiveautomation.opcua") != null' >/dev/null \
+            || { echo "the OPC UA module is not running: $(echo "$modules" | jq -c '[.items[].id]')"; exit 1; }
+          igdev gateway status --json | jq -e '.data.host_address == "host.docker.internal" and (.data.container | endswith("-gateway-1"))' >/dev/null \
+            || { echo "gateway status does not report the container and host address"; exit 1; }
+
       - name: Collect diagnostics on failure
         if: failure()
         working-directory: ${{ env.CHECKOUT }}

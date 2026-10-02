@@ -287,7 +287,13 @@ a rendered file, so identical inputs are byte-identical and a second setup on a 
 checkout re-materializes nothing. Every referenced host path is absolute, the build
 context is `.igdev/runtime/` itself, and staged modules and the Baseline directory are
 mounted — so the repository contributes no Docker input of its own and never needs a
-`.dockerignore`. The rendered Compose file is the same whether or not a Baseline is
+`.dockerignore`. Each staged module is mounted as one read-only file into the image's
+`user-lib/modules/`, sorted by file name, so the image's built-in modules (OPC UA,
+WebDev, Historian, …) stay visible next to it; a staged file named like a built-in one
+replaces that one only, and clearing the staging renders the original Compose file
+byte for byte. An empty `[modules] enabled` whitelist reaches the Gateway as an unset
+`GATEWAY_MODULES_ENABLED` (the image reads an empty value as "load none"), so every
+module loads. The rendered Compose file is the same whether or not a Baseline is
 staged: the restore argument reaches the Gateway through the process environment, not
 through a rendered file.
 
@@ -394,6 +400,12 @@ stderr, because the reason a Gateway never came up is in its own log. `smoke` ap
 the same readiness gate before it checks anything, fails
 with the failing endpoint named in the message, and the transport error or status is
 in `data.checks[].error` for a passing run's report.
+
+**Host and container.** The Gateway reaches services on the host, such as a
+simulator's OPC UA server, at `host.docker.internal`: the rendered Compose file maps it
+to the engine's `host-gateway` (Docker Engine 20.10+, native on Docker Desktop, and
+`doctor` warns about an older engine). `gateway status --json` and `agent context`
+report it as `host_address`, next to `container`, the Gateway container's name.
 
 **Trial.** An expired trial is reset in place with the Instance API token, never by a
 restart or rebuild, so the Gateway's data survives (ADR 0008). Ignition accepts

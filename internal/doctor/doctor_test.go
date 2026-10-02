@@ -166,3 +166,25 @@ func TestDefaultProbesAreFrozen(t *testing.T) {
 		t.Errorf("required probes = %v, want docker,compose,java", required)
 	}
 }
+
+// The Gateway reaches the host through `host-gateway`, which needs Docker 20.10.
+// An older engine still works, so it warns without making the host unready.
+func TestAuditWarnsAboutAnEngineTooOldForHostGateway(t *testing.T) {
+	for version, warns := range map[string]bool{
+		"Docker version 19.03.15, build 99e3ed8": true,
+		"Docker version 20.10.0, build 7287ab3":  false,
+		"Docker version 29.6.2, build abc":       false,
+		"podman version 4.9.3":                   false,
+		"something else":                         false,
+	} {
+		run := func(args []string) (string, error) { return version + "\n", nil }
+		report := Audit(run, Prerequisite{Name: "docker", Required: true, Args: []string{"docker", "--version"}})
+		entry := report.Prerequisites[0]
+		if (entry.Warning != "") != warns {
+			t.Errorf("%q: warning = %q, want warning %v", version, entry.Warning, warns)
+		}
+		if !report.Ready {
+			t.Errorf("%q: a warning made the host unready", version)
+		}
+	}
+}

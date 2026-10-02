@@ -104,6 +104,10 @@ type gatewayStatusData struct {
 	gatewayAddress
 	State    string           `json:"state"`
 	Services []gatewayService `json:"services"`
+	// Container is the Gateway container's name, so callers stop rebuilding it.
+	Container string `json:"container"`
+	// HostAddress is the name the Gateway reaches the host by.
+	HostAddress string `json:"host_address"`
 	// Trial is what the Gateway reports about its trial, or null when the Gateway
 	// is not running or did not answer.
 	Trial *trial.State `json:"trial"`
@@ -720,7 +724,9 @@ func (a *App) newGatewayStatusCmd() *cobra.Command {
 		Short: "Report this Instance's compose state and recorded URL",
 		Long: `status reports what the container engine says about this Instance's compose project
 and the URL the Checkout Setup recorded, so an agent never has to read setup.json or
-assume a port.`,
+assume a port. --json also names the Gateway container (container) and the address the
+Gateway reaches the host by (host_address, host.docker.internal), so a caller never
+rebuilds the container name or looks up an IP with docker inspect.`,
 		Example: `  igdev gateway status
   igdev gateway status --json`,
 		Args: rejectArgs("gateway status"),
@@ -742,7 +748,11 @@ assume a port.`,
 					Name: service.Name, Service: service.Service, State: service.State, Status: service.Status,
 				})
 			}
-			data := gatewayStatusData{gatewayAddress: g.address(), State: gatewayState(reported), Services: reported}
+			data := gatewayStatusData{
+				gatewayAddress: g.address(), State: gatewayState(reported), Services: reported,
+				Container:   docker.GatewayContainer(g.compose.Namespace),
+				HostAddress: runtimeassets.HostAddress,
+			}
 			if data.State == "running" {
 				data.Trial = readTrial(g.url())
 			}

@@ -19,6 +19,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/docker"
 	"github.com/sheon-sek/igdev/internal/gate"
+	"github.com/sheon-sek/igdev/internal/instance"
 	"github.com/sheon-sek/igdev/internal/ports"
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/runtimeassets"
@@ -103,6 +104,10 @@ type agentGateway struct {
 	TrialReset string `json:"trial_reset"`
 	// Trial is the running Gateway's own trial report, or null.
 	Trial *trial.State `json:"trial"`
+	// Container is the Gateway container's name.
+	Container string `json:"container"`
+	// HostAddress is the name the Gateway reaches the host by.
+	HostAddress string `json:"host_address"`
 }
 
 // agentModules reports the private module artifacts this checkout stages, and
@@ -338,7 +343,9 @@ func agentContextOf(found project.Found, res *config.Resolution, state gate.Stat
 		data.Gateway = &agentGateway{
 			Running:    agentGatewayRunning(found.Root, stamp),
 			URL:        fmt.Sprintf("http://%s:%d", ports.BindAddress, stamp.Ports.HTTP),
-			TrialReset: doc.Gateway.EffectiveTrialReset(),
+			TrialReset:  doc.Gateway.EffectiveTrialReset(),
+			Container:   docker.GatewayContainer(instance.Namespace(stamp.InstanceID)),
+			HostAddress: runtimeassets.HostAddress,
 		}
 		if data.Gateway.Running {
 			data.Gateway.Trial = readTrial(data.Gateway.URL)

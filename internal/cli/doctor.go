@@ -53,6 +53,9 @@ func (a *App) printDoctor(report doctor.Report) {
 			detail = entry.Error
 		}
 		fmt.Fprintf(a.Stdout, "  %-8s %-8s %-8s %s\n", entry.Name, requirement, entry.State, detail)
+		if entry.Warning != "" {
+			fmt.Fprintf(a.Stdout, "  %-8s warning: %s\n", "", entry.Warning)
+		}
 	}
 }
 

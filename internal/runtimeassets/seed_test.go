@@ -183,7 +183,7 @@ func TestGatewayEntrypointNamesTheLoginProvider(t *testing.T) {
 		SystemUserSourcePlaceholder, SystemIdentityProviderPlaceholder,
 		"${IGDEV_SYSTEM_USER_SOURCE:-temp}", "${IGDEV_SYSTEM_IDENTITY_PROVIDER:-temp}",
 		`exec docker-entrypoint.sh "$@"`,
-		"unset GATEWAY_ADMIN_USERNAME", "unset GATEWAY_ADMIN_PASSWORD",
+		"unset GATEWAY_ADMIN_USERNAME", "unset GATEWAY_ADMIN_PASSWORD", "unset GATEWAY_MODULES_ENABLED",
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("%s does not carry %q", EntrypointFileName, want)

@@ -75,8 +75,8 @@ func TestComposeCarriesNamespacePortsAndMounts(t *testing.T) {
 		`"127.0.0.1:18070:8088"`,
 		`"127.0.0.1:19070:8043"`,
 		`"127.0.0.1:20070:8000"`,
-		"/repo/.igdev/modules:/usr/local/bin/ignition/user-lib/modules",
 		"/repo/.igdev/baseline:/restore:ro",
+		`"host.docker.internal:host-gateway"`,
 		`GATEWAY_MODULES_ENABLED: "com.inductiveautomation.perspective,com.inductiveautomation.opcua"`,
 		`TZ: "UTC"`,
 		"-n igdev-3b1f0c2a",
@@ -89,6 +89,10 @@ func TestComposeCarriesNamespacePortsAndMounts(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("compose file does not carry %q:\n%s", want, body)
 		}
+	}
+	// Nothing is staged, so nothing is mounted over the image's modules directory.
+	if strings.Contains(body, "user-lib/modules") {
+		t.Errorf("compose file mounts over the modules directory with nothing staged:\n%s", body)
 	}
 	// Ports are published on loopback only.
 	if strings.Contains(body, "0.0.0.0") {
@@ -243,5 +247,41 @@ func TestMaterializeReturnsTheRuntimeFiles(t *testing.T) {
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("Materialize produced\n%v\nwant\n%v", names, want)
+	}
+}
+
+// Each staged module is mounted as one read-only file, in file-name order, so the
+// image's built-in modules stay visible; with the staging cleared the Compose file
+// is byte for byte what it was.
+func TestComposeMountsEachStagedModuleAsAFile(t *testing.T) {
+	plain, err := Compose(sampleInput())
+	if err != nil {
+		t.Fatalf("Compose: %v", err)
+	}
+	staged := sampleInput()
+	staged.ModuleFiles = []string{"a-first.modl", "MCP Module 1.0.modl"}
+	raw, err := Compose(staged)
+	if err != nil {
+		t.Fatalf("Compose: %v", err)
+	}
+	body := string(raw)
+	for _, want := range []string{
+		`source: "/repo/.igdev/modules/a-first.modl"` + "\n        target: \"/usr/local/bin/ignition/user-lib/modules/a-first.modl\"\n        read_only: true",
+		`source: "/repo/.igdev/modules/MCP Module 1.0.modl"`,
+		`target: "/usr/local/bin/ignition/user-lib/modules/MCP Module 1.0.modl"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("compose file does not carry %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "/repo/.igdev/modules:/usr/local/bin/ignition/user-lib/modules") {
+		t.Errorf("compose file still mounts the whole modules directory:\n%s", body)
+	}
+	cleared, err := Compose(sampleInput())
+	if err != nil {
+		t.Fatalf("Compose: %v", err)
+	}
+	if string(cleared) != string(plain) {
+		t.Error("clearing the staging does not return the original Compose file")
 	}
 }

@@ -2,8 +2,8 @@
 #
 # The build context is {{ .RuntimeDir }} and holds only what igdev generates: the
 # repository's own files never enter the image, so no .dockerignore is needed.
-# Staged private modules are mounted from {{ .ModulesDir }} at run time instead of
-# being baked into a layer. What the image does carry is generated next to this
+# Staged private modules are mounted from {{ .ModulesDir }} at run time, one file
+# each, instead of being baked into a layer. What the image does carry is generated next to this
 # file: the seed (the igdev security level and the Instance API token's hash,
 # never the token itself), which a fresh data volume takes as its initial content
 # so the token works on the Gateway's first start (ADR 0007), the entrypoint
