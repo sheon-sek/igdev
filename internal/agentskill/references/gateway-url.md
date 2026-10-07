@@ -4,7 +4,8 @@
 
 url prints the Gateway URL recorded in the Checkout Setup: the loopback address and
 the port allocated to this Instance. Nothing in igdev assumes 8088 (ADR 0003), so
-this is the only URL to script against.
+this is the only URL to script against. To call the Gateway's REST API, use
+`igdev gateway api`, which sends the Instance token to this URL only.
 
 ## Usage
 
@@ -16,7 +17,7 @@ igdev gateway url [flags]
 
 ```text
   igdev gateway url
-  curl "$(igdev gateway url)/"
+  BASE_URL="$(igdev gateway url)" npx playwright test
 ```
 
 ## Options

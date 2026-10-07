@@ -30,6 +30,7 @@ never from a file on disk.
 
 | Command | What it does |
 | --- | --- |
+| [`igdev gateway api`](gateway-api.md) | Call this Instance's Gateway REST API with its own token |
 | [`igdev gateway credentials`](gateway-credentials.md) | Read the Gateway admin credentials (the password only as JSON) |
 | [`igdev gateway data`](gateway-data.md) | Move files into and out of the Gateway's data directory |
 | [`igdev gateway down`](gateway-down.md) | Stop this Instance's Gateway |

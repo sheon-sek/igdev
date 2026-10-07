@@ -48,6 +48,7 @@ Orient before acting: igdev status --json works everywhere, and igdev agent cont
 | [`igdev consent export`](consent-export.md) | Export this machine's Consent record for IGDEV_CONSENT_FILE |
 | [`igdev doctor`](doctor.md) | Audit the host prerequisites igdev's runtime work depends on |
 | [`igdev gateway`](gateway.md) | Control this Instance's Ignition Gateway |
+| [`igdev gateway api`](gateway-api.md) | Call this Instance's Gateway REST API with its own token |
 | [`igdev gateway credentials`](gateway-credentials.md) | Read the Gateway admin credentials (the password only as JSON) |
 | [`igdev gateway data`](gateway-data.md) | Move files into and out of the Gateway's data directory |
 | [`igdev gateway data get`](gateway-data-get.md) | Copy a file out of the Gateway's data directory |

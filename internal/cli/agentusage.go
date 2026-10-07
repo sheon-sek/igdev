@@ -174,6 +174,13 @@ modules this checkout staged, by module id (ACCEPT_MODULE_LICENSES and
 ACCEPT_MODULE_CERTS); a contract with [modules] require_private_module_consent = true
 instead requires the machine-global module-license and module-cert terms, and without
 them the run stops at exit 3 (ADR 0006).`,
+	"igdev gateway api": `pass --json for the machine contract. data carries method, path, url,
+status, headers (content-type, content-length, location, etag when present), body (parsed
+JSON, else text, null when empty), body_bytes, and truncated (true when the answer was
+over 4 MiB: body is then the first bytes as text). Use it for every REST call to the
+Instance instead of curl with the token: the path must start with /, and the token and
+origin headers cannot be overridden. A 4xx or 5xx answer is IGDEV_E_GATEWAY_API with the
+same data; no answer is IGDEV_E_GATEWAY_UNHEALTHY, fixed with igdev gateway ensure.`,
 	"igdev gateway ensure": `pass --json for the machine contract. data carries action
 (reused, started, reset), reason (healthy, not_running, fresh, faulted, token_rejected,
 trial_short), instance_id, namespace, url, ports, container, host_address, trial (or

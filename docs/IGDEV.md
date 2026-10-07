@@ -390,6 +390,7 @@ igdev gateway exec -- <cmd...>      run a command in the Gateway container (as i
                                     or --user root), exiting with its exit code
 igdev gateway data put <local> <p>  copy a host file to <p> under the data directory
 igdev gateway data get <p> [local]  copy <p> out of the data directory
+igdev gateway api <METHOD> <path>   call the Gateway REST API with the Instance token
 ```
 
 Every engine call is `docker compose --project-name igdev-<instance> --file
@@ -430,6 +431,15 @@ that names a credential (`password`, `secret`, `token`, `apiKey`, …) must be e
 Every refusal is `IGDEV_E_CONFIG_INVALID` naming the path. A change in a seed directory
 makes the Checkout Setup stale. The seed applies to a fresh volume only, so run
 `igdev gateway reset` or `igdev gateway ensure --fresh` to pick a change up.
+
+**REST with the Instance token.** `gateway api GET /data/api/v1/gateway-info` sends
+the request to the recorded loopback URL with `X-Ignition-API-Token`, `Origin`, `Referer`
+and `Accept: application/json`. The path must start with `/`, so a full URL or another
+host is a usage error and the token never leaves the Instance; `--header` adds headers
+but cannot replace those four (or `Host`). `--data @file|-|<body>` sends a body (16 MiB
+at most). Human mode prints the body; `--json` reports `status`, selected `headers`, the
+`body` parsed when it is JSON, `body_bytes`, and `truncated` when the answer was over
+4 MiB. A 4xx or 5xx answer is `IGDEV_E_GATEWAY_API` with the same data.
 
 **One call before e2e.** `ensure` is what a harness or an agent runs instead of chaining
 `status`, `up`, `wait`, and `reset`. It reuses the Gateway (`action: reused`) when the

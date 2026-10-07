@@ -2,6 +2,7 @@ package testrig
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -30,6 +31,10 @@ type GatewayStub struct {
 	paths  map[string]int
 	bodies map[string]string
 	hits   int
+	// last is the most recent request's headers, method and body.
+	last     http.Header
+	lastVerb string
+	lastBody string
 }
 
 // ServeGateway starts a stand-in Gateway on a loopback port the fixture already
@@ -102,8 +107,18 @@ func (g *GatewayStub) Close() {
 	}
 }
 
-func (g *GatewayStub) handle(w http.ResponseWriter, r *http.Request) {
+// LastRequest reports the most recent request's method, headers and body, so a
+// test can assert what igdev sent.
+func (g *GatewayStub) LastRequest() (string, http.Header, string) {
 	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.lastVerb, g.last.Clone(), g.lastBody
+}
+
+func (g *GatewayStub) handle(w http.ResponseWriter, r *http.Request) {
+	raw, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	g.mu.Lock()
+	g.last, g.lastVerb, g.lastBody = r.Header.Clone(), r.Method, string(raw)
 	status, ok := g.paths[r.URL.Path]
 	body := g.bodies[r.URL.Path]
 	g.hits++

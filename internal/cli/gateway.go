@@ -453,6 +453,7 @@ never from a file on disk.`,
 		a.newGatewayTrialCmd(),
 		a.newGatewayExecCmd(),
 		a.newGatewayDataCmd(),
+		a.newGatewayAPICmd(),
 	)
 	return cmd
 }
@@ -804,9 +805,10 @@ func (a *App) newGatewayURLCmd() *cobra.Command {
 		Short: "Print this Instance's recorded Gateway URL",
 		Long: `url prints the Gateway URL recorded in the Checkout Setup: the loopback address and
 the port allocated to this Instance. Nothing in igdev assumes 8088 (ADR 0003), so
-this is the only URL to script against.`,
+this is the only URL to script against. To call the Gateway's REST API, use
+` + "`igdev gateway api`" + `, which sends the Instance token to this URL only.`,
 		Example: `  igdev gateway url
-  curl "$(igdev gateway url)/"`,
+  BASE_URL="$(igdev gateway url)" npx playwright test`,
 		Args: rejectArgs("gateway url"),
 		RunE: func(_ *cobra.Command, _ []string) error {
 			g, err := a.gatewayContext()
@@ -838,9 +840,12 @@ Gateway is seeded with its hash before its first start, so it works without a
 restart (ADR 0007).
 
 A Gateway restored from a staged Baseline keeps the backup's users, so its admin
-password is the backup's, not this one; the API token works on it all the same.`,
+password is the backup's, not this one; the API token works on it all the same.
+
+For REST calls use ` + "`igdev gateway api`" + `, which presents the token itself; read the token
+here only to hand it to a tool igdev does not drive, such as a browser test.`,
 		Example: `  igdev gateway credentials --json
-  curl -u "$(igdev gateway credentials --json | jq -r '.data.username'):..." http://.../`,
+  igdev gateway credentials --json | jq -r '.data.password'`,
 		Args: rejectArgs("gateway credentials"),
 		RunE: func(_ *cobra.Command, _ []string) error {
 			g, err := a.gatewayContext()
