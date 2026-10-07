@@ -348,6 +348,7 @@ func TestWizardSetupAcceptEULAUnblocksConsentGate(t *testing.T) {
 	session := env.StartPTY(testrig.PTYRun{Args: []string{"setup", "--accept-eula"}, Dir: dir, Env: wizardEnv(env)})
 	session.Expect("Gateway admin password").Send("\r") // generate
 	session.Expect("Baseline backup").Send("\r")        // none
+	session.Expect("Stage a custom module").Send("\r")  // none
 	session.Expect("Gateway HTTP port").Send("\r")      // allocate
 	res := session.Wait()
 	testrig.WantExit(t, res, contract.ExitOK)
@@ -380,6 +381,7 @@ func TestWizardSetupWalksEveryStep(t *testing.T) {
 	session := env.StartPTY(testrig.PTYRun{Args: []string{"setup", "--interactive"}, Dir: dir, Env: wizardEnv(env)})
 	session.Expect("Gateway admin password").Send("\r") // keep, or generate
 	session.Expect("Baseline backup").Send("\r")        // none
+	session.Expect("Stage a custom module").Send("\r")  // none
 	session.Expect("Gateway HTTP port").Send("18080\r")
 	res := session.Wait()
 	testrig.WantExit(t, res, contract.ExitOK)
@@ -423,6 +425,7 @@ func TestWizardSetupStagesBaseline(t *testing.T) {
 	session := env.StartPTY(testrig.PTYRun{Args: []string{"setup", "--interactive"}, Dir: dir, Env: wizardEnv(env)})
 	session.Expect("Gateway admin password").Send("\r")
 	session.Expect("Baseline backup").Send(backup + "\r")
+	session.Expect("Stage a custom module").Send("\r")
 	session.Expect("Gateway HTTP port").Send("\r")
 	res := session.Wait()
 	testrig.WantExit(t, res, contract.ExitOK)
@@ -471,6 +474,34 @@ func TestWizardModuleAddStagesTheArtifact(t *testing.T) {
 	}
 	if got := readFile(t, filepath.Join(dir, project.StateDir, "runtime", "compose.env")); !strings.Contains(got, "com.acme.vision") {
 		t.Errorf("the rendered module list does not carry the staged module:\n%s", got)
+	}
+	res.AssertNoLeaksOutside(t, dir)
+}
+
+// A custom module named in the setup Wizard is staged by the run exactly as
+// `setup --module` stages it, so the next Gateway launch loads it.
+func TestWizardSetupStagesCustomModule(t *testing.T) {
+	env := testrig.NewEnv(t)
+	dir := env.Project("repo", testrig.MinimalContract)
+	testrig.WantExit(t, env.RunIn(dir, "setup", "--accept-eula"), contract.ExitOK)
+	source := modl(t, env, "downloads/acme-vision.modl", "<DOWNLOAD>",
+		moduleXML("com.acme.vision", "Acme Vision", "1.2.3"))
+
+	session := env.StartPTY(testrig.PTYRun{Args: []string{"setup", "--interactive"}, Dir: dir, Env: wizardEnv(env)})
+	session.Expect("Gateway admin password").Send("\r")
+	session.Expect("Baseline backup").Send("\r")
+	session.Expect("Stage a custom module").Send(source + "\r")
+	session.Expect("Gateway HTTP port").Send("\r")
+	res := session.Wait()
+	testrig.WantExit(t, res, contract.ExitOK)
+	if !strings.Contains(res.Screen, "module: com.acme.vision staged from") {
+		t.Errorf("the summary never named the staged module:\n%s", res.Screen)
+	}
+	if _, err := os.Stat(filepath.Join(dir, project.StateDir, modules.DirName, "acme-vision.modl")); err != nil {
+		t.Errorf("the Wizard did not stage the module: %v", err)
+	}
+	if got := readFile(t, filepath.Join(dir, project.StateDir, "runtime", "compose.yaml")); !strings.Contains(got, "acme-vision.modl") {
+		t.Errorf("the rendered Compose file does not mount the staged module:\n%s", got)
 	}
 	res.AssertNoLeaksOutside(t, dir)
 }

@@ -75,6 +75,22 @@ type setupData struct {
 	// Baseline is the Baseline this run staged, and is absent unless the run was
 	// asked for one: every other setup envelope keeps its frozen key set.
 	Baseline *baselineData `json:"baseline,omitempty"`
+	// Modules are the external module artifacts --module staged, in the order
+	// they were named, and absent unless the run was asked for one.
+	Modules []setupModule `json:"modules,omitempty"`
+}
+
+// setupModule is one artifact `setup --module` staged, reported the way
+// `module add` reports one.
+type setupModule struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Version  string `json:"version"`
+	Source   string `json:"source"`
+	Artifact string `json:"artifact"`
+	Path     string `json:"path"`
+	// Action is created or replaced.
+	Action string `json:"action"`
 }
 
 func (a *App) newSetupCmd() *cobra.Command {
@@ -87,6 +103,7 @@ func (a *App) newSetupCmd() *cobra.Command {
 		adminPassword       string
 		gatewayPort         int
 		baselinePath        string
+		modulePaths         []string
 	)
 
 	cmd := &cobra.Command{
@@ -127,7 +144,8 @@ free memory.
 A terminal gets the setup Wizard when the checkout has not been materialized yet, when
 no admin password is on record, or when this machine has not accepted the Ignition
 EULA. Its steps are the Consent gate, the requested heap, the admin password, an
-optional Baseline, an optional port pin, the materialization, and the summary.
+optional Baseline and custom module, an optional port pin, the materialization, and the
+summary.
 --interactive runs it even when everything is already on record; --yes takes the same
 defaults without asking; --json never prompts, whatever the terminal is. The Consent
 step only shows ` + "`igdev setup --accept-eula`" + `: a Wizard answer is never an acceptance,
@@ -136,9 +154,17 @@ and the run stops at exit level 3 until the machine record itself says otherwise
 --gateway-port pins the Instance's HTTP port machine-locally: the pin is recorded in
 ` + "`.igdev/local.toml`" + ` and re-used by the next setup, and the tracked Project Contract
 never carries a port (ADR 0003). --baseline stages a ` + ".gwbk" + ` as the Baseline the
-next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` applies.`,
+next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` applies.
+
+--module stages an external ` + "`.modl`" + ` — a licensed, early-access, or prebuilt module the
+repository does not build — exactly as ` + "`igdev module add`" + ` does; repeat it for more than
+one. The artifacts are checkout-local state under ` + "`.igdev/modules/`" + ` and never tracked,
+and a module staged before the first ` + "`igdev gateway ensure`" + ` loads on the fresh volume.
+Every file is validated before anything is written. The setup Wizard asks for one in its
+Baseline step.`,
 		Example: `  igdev setup
   igdev setup --accept-eula
+  igdev setup --module ~/Downloads/com.acme.vision.modl
   igdev setup --json
   IGDEV_GATEWAY_ADMIN_PASSWORD=... igdev setup`,
 		Args: rejectArgs("setup"),
@@ -175,6 +201,12 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 			run, err := a.decide("setup", wizard, res.IsJSON(), a.setupNeedsWizard(found))
 			if err != nil {
 				return err
+			}
+			// The named module artifacts are checked before anything is written,
+			// for the same reason: a file that cannot be staged must not leave a
+			// Consent record or a half-materialized checkout behind.
+			if fault := validateModules(modulePaths); fault != nil {
+				return fault
 			}
 
 			// The Acceptance flags are consumed here, before the Wizard whose
@@ -287,6 +319,17 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 			if err != nil {
 				return err
 			}
+			// The external modules are staged before the runtime is rendered, which
+			// reads the staging directory: a staged id joins the module list the
+			// Gateway is told to load. The Wizard may have added one, so the flag
+			// is read again here.
+			if wizardState != nil {
+				modulePaths, _ = cmd.Flags().GetStringArray("module")
+			}
+			stagedModules, fault := stageModules(found.Root, modulePaths)
+			if fault != nil {
+				return fault
+			}
 			writes, err := a.materializeRuntime(found, doc, instanceID, triplet, creds.APIToken, createdAt)
 			if err != nil {
 				return err
@@ -365,6 +408,7 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 				// Baseline is what --baseline staged, and is absent when the run
 				// staged none, so every other run's envelope is unchanged.
 				Baseline: staged,
+				Modules:  stagedModules,
 			}
 			a.emit(res, data, func() { a.printSetup(data) })
 			a.summarizeSetupWizard(wizardState, data)
@@ -388,8 +432,51 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 		"pin the Gateway HTTP port for this checkout, recorded machine-locally in "+project.LocalConfig)
 	flags.StringVar(&baselinePath, "baseline", "",
 		"stage a .gwbk as this checkout's Baseline, restored by igdev gateway reset")
+	flags.StringArrayVar(&modulePaths, "module", nil,
+		"stage an external .modl in this checkout, as igdev module add does; repeatable")
 
 	return cmd
+}
+
+// validateModules checks every artifact `setup --module` names before anything
+// is written, so one bad file stages none of them.
+func validateModules(paths []string) *contract.Fault {
+	for _, path := range paths {
+		if _, fault := modules.Validate(path); fault != nil {
+			return fault
+		}
+	}
+	return nil
+}
+
+// stageModules copies the named artifacts into the checkout's staging directory
+// in order, exactly as `module add` stages one, and reports each copy.
+func stageModules(root string, paths []string) ([]setupModule, *contract.Fault) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	dir := modules.Dir(root)
+	out := make([]setupModule, 0, len(paths))
+	for _, path := range paths {
+		staged, fault := modules.Stage(dir, path)
+		if fault != nil {
+			return nil, fault
+		}
+		action := "created"
+		if staged.Replaced {
+			action = "replaced"
+		}
+		out = append(out, setupModule{
+			ID:       staged.ID,
+			Name:     staged.Name,
+			Version:  staged.Version,
+			Source:   path,
+			Artifact: staged.Artifact,
+			Path:     staged.Path,
+			Action:   action,
+		})
+	}
+	return out, nil
 }
 
 // gatewayPortPin decides the machine-local Gateway HTTP port pin: the flag wins
@@ -714,6 +801,9 @@ func (a *App) printSetup(data setupData) {
 		fmt.Fprintf(a.Stdout, "consent:     accepted %v\n", data.ConsentAccepted)
 	} else {
 		fmt.Fprint(a.Stdout, "consent:     already accepted\n")
+	}
+	for _, module := range data.Modules {
+		fmt.Fprintf(a.Stdout, "module:      %s %s staged as %s (%s)\n", module.ID, module.Version, module.Artifact, module.Action)
 	}
 	fmt.Fprint(a.Stdout, "materialized:\n")
 	for _, write := range data.Files {

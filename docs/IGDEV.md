@@ -748,6 +748,13 @@ replaces it, which is how a newer build of one module is staged. There is no
 "also enable it" step and no `--enable` flag: a staged private module is enabled by
 being staged (see below), so that write could only ever put a local artifact's id into
 the tracked contract.
+`igdev setup --module <file.modl>` (repeatable) stages external artifacts — licensed,
+early-access, or prebuilt modules the repository does not build — exactly the same way
+while it materializes the checkout, so one setup prepares a Gateway whose first
+`gateway ensure` loads them on the fresh volume. Every named file is validated before
+setup writes anything; the setup Wizard asks for one in its Baseline step. A module the
+repository builds itself is declared instead with `[modules].artifacts`, which the init
+Wizard asks for on a Gradle or Maven layout and `igdev build` stages after each build.
 
 Staging is not a contract change, so the Setup Stamp stays current: what moved is what
 is staged, not what the contract asked for. Staging a private module is also what

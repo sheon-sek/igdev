@@ -13,13 +13,14 @@ import (
 	"github.com/sheon-sek/igdev/internal/consent"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/localconfig"
+	"github.com/sheon-sek/igdev/internal/modules"
 	"github.com/sheon-sek/igdev/internal/ports"
 	"github.com/sheon-sek/igdev/internal/project"
 )
 
 // The setup Wizard, in the frozen step sequence (7 steps, Q19): the Consent
-// gate, the Gateway heap, the admin password, the optional Baseline, the
-// optional port pin, the materialization, and the summary.
+// gate, the Gateway heap, the admin password, the optional Baseline and custom
+// module, the optional port pin, the materialization, and the summary.
 const setupWizardSteps = 7
 
 // setupWizard is what the setup Wizard decided, for the summary the run prints
@@ -82,8 +83,8 @@ func (a *App) runSetupWizard(cmd *cobra.Command, found project.Found, run wizard
 	}
 	wizard.password = password
 
-	// Step 4: an optional Baseline.
-	a.wizardBanner("setup", 4, setupWizardSteps, "the Baseline")
+	// Step 4: an optional Baseline, and an optional custom module to stage.
+	a.wizardBanner("setup", 4, setupWizardSteps, "the Baseline and custom modules")
 	a.wizardNote("optional: a .gwbk this checkout restores from with `igdev gateway reset`")
 	baselinePath, err := a.setupBaselineStep()
 	if err != nil {
@@ -93,6 +94,16 @@ func (a *App) runSetupWizard(cmd *cobra.Command, found project.Found, run wizard
 	if baselinePath != "" {
 		if err := cmd.Flags().Set("baseline", baselinePath); err != nil {
 			return nil, wizardFlagFault("baseline", err)
+		}
+	}
+	a.wizardNote("optional: a licensed, early-access, or prebuilt .modl to stage, as `igdev module add` does")
+	modulePath, err := a.setupModuleStep()
+	if err != nil {
+		return nil, err
+	}
+	if modulePath != "" {
+		if err := cmd.Flags().Set("module", modulePath); err != nil {
+			return nil, wizardFlagFault("module", err)
 		}
 	}
 
@@ -230,6 +241,30 @@ func (a *App) setupBaselineStep() (string, error) {
 	return strings.TrimSpace(path), nil
 }
 
+// setupModuleStep asks once for an external module to stage, and refuses a path
+// that could not be staged rather than letting the run fail after every other
+// answer. More than one is `--module` repeated.
+func (a *App) setupModuleStep() (string, error) {
+	var path string
+	if err := a.ask("setup", huh.NewInput().
+		Title("Stage a custom module (optional)").
+		Description("Path to a .modl, or empty to stage none.").
+		Value(&path).
+		Validate(func(value string) error {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				return nil
+			}
+			if _, fault := modules.Validate(value); fault != nil {
+				return errors.New(fault.Message)
+			}
+			return nil
+		})); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(path), nil
+}
+
 // setupPortStep asks for an optional Gateway HTTP port pin. The pin is recorded
 // machine-locally, so it changes this checkout on this machine and nothing the
 // repository tracks.
@@ -287,6 +322,9 @@ func (a *App) summarizeSetupWizard(wizard *setupWizard, data setupData) {
 	}
 	if wizard.baseline != "" {
 		a.wizardNote("baseline: staged from %s", wizard.baseline)
+	}
+	for _, module := range data.Modules {
+		a.wizardNote("module: %s staged from %s", module.ID, module.Source)
 	}
 	a.wizardNote("next: `igdev gateway up`")
 }

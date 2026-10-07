@@ -1,6 +1,8 @@
 package itest
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -939,4 +941,94 @@ func TestStatusReportsInstancePortsAndConsent(t *testing.T) {
 func labelOf(t *testing.T, stamp gate.Stamp) string {
 	t.Helper()
 	return "igdev-" + strings.ReplaceAll(stamp.InstanceID, "-", "")[:8]
+}
+
+// `setup --module` stages external artifacts the way `module add` does, in the
+// order named, re-renders the runtime around them, and reports each one. The
+// key is absent from a run that names none.
+func TestSetupModuleStagesExternalArtifacts(t *testing.T) {
+	env := testrig.NewEnv(t)
+	dir := env.Project("repo", testrig.MinimalContract)
+	env.RegisterReplacement(dir, "<ROOT>")
+	vision := modl(t, env, "downloads/acme-vision.modl", "<VISION>",
+		moduleXML("com.acme.vision", "Acme Vision", "1.2.3"))
+	historian := modl(t, env, "downloads/acme-historian.modl", "<HISTORIAN>",
+		moduleXML("com.acme.historian", "Acme Historian", "0.9.0"))
+
+	res := env.RunIn(dir, "setup", "--accept-eula", "--module", vision, "--module", historian, "--json")
+	testrig.WantExit(t, res, contract.ExitOK)
+	var data struct {
+		Modules []struct {
+			ID       string `json:"id"`
+			Version  string `json:"version"`
+			Source   string `json:"source"`
+			Artifact string `json:"artifact"`
+			Path     string `json:"path"`
+			Action   string `json:"action"`
+		} `json:"modules"`
+	}
+	testrig.DataOf(t, res.Stdout, &data)
+	env.Golden(t, "setup_module_staged.json", modulesOf(t, res.Stdout))
+	if len(data.Modules) != 2 || data.Modules[0].ID != "com.acme.vision" || data.Modules[1].ID != "com.acme.historian" {
+		t.Fatalf("modules = %+v, want vision then historian", data.Modules)
+	}
+	for _, module := range data.Modules {
+		if _, err := os.Stat(module.Path); err != nil || module.Action != "created" {
+			t.Errorf("%s was not staged: action %q, %v", module.ID, module.Action, err)
+		}
+	}
+	composeFile := readFile(t, filepath.Join(dir, project.StateDir, "runtime", "compose.yaml"))
+	for _, artifact := range []string{"acme-vision.modl", "acme-historian.modl"} {
+		if !strings.Contains(composeFile, artifact) {
+			t.Errorf("the rendered Compose file does not mount %s:\n%s", artifact, composeFile)
+		}
+	}
+	// The staged files are checkout state, never tracked.
+	if body := readFile(t, filepath.Join(dir, project.ContractFile)); strings.Contains(body, "acme") {
+		t.Errorf("a staged module reached the tracked contract:\n%s", body)
+	}
+
+	// A later run that names none keeps them staged and reports no key.
+	again := env.RunIn(dir, "setup", "--json")
+	testrig.WantExit(t, again, contract.ExitOK)
+	if strings.Contains(again.Stdout, `"modules"`) {
+		t.Errorf("a run that staged nothing reported modules:\n%s", again.Stdout)
+	}
+}
+
+// One artifact that is not a module archive stages none of them and writes
+// nothing at all: the files are checked before setup touches the checkout.
+func TestSetupModuleRefusesAnInvalidArtifact(t *testing.T) {
+	env := testrig.NewEnv(t)
+	dir := env.Project("repo", testrig.MinimalContract)
+	good := modl(t, env, "downloads/acme-vision.modl", "<VISION>",
+		moduleXML("com.acme.vision", "Acme Vision", "1.2.3"))
+	bad := env.Write("downloads/broken.modl", "not a zip")
+	base := env.Snapshot()
+
+	res := env.RunIn(dir, "setup", "--accept-eula", "--module", good, "--module", bad, "--json")
+	testrig.WantExit(t, res, contract.ExitFailure)
+	testrig.WantCode(t, testrig.Envelope(t, res.Stdout), contract.CodeModuleArchiveInvalid)
+	if changes := env.Changes(base); len(changes) != 0 {
+		t.Errorf("a refused run wrote %v", changes)
+	}
+}
+
+// modulesOf extracts data.modules from an envelope as indented JSON, the part of
+// the setup report --module owns: the rest carries a fresh Instance identity.
+func modulesOf(t *testing.T, stdout string) string {
+	t.Helper()
+	var envelope struct {
+		Data struct {
+			Modules json.RawMessage `json:"modules"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &envelope); err != nil {
+		t.Fatalf("decode the envelope: %v", err)
+	}
+	var out bytes.Buffer
+	if err := json.Indent(&out, envelope.Data.Modules, "", "  "); err != nil {
+		t.Fatalf("indent: %v", err)
+	}
+	return out.String() + "\n"
 }
