@@ -109,7 +109,7 @@ terms are then required before a staged module's id is accepted (ADR 0006).
 
 Without --json or --yes, init never prompts an invocation that already has a contract
 to preserve: an agent's fully specified invocation is the whole interface. In a
-repository with no contract yet, a terminal gets the init Wizard — six steps that read
+repository with no contract yet, a terminal gets the init Wizard — seven steps that read
 the layout, pre-fill [commands] and [scan], and write the same contract the flags
 below would. --interactive runs it even when the contract already exists (every value
 is shown preselected); --yes takes the same defaults without asking; on a non-terminal
@@ -231,7 +231,7 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 	flags.StringVar(&commandCheck, "command-check", "", "command igdev check runs for this project")
 	flags.StringVar(&commandTest, "command-test", "", "command igdev test runs for this project")
 	flags.StringVar(&commandBuild, "command-build", "", "command igdev build runs for this project")
-	flags.StringVar(&commandSmoke, "command-smoke", "", "command igdev smoke runs after a Gateway starts")
+	flags.StringVar(&commandSmoke, "command-smoke", "", "command recorded as [commands].smoke (no igdev verb runs it yet)")
 	flags.IntVar(&gatewayMemoryMB, "gateway-memory-mb", 0,
 		"Gateway heap in MiB (default "+fmt.Sprint(project.DefaultGatewayMemoryMB)+")")
 	flags.StringVar(&gatewayTimezone, "gateway-timezone", "",

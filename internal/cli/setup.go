@@ -121,7 +121,7 @@ the local config that is already there, and is generated otherwise. It is never 
 in either dialect: read it with ` + "`igdev gateway credentials --json`" + `.
 
 The Capacity Gate (ADR 0003) attaches where a Gateway starts, not here: setup records
-the requested heap, and ` + "`igdev gateway up`" + ` (ticket 10) compares it against the host's
+the requested heap, and ` + "`igdev gateway up`" + ` compares it against the host's
 free memory.
 
 A terminal gets the setup Wizard when the checkout has not been materialized yet, when
@@ -387,7 +387,7 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 	flags.IntVar(&gatewayPort, "gateway-port", 0,
 		"pin the Gateway HTTP port for this checkout, recorded machine-locally in "+project.LocalConfig)
 	flags.StringVar(&baselinePath, "baseline", "",
-		"stage a .gwbk as this checkout's Baseline, restored by `igdev gateway reset`")
+		"stage a .gwbk as this checkout's Baseline, restored by igdev gateway reset")
 
 	return cmd
 }

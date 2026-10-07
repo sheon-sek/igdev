@@ -80,7 +80,7 @@ igdev gateway [flags]
 pass --json for the machine contract. Every URL-producing verb reports the
 same address block — instance_id, namespace, url, ports (http, https, debug) — read from
 the Checkout Setup, so an agent never assumes a port. up and reset add capacity
-(measured, available_mb, required_mb, headroom_mb, forced); smoke adds checks; status
+(measured, available_mb, required_mb, headroom_mb, forced); wait --smoke adds checks; status
 adds state and services; down adds volumes_removed; logs carries the log text;
 credentials carries the password. Every verb needs recorded Consent (exit 3,
 IGDEV_E_CONSENT_REQUIRED) and a current Checkout Setup, and up/reset also pass the

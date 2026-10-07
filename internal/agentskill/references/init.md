@@ -23,7 +23,7 @@ terms are then required before a staged module's id is accepted (ADR 0006).
 
 Without --json or --yes, init never prompts an invocation that already has a contract
 to preserve: an agent's fully specified invocation is the whole interface. In a
-repository with no contract yet, a terminal gets the init Wizard — six steps that read
+repository with no contract yet, a terminal gets the init Wizard — seven steps that read
 the layout, pre-fill [commands] and [scan], and write the same contract the flags
 below would. --interactive runs it even when the contract already exists (every value
 is shown preselected); --yes takes the same defaults without asking; on a non-terminal
@@ -54,7 +54,7 @@ igdev init [flags]
       --allow-unsigned-modules           let the Gateway load a module artifact that carries no valid signature (default false)
       --command-build string             command igdev build runs for this project
       --command-check string             command igdev check runs for this project
-      --command-smoke string             command igdev smoke runs after a Gateway starts
+      --command-smoke string             command recorded as [commands].smoke (no igdev verb runs it yet)
       --command-test string              command igdev test runs for this project
       --edition string                   Ignition module edition (default standard)
       --gateway-memory-mb int            Gateway heap in MiB (default 2048)

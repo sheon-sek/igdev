@@ -143,7 +143,7 @@ func (a *App) runInitWizard(cmd *cobra.Command, found project.Found, res *config
 			huh.NewInput().Title("[commands].build").
 				Description("What `igdev build` runs for this project.").Value(&commands.Build),
 			huh.NewInput().Title("[commands].smoke").
-				Description("What `igdev smoke` runs after a Gateway starts.").Value(&commands.Smoke),
+				Description("Recorded as [commands].smoke; no igdev verb runs it yet.").Value(&commands.Smoke),
 		); err != nil {
 			return err
 		}

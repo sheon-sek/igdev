@@ -19,7 +19,8 @@ outside a Project Root — it is about the host, not the checkout.
 
 docker and its Compose plugin run the Gateway, and a JVM runs the Jython compatibility
 check, so those are required; Gradle is optional because it is only needed when a
-project's contract declares a Gradle command. data.ready is false when a required
+project's contract declares a Gradle command, and act is optional because only
+` + "`igdev ci-local`" + ` needs it. data.ready is false when a required
 prerequisite is not present.
 
 doctor never fails: the exit level stays 0 and the audit is the payload, so an agent

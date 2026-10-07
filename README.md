@@ -50,7 +50,7 @@ Gateway runs from. Keeping them apart is what makes a fresh clone reproducible.
 
 `igdev.toml` declares what this repository needs: the Ignition and Jython versions, the
 enabled module whitelist, the paths to scan, the Gateway heap and timezone, and the
-project's own `check`/`test`/`build`/`smoke` commands. The first run writes schema v1
+project's own `check`/`test`/`build` commands. The first run writes schema v1
 defaults; every later run is an edit that preserves what the file already holds. Each
 write prints a unified diff — review it, because a Contract change moves the Contract
 Digest and makes the checkout's setup stale on purpose.
@@ -145,7 +145,11 @@ available. It works before `init` and `setup`. Its fields are documented in
 default, `--scope repo` into the repository), with the CLI Contract Version in its
 frontmatter so the guidance can never contradict the tool.
 
-To reproduce a CI job locally, `igdev ci-local --job <name>` runs it through `act`.
+To reproduce a CI job locally, `igdev ci-local --job <name>` runs it through `act`;
+`--with-gateway` first ensures this checkout's Gateway and hands the job its URL and
+token. The composite action `sheon-sek/igdev/actions/gateway` does the same on a GitHub
+runner, so one workflow file runs in both places (see
+[docs/IGDEV.md](docs/IGDEV.md#running-the-projects-ci-locally)).
 
 ## Developing this repository
 
@@ -174,3 +178,4 @@ Agent instructions for working in this tree live in [`AGENTS.md`](AGENTS.md).
 - [`CONTEXT.md`](CONTEXT.md) — the normative vocabulary; [`docs/adr/`](docs/adr) — the
   hard-to-reverse decisions.
 - [`README.zh-CN.md`](README.zh-CN.md) — the Chinese onboarding guide (it points here
+  for the command reference, which is English-only).
