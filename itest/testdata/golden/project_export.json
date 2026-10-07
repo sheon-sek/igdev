@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "contract": "2",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "name": "demo",
+    "output": "<OUT>",
+    "unpacked": true,
+    "bytes": 284,
+    "files": [
+      "a/code.py",
+      "project.json"
+    ]
+  }
+}

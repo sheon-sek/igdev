@@ -35,6 +35,8 @@ Available Commands:
   init        Create or edit the Project Contract (igdev.toml)
   jython      Compile project code with the pinned Jython compatibility checker
   module      List modules and check what project code requires
+  project     Import and export Ignition projects on the running Gateway
+  restart     Restart the Gateway, wait for it, and report its modules
   setup       Materialize this checkout: Instance identity, ports, runtime files
   status      Report project, setup, and effective config state
   test        Run the project's declared test stage

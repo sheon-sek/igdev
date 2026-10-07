@@ -93,4 +93,6 @@ var CodeDocs = []CodeDoc{
 		"Read `data` (exit_code, stdout, stderr) or the message, and fix the command or the path."},
 	{CodeGatewayAPI, "1", "The Gateway answered a `gateway api` request with a 4xx or 5xx status.",
 		"Read `data` (status, body) and fix the request, or read `igdev gateway logs`."},
+	{CodeModuleQuarantined, "1", "The running Gateway quarantined a module this checkout stages or installed. The message carries the Gateway's reason.",
+		"Follow the Remediation: an unsigned build needs `allow_unsigned_modules = true`; otherwise read `igdev gateway logs`."},
 }

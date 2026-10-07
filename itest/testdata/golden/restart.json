@@ -1,0 +1,43 @@
+{
+  "ok": true,
+  "contract": "2",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "instance_id": "<INSTANCE_ID>",
+    "namespace": "igdev-<SHORT_ID>",
+    "url": "http://127.0.0.1:<PORT_HTTP>",
+    "ports": {
+      "http": <PORT_HTTP>,
+      "https": <PORT_HTTPS>,
+      "debug": <PORT_DEBUG>
+    },
+    "modules": {
+      "healthy": [
+        {
+          "id": "com.inductiveautomation.perspective",
+          "name": "Perspective",
+          "version": "3.3.8 (b1)",
+          "state": "ACTIVE",
+          "on_startup": "enabled",
+          "staged": false
+        }
+      ],
+      "quarantined": [
+        {
+          "id": "com.vendor.other",
+          "name": "Other",
+          "version": "1.0.0 (b0)",
+          "reason": "Certificate has not been accepted.",
+          "staged": false
+        }
+      ]
+    },
+    "pending_upgrade": {
+      "before": [],
+      "after": [],
+      "finalized": true
+    }
+  }
+}

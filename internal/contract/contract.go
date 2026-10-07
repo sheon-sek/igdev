@@ -184,6 +184,10 @@ const (
 	// CodeGatewayAPI covers a `gateway api` request the Gateway answered with a
 	// 4xx or 5xx status. The envelope's data carries the whole answer.
 	CodeGatewayAPI Code = "IGDEV_E_GATEWAY_API"
+	// CodeModuleQuarantined covers a module this checkout stages or installed
+	// that the running Gateway quarantined after `restart` or `module install`.
+	// The message carries the Gateway's reason; data carries the module report.
+	CodeModuleQuarantined Code = "IGDEV_E_MODULE_QUARANTINED"
 )
 
 // Remediation is a machine-readable next step: the exact command that clears
