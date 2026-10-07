@@ -171,6 +171,12 @@ const (
 	// error status. A trial that has not expired yet is not this fault: the reset
 	// is then a successful no-op, because Ignition only accepts it after expiry.
 	CodeTrialReset Code = "IGDEV_E_TRIAL_RESET"
+	// CodeExecFailed covers a command run inside the Gateway container by
+	// `gateway exec` that exited non-zero, and a `gateway data` transfer the
+	// container refused (a missing file, a path that is not a regular file). The
+	// exit level of `gateway exec` is the command's own exit code, so a failing
+	// command stays distinguishable from a failure of igdev itself.
+	CodeExecFailed Code = "IGDEV_E_EXEC_FAILED"
 )
 
 // Remediation is a machine-readable next step: the exact command that clears

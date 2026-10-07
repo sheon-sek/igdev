@@ -31,7 +31,9 @@ never from a file on disk.
 | Command | What it does |
 | --- | --- |
 | [`igdev gateway credentials`](gateway-credentials.md) | Read the Gateway admin credentials (the password only as JSON) |
+| [`igdev gateway data`](gateway-data.md) | Move files into and out of the Gateway's data directory |
 | [`igdev gateway down`](gateway-down.md) | Stop this Instance's Gateway |
+| [`igdev gateway exec`](gateway-exec.md) | Run a command inside this Instance's Gateway container |
 | [`igdev gateway logs`](gateway-logs.md) | Print this Instance's Gateway log |
 | [`igdev gateway reset`](gateway-reset.md) | Recreate this Instance's Gateway from scratch |
 | [`igdev gateway restart`](gateway-restart.md) | Restart this Instance's Gateway container |

@@ -220,6 +220,25 @@ successful no-op with reset false: Ignition accepts a reset only after expiry. A
 reset is IGDEV_E_TRIAL_RESET; HTTP 401 means the Gateway's data predates the Instance API
 token, and the Remediation is igdev gateway reset, which discards the Gateway's data, so
 confirm with a person before running it.`,
+	"igdev gateway exec": `pass --json for the machine contract. Run igdev's flags before the command
+(or before --). data carries instance_id, container, user, command, exit_code, stdout,
+stderr, stdout_bytes, stderr_bytes, and truncated: each stream is kept up to 1 MiB and
+the byte counts are the full sizes. A non-zero exit is IGDEV_E_EXEC_FAILED at the
+command's own exit level, with the same data. A Gateway that is not running is
+IGDEV_E_GATEWAY_UNHEALTHY with igdev gateway up as Remediation. Use this instead of
+docker exec: it goes through the Gate and addresses only this Instance.`,
+	"igdev gateway data": `pass --json for the machine contract. Use put and get instead of docker cp:
+paths on the Gateway side are relative to its data directory, and anything that could
+leave it (absolute, .., a symlink out) is IGDEV_E_USAGE before or instead of a copy.`,
+	"igdev gateway data put": `pass --json for the machine contract. data carries instance_id, path,
+container_path, local, bytes, and sha256 of what was written. Parent directories are
+created, and the file is owned by the Gateway's user (2003:0). A path outside the data
+directory is IGDEV_E_USAGE; a container-side failure is IGDEV_E_EXEC_FAILED.`,
+	"igdev gateway data get": `pass --json for the machine contract. data carries instance_id, path,
+container_path, bytes, and sha256, plus local when a <local> path was given, or
+content_base64 (up to 1 MiB; a larger file is IGDEV_E_USAGE naming the <local> form).
+No regular file at the path is IGDEV_E_EXEC_FAILED, and a failed get leaves nothing at
+<local>.`,
 	"igdev gateway logs": `pass --json for the machine contract. In human mode the log streams to
 stdout; with --json the same text arrives as data.logs with instance_id and namespace,
 because stdout may then carry nothing but the envelope. --tail limits how much of the

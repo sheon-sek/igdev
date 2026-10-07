@@ -87,4 +87,6 @@ var CodeDocs = []CodeDoc{
 		"Read the output tail in `data` and fix the failing workflow step."},
 	{CodeTrialReset, "1", "`gateway trial reset` could not reset an expired trial: the Gateway is unreachable, does not know the igdev API token, or refused the reset.",
 		"Follow the Remediation. A 401 means the Gateway's data predates the token: `igdev gateway reset` re-seeds it."},
+	{CodeExecFailed, "the command's exit code", "A `gateway exec` command exited non-zero, or `gateway data` could not read or write the file in the Gateway container.",
+		"Read `data` (exit_code, stdout, stderr) or the message, and fix the command or the path."},
 }

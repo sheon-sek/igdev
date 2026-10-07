@@ -374,6 +374,10 @@ igdev gateway trial                 the Gateway's license mode, trial time left,
                                     whether it expired
 igdev gateway trial reset           reset an expired trial in place; a no-op while the
                                     trial has time left
+igdev gateway exec -- <cmd...>      run a command in the Gateway container (as ignition,
+                                    or --user root), exiting with its exit code
+igdev gateway data put <local> <p>  copy a host file to <p> under the data directory
+igdev gateway data get <p> [local]  copy <p> out of the data directory
 ```
 
 Every engine call is `docker compose --project-name igdev-<instance> --file
@@ -400,6 +404,18 @@ stderr, because the reason a Gateway never came up is in its own log. `smoke` ap
 the same readiness gate before it checks anything, fails
 with the failing endpoint named in the message, and the transport error or status is
 in `data.checks[].error` for a passing run's report.
+
+**Reaching inside.** `exec` and `data` are how a workflow touches the running
+Gateway's container without rebuilding the compose call or bypassing the Gate (#31).
+`exec` runs `docker compose exec -T` against the gateway service, as `ignition` (2003)
+unless `--user root` is given; human mode streams and exits with the command's code,
+`--json` captures each stream up to 1 MiB and reports the full sizes and whether one
+was cut, and a non-zero exit is `IGDEV_E_EXEC_FAILED` at that exit level. `data put`
+and `data get` move one file, with paths relative to
+`/usr/local/bin/ignition/data`: an absolute path or a `..` segment is refused before
+the engine is asked, and a symlink that resolves outside the directory is refused in
+the container. Files are read and written as `2003:0`, so the Gateway owns what igdev
+puts there. Both need a running Gateway (`IGDEV_E_GATEWAY_UNHEALTHY` otherwise).
 
 **Host and container.** The Gateway reaches services on the host, such as a
 simulator's OPC UA server, at `host.docker.internal`: the rendered Compose file maps it

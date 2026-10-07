@@ -36,6 +36,13 @@ func Copy(path, src string, mode, dirMode os.FileMode) (int64, error) {
 	})
 }
 
+// Fill replaces path with whatever fill writes, under the same rules as Write. A
+// fill that fails leaves the old file, or no file, in place: nothing it wrote is
+// kept.
+func Fill(path string, mode, dirMode os.FileMode, fill func(w io.Writer) (int64, error)) (int64, error) {
+	return replace(path, mode, dirMode, func(tmp *os.File) (int64, error) { return fill(tmp) })
+}
+
 // replace runs fill against a temp file next to path and renames it into place.
 // The rename is atomic, but only the sync makes the bytes durable before it: a
 // state file must not come back empty after a crash.
