@@ -17,7 +17,7 @@ import (
 
 // The module write verbs: `enable` writes the tracked whitelist, `add` stages a
 // private artifact and re-renders the runtime the Gateway mounts, `clear` takes
-// the staged artifacts away, and `cache-path` names the machine-wide cache. These
+// the staged artifacts away. These
 // tests assert the whole observable behaviour through seam S1: exit level, the
 // JSON envelope, the tracked-file bytes, the filesystem effects, the printed
 // diff, and what the container engine is handed on the next `up`.
@@ -549,35 +549,16 @@ func TestModuleClearRemovesStagedArtifacts(t *testing.T) {
 	env.AssertNoDockerCalls(t)
 }
 
-// `cache-path` answers where the machine-wide cache for this Ignition version
-// lives. It is a property of the machine and the version, so it works outside a
-// Project Root too, and it is printed as a bare path a script can use.
-func TestModuleCachePath(t *testing.T) {
+// `cache-path` was removed in CLI Contract 2: it is an unknown command.
+func TestModuleCachePathWasRemoved(t *testing.T) {
 	env := testrig.NewEnv(t)
-	outside := env.RunIn(env.Home, "module", "cache-path", "--json")
-	testrig.WantExit(t, outside, contract.ExitOK)
-	env.Golden(t, "module_cache_path.json", outside.Stdout)
-	outside.AssertNoLeaks(t)
-
-	human := env.RunIn(env.Home, "module", "cache-path")
-	testrig.WantExit(t, human, contract.ExitOK)
-	env.Golden(t, "module_cache_path.txt", human.Stdout)
-	human.AssertNoLeaks(t)
-	want := filepath.Join(env.Home, ".cache", "igdev", "modules", "8.3.8")
-	if strings.TrimSpace(human.Stdout) != want {
-		t.Errorf("cache-path printed %q, want the bare path %q", human.Stdout, want)
+	res := env.RunIn(env.Home, "module", "cache-path", "--json")
+	testrig.WantExit(t, res, contract.ExitUsage)
+	envelope := testrig.Envelope(t, res.Stdout)
+	testrig.WantCode(t, envelope, contract.CodeUsage)
+	if !strings.Contains(envelope.Message, `unknown command "cache-path"`) {
+		t.Errorf("message = %q, want an unknown command", envelope.Message)
 	}
-
-	// Inside a contract that targets another version, the path is keyed by that
-	// version: two Ignitions never share a module cache.
-	dir := env.Project("other", strings.Replace(moduleContract(), `version = "8.3.8"`, `version = "8.1.21"`, 1))
-	res := env.RunIn(dir, "module", "cache-path")
-	testrig.WantExit(t, res, contract.ExitOK)
-	if want := filepath.Join(env.Home, ".cache", "igdev", "modules", "8.1.21"); strings.TrimSpace(res.Stdout) != want {
-		t.Errorf("cache-path printed %q, want %q", res.Stdout, want)
-	}
-	res.AssertNoLeaks(t)
-	env.AssertNoDockerCalls(t)
 }
 
 // A file that is not a module archive is refused with the reason, and nothing is
@@ -674,7 +655,6 @@ func TestModuleWriteGateAndUsage(t *testing.T) {
 		{[]string{"module", "add"}, contract.CodeMissingArgument},
 		{[]string{"module", "add", "one.modl", "two.modl"}, contract.CodeUsage},
 		{[]string{"module", "clear", "extra"}, contract.CodeUsage},
-		{[]string{"module", "cache-path", "extra"}, contract.CodeUsage},
 	} {
 		res := env.RunIn(dir, append(tc.args, "--json")...)
 		testrig.WantExit(t, res, contract.ExitUsage)

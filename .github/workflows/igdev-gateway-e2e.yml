@@ -72,7 +72,7 @@ jobs:
         run: |
           igdev gateway up --json
           igdev gateway wait --timeout "$WAIT_TIMEOUT" --json
-          igdev gateway smoke --json
+          igdev gateway wait --smoke --json
           igdev gateway status
           igdev gateway url
 
@@ -84,7 +84,7 @@ jobs:
         working-directory: ${{ env.CHECKOUT }}
         run: |
           set -euo pipefail
-          url="$(igdev gateway status --json | jq -r '.data.url')"
+          url="$(igdev gateway url)"
           token="$(igdev gateway credentials --json | jq -r '.data.api_token')"
           echo "::add-mask::$token"
 
@@ -172,7 +172,7 @@ jobs:
           igdev setup --json | jq -e '.ok' >/dev/null
           igdev gateway ensure --fresh --json | jq -e '.data.action == "reset" and .data.reason == "fresh"' >/dev/null
           token="$(igdev gateway credentials --json | jq -r '.data.api_token')"
-          url="$(igdev gateway url)"
+          url="$(igdev gateway status --json | jq -r '.data.url')"
           curl -fsS -H "X-Ignition-API-Token: $token" "$url/data/api/v1/resources/names/ignition/tag-provider" \
             | jq -e '[.items[].name] | index("igdev-sim")' >/dev/null || { echo "the seeded tag provider is missing"; exit 1; }
           igdev gateway ensure --json | jq -e '.data.action == "reused"' >/dev/null

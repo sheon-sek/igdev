@@ -15,7 +15,7 @@ import (
 const statusPingPath = "/StatusPing"
 
 // GatewayStub is a loopback HTTP server standing in for a running Ignition
-// Gateway. The `gateway wait` and `gateway smoke` verbs probe it over the ports the
+// Gateway. The `gateway wait` and `gateway wait --smoke` verbs probe it over the ports the
 // Checkout Setup recorded, so the whole health path runs hermetically
 // without an engine: the test decides which paths answer, and with what.
 type GatewayStub struct {

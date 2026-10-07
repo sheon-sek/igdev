@@ -1,6 +1,6 @@
 {
   "ok": false,
-  "contract": "1",
+  "contract": "2",
   "code": "IGDEV_E_UNKNOWN_CAPABILITY",
   "message": "<ROOT>/repo/src/uses.py:1: unknown or non-Gateway Ignition 8.3 native function: system.nonexistent.api. Check the function name, Gateway scope, and target Ignition version.",
   "remediation": [],

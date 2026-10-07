@@ -163,7 +163,6 @@ type agentCommands struct {
 	Check    bool `json:"check"`
 	Test     bool `json:"test"`
 	Build    bool `json:"build"`
-	Verify   bool `json:"verify"`
 	Gateway  bool `json:"gateway"`
 	Module   bool `json:"module"`
 	Baseline bool `json:"baseline"`
@@ -230,7 +229,6 @@ var AgentContextFields = []AgentContextField{
 	{"commands.check", "bool", "The contract declares [commands].check."},
 	{"commands.test", "bool", "The contract declares [commands].test."},
 	{"commands.build", "bool", "The contract declares [commands].build."},
-	{"commands.verify", "bool", "Always true: verify is provided by this binary."},
 	{"commands.gateway", "bool", "Always true: the gateway verbs are provided by this binary."},
 	{"commands.module", "bool", "Always true: the capability verbs are provided by this binary."},
 	{"commands.baseline", "bool", "Always true: the baseline verbs are provided by this binary."},
@@ -443,7 +441,6 @@ func agentCommandsOf(doc project.Doc) agentCommands {
 		Check:    declared(doc.Commands.Check),
 		Test:     declared(doc.Commands.Test),
 		Build:    declared(doc.Commands.Build),
-		Verify:   true,
 		Gateway:  true,
 		Module:   true,
 		Baseline: true,
@@ -517,8 +514,8 @@ func (a *App) printAgentContext(data agentContextData) {
 	} else {
 		fmt.Fprintf(a.Stdout, "catalog:   core %s, overlay none\n", data.Catalog.CoreDigest)
 	}
-	fmt.Fprintf(a.Stdout, "commands:  check=%t test=%t build=%t verify=%t gateway=%t module=%t baseline=%t ci_local=%t\n",
-		data.Commands.Check, data.Commands.Test, data.Commands.Build, data.Commands.Verify,
+	fmt.Fprintf(a.Stdout, "commands:  check=%t test=%t build=%t gateway=%t module=%t baseline=%t ci_local=%t\n",
+		data.Commands.Check, data.Commands.Test, data.Commands.Build,
 		data.Commands.Gateway, data.Commands.Module, data.Commands.Baseline, data.Commands.CILocal)
 }
 

@@ -81,7 +81,11 @@ its status and per-stage detail (paths, checked, findings, command, file_count),
 failed naming the stage that stopped the run. The stage order is a contract, so a
 failure is always at the same place, and an earlier stage's result is still in the same
 envelope. Fix the reported stage and re-run; a missing or stale Checkout Setup arrives
-as IGDEV_E_SETUP_REQUIRED or IGDEV_E_SETUP_STALE, repaired with igdev setup.`,
+as IGDEV_E_SETUP_REQUIRED or IGDEV_E_SETUP_STALE, repaired with igdev setup. --all
+appends the test and build stages, and --all --gateway the Gateway stages, with
+gateway_url carrying the Gateway --gateway left running (stop it with igdev gateway
+down); the --gateway half needs recorded Consent, so without it the run stops at exit 3
+with IGDEV_E_CONSENT_REQUIRED.`,
 	"igdev test": `pass --json for the machine contract. data.stages carries the declared-
 check stage with its command and status; an undeclared stage is reported skipped, never
 failed, so a repository that declares no test command still passes the verb. The stage's
@@ -97,12 +101,6 @@ the runtime. A declared glob that matches nothing fails with
 IGDEV_E_MODULE_ARTIFACT_MISSING. A failing stage propagates its own exit code and
 stops the run before anything is re-staged, so a build that failed never republishes
 modules.`,
-	"igdev verify": `pass --json for the machine contract. data.stages concatenates check, test,
-and build in order — plus the Gateway stages when --gateway is set — with failed naming
-the stage that stopped the run, and gateway_url carrying the Gateway that --gateway left
-running (stop it with igdev gateway down). Because the --gateway half starts a Gateway,
-recorded Consent is required there: without it the run stops at exit 3 with
-IGDEV_E_CONSENT_REQUIRED.`,
 	"igdev jython": `pass --json for the machine contract. jython check carries data.version,
 data.jar (the verified cache entry the compile ran against), file_count, files, and
 diagnostics on a failed compile. The checker is pinned by sha256 in the embedded version
@@ -136,11 +134,6 @@ and the layer that resolved it (core or overlay). Every argument is checked befo
 run exits, so one call reports every problem; a mixed run reports the resolutions that
 passed in the same envelope as the fault. Remediation on the fault names igdev module
 enable for a module the whitelist misses and igdev module add for one nothing stages.`,
-	"igdev module scan": `pass --json for the machine contract. data carries checked (distinct
-capabilities resolved) and findings, one entry per occurrence in file, line, and
-capability order. A path that does not exist is a warning on stderr, not a failure: the
-scan reports what it could read. Without arguments the contract's [scan].capabilities
-paths are used, which is what igdev check scans too.`,
 	"igdev module enable": `pass --json for the machine contract. data carries contract (path, action,
 the Contract Digest afterwards, and the unified diff), whitelist, added,
 already_enabled, unrestricted, and setup_stale. The write is tracked, so it follows the
@@ -154,14 +147,9 @@ staged unless the archive's module.xml can be read, and nothing is written to th
 contract: a staged private module is enabled by being staged, so no whitelist entry is
 needed. The staged id is a first-class id for igdev module require and igdev module
 list reports it as "enabled (staged)".`,
-	"igdev module cache-path": `pass --json for the machine contract. data carries path (the machine-wide
-cache directory for this Ignition version), ignition_version, and exists. An absent
-directory is normal: the cache is disposable and is created on first use, so data.exists
-false is never an error.`,
 	"igdev module clear": `pass --json for the machine contract. data carries modules_dir, removed
 (the artifact file names deleted), count, staged (what is left), runtime_dir, and the
-runtime files re-rendered. Clearing an empty staging area is a successful no-op.
-Deleting the whole cache is not this verb: it stays safe to remove by hand.`,
+runtime files re-rendered. Clearing an empty staging area is a successful no-op.`,
 	"igdev gateway": `pass --json for the machine contract. Every URL-producing verb reports the
 same address block — instance_id, namespace, url, ports (http, https, debug) — read from
 the Checkout Setup, so an agent never assumes a port. up and reset add capacity
@@ -191,8 +179,8 @@ exit 3 and discards nothing. IGDEV_E_DOCKER_DAEMON means Docker is not running: 
 it, never reset. Pass --fresh to discard the data on purpose.`,
 	"igdev gateway up": `pass --json for the machine contract. data carries instance_id, namespace,
 url, ports, and capacity (measured, available_mb, required_mb, headroom_mb, forced). up
-returns as soon as the container is started: follow it with igdev gateway wait or igdev
-gateway smoke, and never assume the URL from the address block is answering yet. A
+returns as soon as the container is started: follow it with igdev gateway wait (--smoke to
+check the declared endpoints too), and never assume the URL from the address block is answering yet. A
 refusal is IGDEV_E_CAPACITY at exit 3 — a human frees memory or passes --force — and a
 machine that was never set up is IGDEV_E_SETUP_REQUIRED, repaired with igdev setup. The
 staged private modules are accepted by module id as part of starting (ADR 0006); with
@@ -217,15 +205,10 @@ still starting — so a returned wait means the Gateway is usable, including its
 routes. On timeout the command fails with the tail of the Gateway's own log in the
 message, because that log holds the reason; the Remediation names igdev gateway logs and
 igdev gateway status for the follow-up. --timeout takes seconds or a duration like 3m
-(default 180s).`,
-	"igdev gateway smoke": `pass --json for the machine contract. data carries instance_id, url, and
-checks: one entry per request in the order they ran, each with path, url, status, ok,
-and the error when it did not answer. The run begins with the same readiness gate
-igdev gateway wait applies — the Gateway must report RUNNING — so a passing check means
-the endpoint answered a Gateway that is up. A failing check is
-IGDEV_E_GATEWAY_UNHEALTHY with Remediation naming igdev gateway logs --tail 50 and
-igdev gateway status --json. The endpoints come from the contract's
-[gateway] smoke_endpoints, so the check is project-declared.`,
+(default 180s). --smoke then checks the root document and the contract's
+[gateway] smoke_endpoints: data becomes instance_id, url, and checks, one entry per
+request in order with path, url, status, ok, and the error when it did not answer, and a
+failing check is IGDEV_E_GATEWAY_UNHEALTHY naming the endpoint.`,
 	"igdev gateway status": `pass --json for the machine contract. data carries the address block plus
 state (the compose project's overall verdict) and services, one entry per service with
 name, service, state, and status as the container engine reports them, so an agent reads

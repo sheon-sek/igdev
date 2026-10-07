@@ -112,7 +112,7 @@ errors on stderr.
 ```json
 {
   "ok": false,
-  "contract": "1",
+  "contract": "2",
   "code": "IGDEV_E_USAGE",
   "message": "unknown command \"stat\" for \"igdev\"",
   "remediation": [{ "command": "igdev --help", "why": "list the available commands" }],
@@ -181,6 +181,21 @@ names (`setup.instance_id`, `setup.namespace`, `setup.ports`), the Gateway optio
 states (`gateway.allow_unsigned_modules`), the machine Consent term
 by term (`consent`), and every config key with the tier that won. status reports the
 Gate's verdict, it never enforces it.
+
+### Migrating from CLI Contract 1
+
+Contract 2 (ADR 0010) removed four verbs. Each now answers as an unknown command,
+`IGDEV_E_USAGE` at exit 2. A checkout set up under Contract 1 reads stale
+(`IGDEV_E_SETUP_STALE`) until `igdev setup` runs again.
+
+| Removed | Use instead |
+| --- | --- |
+| `igdev gateway smoke` | `igdev gateway wait --smoke` (same data) |
+| `igdev verify [--gateway]` | `igdev check --all [--gateway]` (same data) |
+| `igdev module scan [path]...` | `igdev check`, whose module-scan stage scans `[scan].capabilities` |
+| `igdev module cache-path` | none: stage private modules with `igdev module add` or `[modules].artifacts` |
+
+`agent context --json` no longer reports `commands.verify`.
 
 ## The Project Contract and the Gate
 
@@ -371,10 +386,10 @@ igdev gateway down [--volumes]      stop and remove the containers; --volumes al
                                     discards the Gateway's data volume
 igdev gateway reset [--force] [--timeout N]   down --volumes, then up, then wait
 igdev gateway restart               restart the container in place
-igdev gateway wait [--timeout N]    poll the Gateway's status endpoint until it reports
-                                    RUNNING (default 180 s)
-igdev gateway smoke [--timeout N]   wait, then GET the root document and the
-                                    contract's [gateway] smoke_endpoints, in order
+igdev gateway wait [--timeout N] [--smoke]   poll the Gateway's status endpoint until
+                                    it reports RUNNING (default 180 s); --smoke then GETs
+                                    the root document and the contract's [gateway]
+                                    smoke_endpoints, in order
 igdev gateway status                `docker compose ps` for this project plus the
                                     recorded URL
 igdev gateway logs [--tail N]       the Gateway's log: streamed for humans, in
@@ -639,15 +654,6 @@ is `IGDEV_E_UNKNOWN_CAPABILITY`; a required module outside the whitelist is
 module that is neither built-in nor staged is
 `IGDEV_E_MODULE_ARTIFACT_MISSING` with the `module add` command in Remediation.
 
-`igdev module scan [path]...` reads project files (directories are walked for `.py`,
-`.json`, `.js`, `.ts`, `.tsx`, `.java`, `.kt`, `.sh`; an explicit file is read whatever
-its extension) and finds every `system.*` reference — nested namespaces included, so
-`system.historian.types.dataPoint` is found — and every REST path. A method reference
-supersedes the bare path it contains, exactly as the legacy scanner did. Findings carry
-`file` and `line`, and every distinct capability is checked, so a failure message names
-the offending location. Without arguments the contract's `[scan].capabilities` paths
-are used. A path that does not exist is a warning, not a failure.
-
 The knowledge verbs run the Gate's contract stages but not the Setup Stamp: what a
 capability requires depends on the Project Contract — its whitelist and its overlay
 declarations — not on whether the checkout has been materialized, so
@@ -762,17 +768,10 @@ finds none of it has nothing to stage, and silence would look like success. Arti
 whose module id the build no longer produces are left alone — they are still cleared
 with `module clear`.
 
-`igdev module cache-path` prints the machine-wide module cache directory for the
-resolved Ignition version (`<XDG cache>/igdev/modules/<version>`), as a bare path in the
-human dialect so a script can use it. It is a property of the machine and the version,
-not of the checkout, so it works outside a Project Root; an absent directory is reported
-(`exists: false`), never failed on, because the cache is disposable. Opting a module
-into that cache is `module add --global`, deferred.
-
 ```json
 {
   "ok": true,
-  "contract": "1",
+  "contract": "2",
   "code": "",
   "message": "ok",
   "remediation": [],
@@ -793,7 +792,7 @@ into that cache is `module add --global`, deferred.
 ```
 
 Human diagnostics keep the legacy `[module-preflight]` vocabulary — `OK`, `NOTE` for a
-conditional function's note — and the legacy closing line of `module scan`. Failures
+conditional function's note . Failures
 are contract faults, so their wording lives in `message` and their fix in
 `remediation`, which is what makes them machine-readable.
 
@@ -810,8 +809,10 @@ stopping the run when it fails.
    `com.inductiveautomation.opcua`). An empty whitelist means every module loads, so
    there is nothing to validate.
 2. **module-scan** — the capability references under `[scan].capabilities`, resolved
-   against the Effective Catalog. It is the same finding set `igdev module scan`
-   reports, because both answer from `scanCapabilities`.
+   against the Effective Catalog. Directories are walked for `.py`, `.json`, `.js`,
+   `.ts`, `.tsx`, `.java`, `.kt` and `.sh` files, and every `system.*` reference
+   (nested namespaces included) and every REST path is checked; a failure names each
+   offending `file:line`. A declared path that does not exist is a warning.
 3. **declared-check** — `[commands].check`, run with `bash` at the Project Root.
    Undeclared means skipped, never failed; a stage that exits non-zero propagates its
    own exit code as the process exit level.
@@ -822,7 +823,7 @@ against the Project Root, so a run from a subdirectory scans the same files.
 
 `--json` reports one entry per stage in `data.stages` (`stage`, `status`, and the
 stage's own detail), the stage that stopped the run in `data.failed`, and — for
-`verify --gateway` — the running Gateway's URL in `data.gateway_url`. A failure
+`check --all --gateway` — the running Gateway's URL in `data.gateway_url`. A failure
 carries the same stage list in `data`, so an agent reads how far the run got instead
 of guessing from the message.
 
@@ -832,7 +833,7 @@ enabled modules means comparing them against what this checkout actually stages.
 ```json
 {
   "ok": false,
-  "contract": "1",
+  "contract": "2",
   "code": "IGDEV_E_JYTHON_SYNTAX",
   "message": "/repo/src/bad.py:3: unmatched ')'",
   "remediation": [],
@@ -894,7 +895,7 @@ stage. Both skip an undeclared stage with a note rather than failing it, and bot
 propagate a declared stage's exit code (`IGDEV_E_COMMAND_FAILED`) as their own exit
 level, stopping before anything that follows.
 
-`igdev verify` is check, then test, then build, each stopping the run. `--gateway`
+`igdev check --all` is check, then test, then build, each stopping the run. `--gateway`
 adds the runtime half — the Capacity Gate, `up`, `wait` (240 s), and `smoke` — and
 leaves the Gateway running so the URL it reports can be opened by hand; stop it with
 `igdev gateway down`. The Gateway half needs recorded Consent like every gateway
@@ -1150,12 +1151,14 @@ Setup and wires the restore argument into every Gateway launch, so `gateway rese
 seeds the Gateway from it).
 
 Ticket 12: the knowledge layer (the embedded Core Catalog, the Project Overlay, the
-Effective Catalog, and `module list|require|scan`, plus `catalog status`).
-Ticket 13: the module write verbs (`module enable|add|clear|cache-path` — the contract
-whitelist write, the `.modl` staging the Gateway mounts, the machine cache path, and
-the staged-artifact report in `status`).
-Ticket 14: the check pipeline (`check|test|build|verify`, the module-validate and
-module-scan stages, the declared-stage dispatch, and `verify --gateway`) and the Jython
+Effective Catalog, and `module list|require`, plus `catalog status`; `module scan` until
+CLI Contract 2 folded it into `check`).
+Ticket 13: the module write verbs (`module enable|add|clear`, and `cache-path` until
+CLI Contract 2 removed it — the contract whitelist write, the `.modl` staging the
+Gateway mounts, and the staged-artifact report in `status`).
+Ticket 14: the check pipeline (`check|test|build`, and `verify` until CLI Contract 2
+made it `check --all`; the module-validate and module-scan stages, the declared-stage
+dispatch, and the Gateway half) and the Jython
 layer (the pinned, lock-guarded standalone-artifact cache and the one-JVM batched
 compile behind `igdev jython check`). The 500-file timing gate lives in
 real-docker half is deferred to the e2e tier, exactly as the

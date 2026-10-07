@@ -16,7 +16,7 @@ Read-only; may run automatically after relevant changes:
 
 - `igdev status` / `igdev status --json` — the only command that works before init and setup
 - `igdev check` — the fixed pipeline: module-validate → module-scan → `make fmt-check vet` → batched Jython compile
-- `igdev module list`, `igdev module require <capability>`, `igdev module scan <path>`
+- `igdev module list`, `igdev module require <capability>`
 - `igdev catalog status --json`
 - `igdev doctor` — read-only host audit; it never fails
 - `igdev gateway status`, `igdev gateway logs --tail 200`, `igdev gateway url`
@@ -63,8 +63,7 @@ generated and disposable — never hand-edit it and never commit it.
 ## Private modules
 
 Never commit EA, licensed, or private `.modl` files. Add them with
-`igdev module add <file.modl>` (staged under the gitignored `.igdev/modules/`), or place
-them in the version-scoped machine cache reported by `igdev module cache-path`. Module
+`igdev module add <file.modl>` (staged under the gitignored `.igdev/modules/`). Module
 metadata comes from the archive's embedded `module.xml`; `igdev check` validates the
 enabled modules against what the checkout stages, and `igdev module require <capability>`
 resolves an explicit capability before a Gateway starts.

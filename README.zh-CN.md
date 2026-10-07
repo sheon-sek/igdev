@@ -49,12 +49,13 @@ worktree 不会撞车）、动态分配的 loopback 端口、由内嵌模板渲�
 igdev status                     # 我在哪、配置是什么（任何状态下都能跑）
 igdev check                      # 固定顺序的预检查流水线
 igdev test / igdev build         # 派发 contract 里声明的项目命令
-igdev verify --gateway           # 全套，外加运行时冒烟
+igdev check --all --gateway      # 全套，外加运行时冒烟
 
 igdev module require system.report.executeReport   # 能力预检查
 igdev jython check src/main/python                 # 单次 JVM 批量编译
 
-igdev gateway up && igdev gateway wait && igdev gateway smoke
+igdev gateway ensure             # 复用健康的 Gateway，否则启动或重置
+igdev gateway wait --smoke       # 就绪，并检查声明的端点
 igdev gateway url                # 唯一可以直接脚本化的 URL
 igdev gateway trial              # trial 剩余时间；过期后原地自动重置
 igdev gateway down --volumes
@@ -67,12 +68,18 @@ envelope 里的 `ports` 才是答案。
 配置按层级解析，先命中者胜出：命令行 flag > `IGDEV_*` 环境变量 > `.igdev/local.toml` >
 被跟踪的 `igdev.toml` > 内嵌默认值。配置文件永远不会被执行。
 
+### 从 CLI Contract 1 升级
+
+Contract 2 移除了 `gateway smoke`（改用 `gateway wait --smoke`）、`verify`（改用
+`check --all`）、`module scan`（改用 `check`）和 `module cache-path`。升级后在每个
+checkout 里重新运行一次 `igdev setup`。
+
 ## 与 Agent 协作
 
 加 `--json`，stdout 就是唯一的 JSON envelope（进度与提示走 stderr）：
 
 ```json
-{"ok": false, "contract": "1", "code": "IGDEV_E_CONSENT_REQUIRED", "message": "…",
+{"ok": false, "contract": "2", "code": "IGDEV_E_CONSENT_REQUIRED", "message": "…",
  "remediation": [{"command": "igdev setup --accept-eula", "why": "human-only consent"}], "data": {}}
 ```
 

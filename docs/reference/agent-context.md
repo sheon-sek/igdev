@@ -97,7 +97,6 @@ no Instance before `setup`).
 | `commands.check` | `bool` | The contract declares [commands].check. |
 | `commands.test` | `bool` | The contract declares [commands].test. |
 | `commands.build` | `bool` | The contract declares [commands].build. |
-| `commands.verify` | `bool` | Always true: verify is provided by this binary. |
 | `commands.gateway` | `bool` | Always true: the gateway verbs are provided by this binary. |
 | `commands.module` | `bool` | Always true: the capability verbs are provided by this binary. |
 | `commands.baseline` | `bool` | Always true: the baseline verbs are provided by this binary. |

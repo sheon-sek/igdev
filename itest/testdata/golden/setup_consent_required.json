@@ -1,6 +1,6 @@
 {
   "ok": false,
-  "contract": "1",
+  "contract": "2",
   "code": "IGDEV_E_CONSENT_REQUIRED",
   "message": "Ignition EULA has not been accepted on this machine (Consent record: <HOME>/.config/igdev/accepted.toml)",
   "remediation": [

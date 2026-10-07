@@ -1,6 +1,6 @@
 {
   "ok": false,
-  "contract": "1",
+  "contract": "2",
   "code": "IGDEV_E_COMMAND_FAILED",
   "message": "the declared check stage exited with code 7: printf 'child says hi\n'; exit 7",
   "remediation": [],

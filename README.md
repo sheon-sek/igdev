@@ -87,13 +87,13 @@ igdev status                          # where am I, what is configured
 igdev check                           # the fixed preflight pipeline
 igdev test
 igdev build                           # re-stages the modules the Gateway mounts
-igdev verify --gateway                # everything, plus the runtime half
+igdev check --all --gateway           # everything, plus the runtime half
 
 igdev module require system.report.executeReport   # capability preflight
-igdev module scan ignition/script-python
 igdev jython check src/main/python
 
-igdev gateway up && igdev gateway wait && igdev gateway smoke
+igdev gateway ensure                  # reuse a healthy Gateway, or start or reset it
+igdev gateway wait --smoke            # ready, and the declared endpoints answer
 igdev gateway url                     # the only URL to script against
 igdev gateway logs --tail 200
 igdev gateway trial                   # trial time left; an expired trial resets in place
@@ -102,7 +102,7 @@ igdev gateway down --volumes
 
 `igdev check` always runs the same stages in the same order: module validate, capability
 scan, the project's declared check command, then a batched Jython compile in one JVM.
-`test`, `build`, and `verify` dispatch the `[commands]` stages the repository declares,
+`test`, `build`, and `check --all` dispatch the `[commands]` stages the repository declares,
 so project tooling stays the source of truth and igdev stays an orchestrator.
 
 Never assume port 8088: `igdev gateway url` (or `ports` in any JSON envelope) reads the
@@ -113,12 +113,19 @@ Configuration resolves from the highest tier that names a key: command-line flag
 `igdev.toml`, then embedded defaults. No config file is ever executed, and `--config
 key=value` overrides one key for a single run.
 
+### Upgrading from CLI Contract 1
+
+Contract 2 removed `gateway smoke` (use `gateway wait --smoke`), `verify` (use
+`check --all`), `module scan` (use `check`) and `module cache-path`. Run `igdev setup`
+once in each checkout after upgrading. See
+[docs/IGDEV.md](docs/IGDEV.md#migrating-from-cli-contract-1).
+
 ## Working with an agent
 
 Pass `--json` and stdout is a single envelope, with progress and notices on stderr:
 
 ```json
-{"ok": false, "contract": "1", "code": "IGDEV_E_CONSENT_REQUIRED",
+{"ok": false, "contract": "2", "code": "IGDEV_E_CONSENT_REQUIRED",
  "message": "…", "remediation": [{"command": "igdev setup --accept-eula", "why": "human-only consent"}],
  "data": {}}
 ```

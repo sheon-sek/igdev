@@ -1,6 +1,6 @@
 {
   "ok": false,
-  "contract": "1",
+  "contract": "2",
   "code": "IGDEV_E_MODULE_UNKNOWN",
   "message": "com.inductiveautomation.perspectiv is neither a built-in module nor declared by a staged .modl (closest: com.inductiveautomation.perspective)",
   "remediation": [

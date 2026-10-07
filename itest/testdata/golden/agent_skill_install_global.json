@@ -1,6 +1,6 @@
 {
   "ok": true,
-  "contract": "1",
+  "contract": "2",
   "code": "",
   "message": "ok",
   "remediation": [],
@@ -8,6 +8,6 @@
     "scope": "global",
     "path": "<HOME>/.agents/skills/igdev/SKILL.md",
     "action": "created",
-    "version": "1"
+    "version": "2"
   }
 }

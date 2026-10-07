@@ -16,6 +16,11 @@ swallow the deadline.
 On timeout the command reports the tail of the Gateway's own log, because the reason
 a Gateway never came up is in that log.
 
+--smoke then requests the root document and every path the Project Contract declares
+in `[gateway] smoke_endpoints`, in that order, and reports each answer. A check
+fails when the Gateway answers 400 or above, or does not answer at all; the failure
+names the endpoint that failed.
+
 ## Usage
 
 ```text
@@ -27,6 +32,7 @@ igdev gateway wait [flags]
 ```text
   igdev gateway wait
   igdev gateway wait --timeout 240
+  igdev gateway wait --smoke --json
   igdev gateway wait --timeout 3m --json
 ```
 
@@ -34,6 +40,7 @@ igdev gateway wait [flags]
 
 ```text
   -h, --help             help for wait
+      --smoke            once ready, also check the root document and the declared [gateway] smoke_endpoints
       --timeout string   how long to wait: seconds, or a duration like 3m (default 180s)
 ```
 
@@ -53,4 +60,7 @@ still starting — so a returned wait means the Gateway is usable, including its
 routes. On timeout the command fails with the tail of the Gateway's own log in the
 message, because that log holds the reason; the Remediation names igdev gateway logs and
 igdev gateway status for the follow-up. --timeout takes seconds or a duration like 3m
-(default 180s).
+(default 180s). --smoke then checks the root document and the contract's
+[gateway] smoke_endpoints: data becomes instance_id, url, and checks, one entry per
+request in order with path, url, status, ok, and the error when it did not answer, and a
+failing check is IGDEV_E_GATEWAY_UNHEALTHY naming the endpoint.

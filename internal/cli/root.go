@@ -52,7 +52,7 @@ func (a *App) newRoot() *cobra.Command {
 	root.SetHelpFunc(a.printHelp)
 
 	root.AddCommand(a.newInitCmd(), a.newSetupCmd(), a.newStatusCmd(), a.newDoctorCmd(), a.newVersionCmd(), a.newGatewayCmd(), a.newBaselineCmd(), a.newModuleCmd(), a.newCatalogCmd())
-	root.AddCommand(a.newCheckCmd(), a.newTestCmd(), a.newBuildCmd(), a.newVerifyCmd(), a.newJythonCmd())
+	root.AddCommand(a.newCheckCmd(), a.newTestCmd(), a.newBuildCmd(), a.newJythonCmd())
 	root.AddCommand(a.newCILocalCmd())
 	root.AddCommand(a.newAgentCmd(), a.newConsentCmd())
 	completion := newCompletionCmd(root)

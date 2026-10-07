@@ -1,6 +1,6 @@
 {
   "ok": true,
-  "contract": "1",
+  "contract": "2",
   "code": "",
   "message": "ok",
   "remediation": [],
@@ -17,7 +17,7 @@
     },
     "versions": {
       "cli": "0.1.2",
-      "cli_contract": "1",
+      "cli_contract": "2",
       "ignition": "8.3.8",
       "jython": "2.7.4"
     },
@@ -62,7 +62,6 @@
       "check": false,
       "test": false,
       "build": false,
-      "verify": true,
       "gateway": true,
       "module": true,
       "baseline": true,
