@@ -67,12 +67,13 @@ func TestWizardInitWalkthroughOnGradleLayout(t *testing.T) {
 	session := env.StartPTY(testrig.PTYRun{Args: []string{"init"}, Dir: dir, Env: wizardEnv(env)})
 	session.Expect("Project stack").Send("\r")
 	session.Expect("igdev carries a Core Catalog for it").Send("\r")
-	session.Expect("Enabled modules").Send("\r")
+	session.Expect("Modules to load").Send("\r") // all modules
+	session.Expect("[modules].artifacts").Send("\r")
 	session.Expect("[scan].jython").Send("\r")
 	session.Expect("[commands].check").Send("\r")
 	session.Expect("[commands].test").Send("\r")
 	session.Expect("[commands].build").Send("\r")
-	session.Expect("Allow unsigned modules").Send("\r") // no
+	session.Expect("Allow unsigned modules").Send("\r") // yes
 	res := session.Wait()
 	testrig.WantExit(t, res, contract.ExitOK)
 	res.AssertNoLeaksOutside(t, dir)
@@ -105,6 +106,57 @@ func TestWizardInitWalkthroughOnGradleLayout(t *testing.T) {
 	testrig.WantExit(t, env.RunIn(yes, "init", "--yes"), contract.ExitOK)
 	if got := readFile(t, filepath.Join(yes, project.ContractFile)); got != want {
 		t.Errorf("--yes wrote a different contract than the Wizard:\n--- wizard ---\n%s--- yes ---\n%s", want, got)
+	}
+}
+
+// The module step's second mode: "only the modules I pick" writes exactly the
+// picked ids to [modules].enabled, and a build that declares the Ignition SDK
+// plugin gets its artifact glob pre-filled, so the Wizard writes what the flags
+// --modules and --modules-artifacts write.
+func TestWizardInitPicksModulesAndArtifacts(t *testing.T) {
+	env := testrig.NewEnv(t)
+	moduleBuild := func(rel string) string {
+		dir := env.Project(rel, "")
+		env.Write(filepath.Join(rel, "build.gradle.kts"), "plugins { id(\"io.ia.sdk.modl\") version \"0.4.1\" }\n")
+		return dir
+	}
+	dir := moduleBuild("repo")
+
+	session := env.StartPTY(testrig.PTYRun{Args: []string{"init"}, Dir: dir, Env: wizardEnv(env)})
+	session.Expect("Project stack").Send("\r")
+	session.Expect("igdev carries a Core Catalog for it").Send("\r")
+	session.Expect("Modules to load").Send("\x1b[B").Send("\r") // only the modules I pick
+	session.Expect("Enabled modules").Send(" ").Send("\r")      // the first module
+	session.Expect("[modules].artifacts").Send("\r")            // the pre-filled glob
+	session.Expect("[scan].jython").Send("\r")
+	session.Expect("[commands].check").Send("\r")
+	session.Expect("[commands].test").Send("\r")
+	session.Expect("[commands].build").Send("\r")
+	session.Expect("Allow unsigned modules").Send("\r")
+	res := session.Wait()
+	testrig.WantExit(t, res, contract.ExitOK)
+	res.AssertNoLeaksOutside(t, dir)
+
+	doc, err := project.ParseDoc([]byte(readFile(t, filepath.Join(dir, project.ContractFile))), project.ContractFile)
+	if err != nil {
+		t.Fatalf("parse the written contract: %v", err)
+	}
+	if len(doc.Modules.Enabled) != 1 {
+		t.Fatalf("[modules].enabled = %v, want the one picked module", doc.Modules.Enabled)
+	}
+	if got := strings.Join(doc.Modules.Artifacts, ","); got != "build/*.modl" {
+		t.Errorf("[modules].artifacts = %q, want the Gradle glob", got)
+	}
+
+	other := moduleBuild("repo-flags")
+	testrig.WantExit(t, env.RunIn(other, "init",
+		"--modules", doc.Modules.Enabled[0],
+		"--modules-artifacts", "build/*.modl",
+		"--command-check", "./gradlew check",
+		"--command-test", "./gradlew test",
+		"--command-build", "./gradlew build"), contract.ExitOK)
+	if got, want := readFile(t, filepath.Join(other, project.ContractFile)), readFile(t, filepath.Join(dir, project.ContractFile)); got != want {
+		t.Errorf("the Wizard wrote a different contract than the flags:\n--- wizard ---\n%s--- flags ---\n%s", want, got)
 	}
 }
 
@@ -203,12 +255,14 @@ func TestWizardInteractiveForcesPromptsWithDefaultsPreselected(t *testing.T) {
 	})
 	session.Expect("Project stack").Send("\r")
 	session.Expect("igdev carries a Core Catalog for it").Send("\r")
+	session.Expect("Modules to load").Send("\r") // only the picked ones, preselected
 	session.Expect("Enabled modules").Send("\r")
+	session.Expect("[modules].artifacts").Send("\r")
 	session.Expect("[scan].jython").Send("\r")
 	session.Expect("[commands].check").Send("\r")
 	session.Expect("[commands].test").Send("\r")
 	session.Expect("[commands].build").Send("\r")
-	session.Expect("Allow unsigned modules").Send("\r") // no
+	session.Expect("Allow unsigned modules").Send("\r") // yes
 	res := session.Wait()
 	testrig.WantExit(t, res, contract.ExitOK)
 

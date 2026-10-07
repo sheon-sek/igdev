@@ -15,8 +15,9 @@ import (
 )
 
 // The init Wizard, in the frozen step sequence (7 steps, Q19): the project
-// stack, the Ignition version, the built-in modules, the scan paths, the command
-// strings, the Gateway options, and the summary of what is written.
+// stack, the Ignition version, the modules (all or only the picked ones, and on
+// a Gradle or Maven layout the artifacts the build writes), the scan paths, the
+// command strings, the Gateway options, and the summary of what is written.
 const initWizardSteps = 7
 
 // initNeedsWizard reports whether init has values to invent: a repository with
@@ -85,25 +86,57 @@ func (a *App) runInitWizard(cmd *cobra.Command, found project.Found, res *config
 		}
 	}
 
-	// Step 3: the built-in modules, with what each one is for. A whitelist entry
-	// the catalog does not carry — a private module staged from an artifact — is
-	// offered too, so an edit run never drops what the file already names.
+	// Step 3: the modules. First which built-in modules load: all of them (the
+	// default, an empty whitelist) or only the ones a person picks. A whitelist
+	// entry the catalog does not carry — a private module staged from an
+	// artifact — is offered too, so an edit run never drops what the file
+	// already names. Staged private modules load in either mode. On a Gradle or
+	// Maven layout the step also asks which module artifacts the build writes.
 	enabled := doc.Modules.Enabled
+	artifacts, askArtifacts := artifactDefault(stack, detected, doc.Modules.Artifacts)
 	if run.prompt {
 		options, err := moduleOptions(version, enabled)
 		if err != nil {
 			return err
 		}
-		a.wizardBanner("init", 3, initWizardSteps, "the built-in modules")
-		returned := append([]string{}, enabled...)
-		if err := a.ask("init", huh.NewMultiSelect[string]().
-			Title("Enabled modules").
-			Description("Space selects, Enter confirms. An empty whitelist loads every module.").
-			Options(options...).
-			Value(&returned)); err != nil {
+		a.wizardBanner("init", 3, initWizardSteps, "the modules")
+		mode := moduleModeAll
+		if len(enabled) > 0 {
+			mode = moduleModePick
+		}
+		if err := a.ask("init", huh.NewSelect[string]().
+			Title("Modules to load").
+			Description("Staged custom modules always load, whichever you choose.").
+			Options(
+				huh.NewOption("All modules (default)", moduleModeAll),
+				huh.NewOption("Only the modules I pick", moduleModePick),
+			).
+			Value(&mode)); err != nil {
 			return err
 		}
-		enabled = returned
+		if mode == moduleModeAll {
+			enabled = nil
+		} else {
+			returned := append([]string{}, enabled...)
+			if err := a.ask("init", huh.NewMultiSelect[string]().
+				Title("Enabled modules").
+				Description("Space selects, Enter confirms. Picking none loads every module.").
+				Options(options...).
+				Value(&returned)); err != nil {
+				return err
+			}
+			enabled = returned
+		}
+		if askArtifacts {
+			if err := a.ask("init", huh.NewInput().
+				Title("[modules].artifacts").
+				Description("The module artifacts the build writes, comma-separated globs; "+
+					"`igdev build` stages every match. Empty stages none.").
+				Placeholder(stackArtifacts[stack]).
+				Value(&artifacts)); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Step 4: the scan paths, at the schema default or the directories the
@@ -164,7 +197,7 @@ func (a *App) runInitWizard(cmd *cobra.Command, found project.Found, res *config
 		}
 	}
 
-	if err := setFlags(cmd, run.prompt, map[string]string{
+	answers := map[string]string{
 		"ignition-version":       version,
 		"modules":                strings.Join(enabled, ","),
 		"scan-jython":            scanJython,
@@ -173,7 +206,11 @@ func (a *App) runInitWizard(cmd *cobra.Command, found project.Found, res *config
 		"command-test":           commands.Test,
 		"command-build":          commands.Build,
 		"allow-unsigned-modules": strconv.FormatBool(allowUnsignedModules),
-	}); err != nil {
+	}
+	if askArtifacts {
+		answers["modules-artifacts"] = artifacts
+	}
+	if err := setFlags(cmd, run.prompt, answers); err != nil {
 		return err
 	}
 
@@ -192,9 +229,12 @@ func (a *App) printInitSummary(doc project.Doc) {
 	a.wizardNote("contract:  %s (Ignition %s, Jython %s, edition %s)",
 		project.ContractFile, doc.Ignition.Version, doc.Ignition.JythonVersion, doc.Ignition.Edition)
 	if len(doc.Modules.Enabled) == 0 {
-		a.wizardNote("modules:   none (every module loads)")
+		a.wizardNote("modules:   all (every built-in module loads)")
 	} else {
-		a.wizardNote("modules:   %s", strings.Join(doc.Modules.Enabled, ", "))
+		a.wizardNote("modules:   only %s", strings.Join(doc.Modules.Enabled, ", "))
+	}
+	if !doc.Modules.ArtifactsEmpty() {
+		a.wizardNote("artifacts: %s (staged by `igdev build`)", strings.Join(doc.Modules.Artifacts, ", "))
 	}
 	a.wizardNote("scan:      jython %s; capabilities %s",
 		listOr(doc.Scan.Jython, "none"), listOr(doc.Scan.Capabilities, "none"))
@@ -205,6 +245,31 @@ func (a *App) printInitSummary(doc project.Doc) {
 	}
 	a.wizardNote("commands:  check %s; test %s; build %s",
 		stageOr(doc.Commands.Check), stageOr(doc.Commands.Test), stageOr(doc.Commands.Build))
+}
+
+// The module step's two modes.
+const (
+	moduleModeAll  = "all"
+	moduleModePick = "pick"
+)
+
+// artifactDefault decides whether the module step asks for [modules].artifacts
+// and what it pre-fills: only a Gradle or Maven layout is asked, what the
+// contract already declares wins, and the layout's glob is pre-filled only when
+// a build file declares an Ignition module plugin, because a glob that matches
+// nothing fails `igdev build`.
+func artifactDefault(stack Stack, detected detection, declared []string) (string, bool) {
+	glob, ok := stackArtifacts[stack]
+	if !ok {
+		return "", false
+	}
+	if len(declared) > 0 {
+		return strings.Join(declared, ","), true
+	}
+	if detected.Stack == stack && detected.BuildsModules {
+		return glob, true
+	}
+	return "", true
 }
 
 // moduleOptions renders the module whitelist step: every built-in module of the

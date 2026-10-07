@@ -110,7 +110,9 @@ Without --json or --yes, init never prompts an invocation that already has a con
 to preserve: an agent's fully specified invocation is the whole interface. In a
 repository with no contract yet, a terminal gets the init Wizard — seven steps that read
 the layout, pre-fill [commands] and [scan], and write the same contract the flags
-below would. --interactive runs it even when the contract already exists (every value
+below would. Its module step loads all modules by default, or only the ones picked
+(--modules), and on a Gradle or Maven layout asks for the artifacts the build writes
+(--modules-artifacts). --interactive runs it even when the contract already exists (every value
 is shown preselected); --yes takes the same defaults without asking; on a non-terminal
 --interactive is a usage error, because a Wizard has no way to ask.
 
@@ -219,7 +221,7 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 		"Jython version the compatibility checker targets (default "+project.DefaultJythonVersion+")")
 	flags.StringVar(&edition, "edition", "", "Ignition module edition (default "+project.DefaultEdition+")")
 	flags.StringSliceVar(&modules, "modules", nil,
-		"module ids to enable, comma-separated or repeated (default: none)")
+		"module ids to enable, comma-separated or repeated (default: all modules)")
 	flags.StringSliceVar(&moduleArtifacts, "modules-artifacts", nil,
 		"globs of the module artifacts the build produces, repository-relative, comma-separated (default: none)")
 	flags.StringSliceVar(&scanJython, "scan-jython", nil,

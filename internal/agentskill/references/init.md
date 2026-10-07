@@ -25,7 +25,9 @@ Without --json or --yes, init never prompts an invocation that already has a con
 to preserve: an agent's fully specified invocation is the whole interface. In a
 repository with no contract yet, a terminal gets the init Wizard — seven steps that read
 the layout, pre-fill [commands] and [scan], and write the same contract the flags
-below would. --interactive runs it even when the contract already exists (every value
+below would. Its module step loads all modules by default, or only the ones picked
+(--modules), and on a Gradle or Maven layout asks for the artifacts the build writes
+(--modules-artifacts). --interactive runs it even when the contract already exists (every value
 is shown preselected); --yes takes the same defaults without asking; on a non-terminal
 --interactive is a usage error, because a Wizard has no way to ask.
 
@@ -62,7 +64,7 @@ igdev init [flags]
       --ignition-version string          Ignition version this checkout targets, e.g. 8.3.8 (default 8.3.8)
   -i, --interactive                      run the Wizard even when every value is already supplied
       --jython-version string            Jython version the compatibility checker targets (default 2.7.4)
-      --modules strings                  module ids to enable, comma-separated or repeated (default: none)
+      --modules strings                  module ids to enable, comma-separated or repeated (default: all modules)
       --modules-artifacts strings        globs of the module artifacts the build produces, repository-relative, comma-separated (default: none)
       --name string                      repository name recorded as [project].name
       --require-private-module-consent   require the machine-global module-license and module-cert terms before a staged private module's id is accepted (default false)
