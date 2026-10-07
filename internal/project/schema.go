@@ -138,7 +138,11 @@ type Commands struct {
 	Check string `toml:"check"`
 	Test  string `toml:"test"`
 	Build string `toml:"build"`
-	Smoke string `toml:"smoke"`
+	// RetiredSmoke holds a `smoke` key a contract written before the ADR 0010
+	// amendment may still carry. igdev never ran it, so the key is accepted and
+	// ignored: a contract that states it still loads, and `igdev init` drops it
+	// when it renders the contract again.
+	RetiredSmoke string `toml:"smoke"`
 }
 
 // Gateway is the requested Gateway shape. Ports are deliberately absent: they
@@ -184,7 +188,7 @@ func (g Gateway) EffectiveTrialReset() string {
 
 // Empty reports whether every stage is undeclared.
 func (c Commands) Empty() bool {
-	return c.Check == "" && c.Test == "" && c.Build == "" && c.Smoke == ""
+	return c.Check == "" && c.Test == "" && c.Build == ""
 }
 
 // DefaultDoc is the contract `igdev init` writes when no flag and no existing
@@ -430,7 +434,6 @@ func (d Doc) Render() []byte {
 			{"check", d.Commands.Check},
 			{"test", d.Commands.Test},
 			{"build", d.Commands.Build},
-			{"smoke", d.Commands.Smoke},
 		} {
 			if stage.value != "" {
 				fmt.Fprintf(&b, "%s = %s\n", stage.key, tomlString(stage.value))

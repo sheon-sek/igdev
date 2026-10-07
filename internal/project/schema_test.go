@@ -18,7 +18,7 @@ func TestRenderRoundTrips(t *testing.T) {
 	doc.Scan.Jython = []string{"src/main/python", "ignition/script-python"}
 	doc.Catalog.OverlayPaths = []string{"catalog/overlay.tsv", "catalog/acme.tsv"}
 	doc.Commands.Check = "./gradlew check"
-	doc.Commands.Smoke = "curl -fsS http://localhost/"
+	doc.Commands.Test = "./gradlew test"
 	doc.Gateway.MemoryMB = 4096
 	doc.Gateway.Timezone = "Asia/Kuala_Lumpur"
 
@@ -136,6 +136,22 @@ func TestParseDocRejectsUnknownKeys(t *testing.T) {
 	}
 	if len(fault.Remediation) == 0 || fault.Remediation[0].Command != "igdev init" {
 		t.Errorf("fault carries no repair path: %+v", fault.Remediation)
+	}
+}
+
+// A contract written before the ADR 0010 amendment may still state
+// [commands].smoke. It loads, and rendering it again drops the key igdev never ran.
+func TestParseDocAcceptsRetiredSmokeCommand(t *testing.T) {
+	doc := DefaultDoc()
+	doc.Project.Name = "repo"
+	doc.Commands.Check = "./gradlew check"
+	raw := strings.Replace(string(doc.Render()), "[commands]\n", "[commands]\nsmoke = \"curl -fsS http://localhost/\"\n", 1)
+	parsed, err := ParseDoc([]byte(raw), "igdev.toml")
+	if err != nil {
+		t.Fatalf("ParseDoc with [commands].smoke = %v", err)
+	}
+	if rendered := string(parsed.Render()); strings.Contains(rendered, "smoke") {
+		t.Errorf("render kept the retired key:\n%s", rendered)
 	}
 }
 

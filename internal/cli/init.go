@@ -77,7 +77,6 @@ func (a *App) newInitCmd() *cobra.Command {
 		commandCheck          string
 		commandTest           string
 		commandBuild          string
-		commandSmoke          string
 		gatewayMemoryMB       int
 		gatewayTimezone       string
 		allowUnsigned         bool
@@ -151,7 +150,6 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 						Check: commandCheck,
 						Test:  commandTest,
 						Build: commandBuild,
-						Smoke: commandSmoke,
 					},
 					Gateway: project.Gateway{MemoryMB: gatewayMemoryMB, Timezone: gatewayTimezone,
 						AllowUnsignedModules: allowUnsigned},
@@ -231,7 +229,6 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 	flags.StringVar(&commandCheck, "command-check", "", "command igdev check runs for this project")
 	flags.StringVar(&commandTest, "command-test", "", "command igdev test runs for this project")
 	flags.StringVar(&commandBuild, "command-build", "", "command igdev build runs for this project")
-	flags.StringVar(&commandSmoke, "command-smoke", "", "command igdev smoke runs after a Gateway starts")
 	flags.IntVar(&gatewayMemoryMB, "gateway-memory-mb", 0,
 		"Gateway heap in MiB (default "+fmt.Sprint(project.DefaultGatewayMemoryMB)+")")
 	flags.StringVar(&gatewayTimezone, "gateway-timezone", "",
@@ -280,7 +277,6 @@ func initDoc(cmd *cobra.Command, found project.Found, flagValues project.Doc) pr
 	set("command-check", func() { doc.Commands.Check = flagValues.Commands.Check })
 	set("command-test", func() { doc.Commands.Test = flagValues.Commands.Test })
 	set("command-build", func() { doc.Commands.Build = flagValues.Commands.Build })
-	set("command-smoke", func() { doc.Commands.Smoke = flagValues.Commands.Smoke })
 	set("gateway-memory-mb", func() { doc.Gateway.MemoryMB = flagValues.Gateway.MemoryMB })
 	set("gateway-timezone", func() { doc.Gateway.Timezone = flagValues.Gateway.Timezone })
 	set("allow-unsigned-modules", func() {

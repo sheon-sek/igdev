@@ -210,7 +210,7 @@ The schema v1 layout is closed and version-checked: `schema = 1`, then `[project
 name`, `[tool] min_version`, `[ignition] version|jython_version|edition`,
 `[modules] enabled|artifacts|require_private_module_consent`, `[scan] jython|capabilities`,
 `[catalog] overlay_paths`
-(omitted when empty), `[commands] check|test|build|smoke`
+(omitted when empty), `[commands] check|test|build`
 (omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints|allow_unsigned_modules|trial_reset|seed`.
 A key igdev does not know is refused, and a version-like field holds a version. Fields
 the file leaves out fall back to the embedded defaults, so a minimal `schema = 1`

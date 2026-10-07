@@ -52,7 +52,6 @@ Flags:
       --allow-unsigned-modules           let the Gateway load a module artifact that carries no valid signature (default false)
       --command-build string             command igdev build runs for this project
       --command-check string             command igdev check runs for this project
-      --command-smoke string             command igdev smoke runs after a Gateway starts
       --command-test string              command igdev test runs for this project
       --edition string                   Ignition module edition (default standard)
       --gateway-memory-mb int            Gateway heap in MiB (default 2048)

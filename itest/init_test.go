@@ -485,7 +485,7 @@ func TestHelpForInit(t *testing.T) {
 	for _, flag := range []string{
 		"--ignition-version", "--jython-version", "--edition", "--modules",
 		"--scan-jython", "--scan-capabilities", "--command-check", "--command-test",
-		"--command-build", "--command-smoke", "--gateway-memory-mb", "--gateway-timezone",
+		"--command-build", "--gateway-memory-mb", "--gateway-timezone",
 		"--tool-min-version", "--json",
 	} {
 		if !strings.Contains(res.Stdout, flag) {

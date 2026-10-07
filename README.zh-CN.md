@@ -27,7 +27,7 @@ igdev agent skill-install  # 安装与本二进制版本匹配的 Agent Skill
 ## 生命周期：先 init，再 setup
 
 `igdev init` 写入 Project Contract：Ignition/Jython 版本、模块白名单、扫描路径、Gateway 堆
-大小与时区，以及项目自己的 `check`/`test`/`build`/`smoke` 命令。它**唯一**会改动被 git 跟踪
+大小与时区，以及项目自己的 `check`/`test`/`build` 命令。它**唯一**会改动被 git 跟踪
 的文件，并且每次写入都会打印 unified diff。在一个还没有 contract 的仓库里，终端会得到
 Wizard；`--yes` 静默采用同样的默认值，`--json` 永不提问。
 

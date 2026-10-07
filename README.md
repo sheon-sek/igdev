@@ -50,7 +50,7 @@ Gateway runs from. Keeping them apart is what makes a fresh clone reproducible.
 
 `igdev.toml` declares what this repository needs: the Ignition and Jython versions, the
 enabled module whitelist, the paths to scan, the Gateway heap and timezone, and the
-project's own `check`/`test`/`build`/`smoke` commands. The first run writes schema v1
+project's own `check`/`test`/`build` commands. The first run writes schema v1
 defaults; every later run is an edit that preserves what the file already holds. Each
 write prints a unified diff — review it, because a Contract change moves the Contract
 Digest and makes the checkout's setup stale on purpose.
