@@ -15,8 +15,10 @@ import (
 	"github.com/sheon-sek/igdev/internal/config"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/docker"
+	"github.com/sheon-sek/igdev/internal/gate"
 	"github.com/sheon-sek/igdev/internal/lookup"
 	"github.com/sheon-sek/igdev/internal/modules"
+	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/xdg"
 )
 
@@ -152,9 +154,11 @@ func (a *App) newLookupCmd() *cobra.Command {
 		Long: `lookup searches two local indexes with an offline keyword search and says how to
 use each result in this checkout.
 
-The function index is read from the Ignition image this machine already pulled
-for the contract's version: the documentation bundles in the image's own jars and
-in its built-in modules (<fn>.desc, .param.<name>, .param.<name>.default,
+The function index is read from an Ignition image already on this machine for the
+contract's version: this Instance's own Gateway image, the official image, or any
+other Gateway image igdev built (each is FROM the official one and keeps its jars).
+It reads the documentation bundles in the image's own jars and in its built-in
+modules (<fn>.desc, .param.<name>, .param.<name>.default,
 .returns), each placed in its system.* namespace. Nothing starts and no EULA is
 involved; the image is only opened. The .modl archives this checkout stages are
 read the same way, so a private module documented the SDK way is found too. A
@@ -168,9 +172,8 @@ falls back to the REST plane this binary embeds: method, path and module only,
 marked source embedded; run --refresh once a Gateway is up for the full index.
 
 Both indexes are cached under the igdev cache directory, per Ignition version, and
-built on first use: the function index again whenever the image changes, the REST
-index when it is the embedded fallback and a Gateway now answers. --refresh
-rebuilds both.
+built on first use; the REST index is rebuilt by itself when it is the embedded
+fallback and a Gateway now answers. --refresh rebuilds both.
 
 A name match ranks above a description match. Each result says how to use it
 here: a function's scope and module, and whether this checkout enables that
@@ -233,7 +236,7 @@ leaves module_enabled out.`,
 				wantFunctions, wantREST = true, true
 			}
 			if wantFunctions {
-				if err := a.loadFunctions(lc, found.Root, records, refresh); err != nil {
+				if err := a.loadFunctions(lc, found, records, refresh); err != nil {
 					return err
 				}
 			}
@@ -278,25 +281,22 @@ func looksLikeEndpoint(name string) bool {
 	return ok && validMethod(strings.ToUpper(method)) && strings.HasPrefix(strings.TrimSpace(path), "/")
 }
 
-// loadFunctions reads the function index, building it when it is missing, when
-// the image changed since it was built, or on --refresh, then adds the staged
-// private modules and the catalog functions no bundle documents.
-func (a *App) loadFunctions(lc *lookupContext, root string, records []modules.Record, refresh bool) error {
-	image := lookup.Image(lc.version)
+// loadFunctions reads the function index, building it when it is missing or on
+// --refresh, then adds the staged private modules and the catalog functions no
+// bundle documents. An Ignition release tag is never rebuilt with other jars, so
+// one index per version stays valid until --refresh asks for a new one.
+func (a *App) loadFunctions(lc *lookupContext, found project.Found, records []modules.Record, refresh bool) error {
 	var known []string
 	for _, f := range lc.eff.Functions() {
 		known = append(known, f.Function)
 	}
 	idx, cached := lc.store.LoadFunctions()
-	imageID, idErr := lookup.ImageID(image)
 	built := false
-	switch {
-	case idErr != nil && cached && !refresh:
-		// The engine cannot say whether the image changed; the index it built
-		// last is still the best answer.
-	case idErr != nil:
-		return imageFault(image, idErr)
-	case !cached || idx.ImageID != imageID || refresh:
+	if !cached || refresh {
+		image, imageID, err := lookupImage(found, lc.version)
+		if err != nil {
+			return err
+		}
 		a.stage("reading the documentation bundles of %s into the lookup index", image)
 		scratch, err := os.MkdirTemp("", "igdev-lookup-")
 		if err != nil {
@@ -305,14 +305,15 @@ func (a *App) loadFunctions(lc *lookupContext, root string, records []modules.Re
 		defer os.RemoveAll(scratch)
 		idx, err = lookup.BuildImageIndex(lc.version, image, imageID, known, scratch)
 		if err != nil {
-			return imageFault(image, err)
+			return imageFault(lc.version, err)
 		}
 		if err := lc.store.SaveFunctions(idx); err != nil {
 			return cacheFault(lc.store.FunctionsPath(), err)
 		}
 		built = true
 	}
-	info := &lookupFunctionIndex{Path: lc.store.FunctionsPath(), Image: image, ImageID: idx.ImageID, Built: built, PrivateModules: []lookupModuleIndex{}}
+	root := found.Root
+	info := &lookupFunctionIndex{Path: lc.store.FunctionsPath(), Image: idx.Image, ImageID: idx.ImageID, Built: built, PrivateModules: []lookupModuleIndex{}}
 	functions := append([]lookup.Function(nil), idx.Functions...)
 	have := map[string]bool{}
 	for _, f := range functions {
@@ -777,21 +778,55 @@ func (a *App) printLookupIndexes(idx lookupIndexes) {
 	a.printLookupNotes(idx)
 }
 
-// imageFault maps a failure to read the image onto the contract: a missing
-// image is a docker pull away.
-func imageFault(image string, err error) *contract.Fault {
+// lookupImage picks the image the function index is read from. Every image igdev
+// builds for a Gateway is FROM the official one and leaves its jars as they are,
+// so any of them will do: this Instance's own image first, then the official
+// image, then any other Instance's image of the same version. Only a machine
+// with none of them is a fault.
+func lookupImage(found project.Found, version string) (string, string, error) {
+	var candidates []string
+	if found.InProject() {
+		if stamp, ok := gate.Decode(found.SetupRaw); ok {
+			candidates = append(candidates, stamp.Namespace()+":"+version)
+		}
+	}
+	candidates = append(candidates, lookup.Image(version))
+	others, err := lookup.InstanceImages(version)
+	if err != nil {
+		return "", "", imageFault(version, err)
+	}
+	candidates = append(candidates, others...)
+	for _, image := range candidates {
+		id, err := lookup.ImageID(image)
+		switch {
+		case err == nil:
+			return image, id, nil
+		case !errors.Is(err, lookup.ErrImageMissing):
+			return "", "", imageFault(version, err)
+		}
+	}
+	return "", "", imageFault(version, lookup.ErrImageMissing)
+}
+
+// imageFault maps a failure to read an image onto the contract. A machine with
+// no Ignition image of the version gets one by starting a Gateway, or by
+// pulling the official image.
+func imageFault(version string, err error) *contract.Fault {
+	image := lookup.Image(version)
 	if errors.Is(err, lookup.ErrImageMissing) {
 		return contract.NewFault(contract.CodeDocker, contract.ExitFailure,
-			fmt.Sprintf("the image %s is not on this machine, so its function documentation cannot be indexed", image)).
+			fmt.Sprintf("no Ignition %s image is on this machine (neither an igdev Gateway image nor %s), so the function documentation cannot be indexed", version, image)).
 			WithCause(err).
-			WithRemediation(contract.Remediation{Command: "docker pull " + image, Why: "pull the image the function index is read from"})
+			WithRemediation(
+				contract.Remediation{Command: "igdev gateway ensure", Why: "build this Instance's Gateway image, which carries the jars"},
+				contract.Remediation{Command: "docker pull " + image, Why: "or pull the official image the Gateway image is built from"})
 	}
 	var engine *lookup.EngineError
 	if errors.As(err, &engine) {
 		return docker.Fault(engine.Action, engine.Output, engine.Err)
 	}
 	return contract.NewFault(contract.CodeInternal, contract.ExitFailure,
-		fmt.Sprintf("cannot index %s: %v", image, err)).WithCause(err)
+		fmt.Sprintf("cannot index the Ignition %s image: %v", version, err)).WithCause(err)
 }
 
 func cacheFault(path string, err error) *contract.Fault {

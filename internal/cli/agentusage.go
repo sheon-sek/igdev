@@ -142,8 +142,9 @@ the body's Content-Type), and source (the bundle, catalog, openapi, or embedded)
 reports one entry in full: params with defaults and returns for a function; params,
 request_types, request_body and responses (schemas inlined) for an endpoint. An unknown
 --name is IGDEV_E_UNKNOWN_CAPABILITY. indexes.rest.source embedded means no Gateway
-answered: run igdev gateway ensure, then igdev lookup --refresh. A missing image is
-IGDEV_E_DOCKER with docker pull as the remediation. Look a function up before writing
+answered: run igdev gateway ensure, then igdev lookup --refresh. No Ignition image of the
+version on the machine (neither an igdev Gateway image nor the official one) is
+IGDEV_E_DOCKER; igdev gateway ensure or docker pull fixes it. Look a function up before writing
 Jython that calls it, and an endpoint before calling igdev gateway api.`,
 	"igdev module enable": `pass --json for the machine contract. data carries contract (path, action,
 the Contract Digest afterwards, and the unified diff), whitelist, added,

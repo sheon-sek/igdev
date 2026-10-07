@@ -183,20 +183,40 @@ func TestLookupReadsTheRunningGatewaysOpenAPI(t *testing.T) {
 	testrig.WantCode(t, testrig.Envelope(t, unknown.Stdout), contract.CodeUnknownCapability)
 }
 
-// A machine without the image gets a clean fault naming docker pull.
-func TestLookupWithoutTheImageNamesDockerPull(t *testing.T) {
+// Without the official image, the function index is read from a Gateway image
+// igdev built, which is FROM it; with no Ignition image at all, the fault names
+// gateway ensure and docker pull.
+func TestLookupReadsAnIgdevGatewayImageWhenTheOfficialOneIsMissing(t *testing.T) {
 	env := testrig.NewEnv(t)
 	env.ShimDocker()
-	env.SetBaseEnv("IGDEV_SHIM_IMAGE_MISSING=1")
+	lookupImage(t, env)
 	dir := env.Mkdir("elsewhere")
-	res := env.RunIn(dir, "lookup", "read tag values", "--json")
-	testrig.WantExit(t, res, contract.ExitFailure)
-	envelope := testrig.Envelope(t, res.Stdout)
-	testrig.WantCode(t, envelope, contract.CodeDocker)
-	testrig.WantRemediation(t, envelope, "docker pull inductiveautomation/ignition:8.3.8")
 
+	missing := env.Run(testrig.Run{Dir: dir, Args: []string{"lookup", "read tag values", "--json"}, Env: []string{"IGDEV_SHIM_IMAGE_MISSING=1"}})
+	testrig.WantExit(t, missing, contract.ExitFailure)
+	envelope := testrig.Envelope(t, missing.Stdout)
+	testrig.WantCode(t, envelope, contract.CodeDocker)
+	testrig.WantRemediation(t, envelope, "igdev gateway ensure")
+	testrig.WantRemediation(t, envelope, "docker pull inductiveautomation/ignition:8.3.8")
 	// The REST side needs no image.
-	testrig.WantExit(t, env.RunIn(dir, "lookup", "import project", "--kind", "rest", "--json"), contract.ExitOK)
+	rest := env.Run(testrig.Run{Dir: dir, Args: []string{"lookup", "import project", "--kind", "rest", "--json"}, Env: []string{"IGDEV_SHIM_IMAGE_MISSING=1"}})
+	testrig.WantExit(t, rest, contract.ExitOK)
+
+	env.SetBaseEnv("IGDEV_SHIM_IMAGES=igdev-0badc0de:8.3.8")
+	res := env.RunIn(dir, "lookup", "read tag values", "--json")
+	testrig.WantExit(t, res, contract.ExitOK)
+	var report struct {
+		Indexes struct {
+			Functions struct {
+				Image string `json:"image"`
+			} `json:"functions"`
+		} `json:"indexes"`
+		Results []lookupResult `json:"results"`
+	}
+	testrig.DataOf(t, res.Stdout, &report)
+	if report.Indexes.Functions.Image != "igdev-0badc0de:8.3.8" || !topN(report.Results, "system.tag.readBlocking", 3) {
+		t.Errorf("image = %q, results = %+v", report.Indexes.Functions.Image, report.Results)
+	}
 }
 
 func TestLookupUsage(t *testing.T) {

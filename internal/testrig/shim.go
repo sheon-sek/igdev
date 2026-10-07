@@ -73,16 +73,29 @@ if [ -n "$IGDEV_SHIM_DOCKER_OUT" ]; then
   exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
 fi
 [ $# -gt 0 ] || exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
-# The lookup index opens an image without starting it: image inspect answers a
-# fixed id (or "No such image" with IGDEV_SHIM_IMAGE_MISSING=1), and
-# "cp <id>:<dir> -" streams <dir> from IGDEV_SHIM_DOCKER_CP_ROOT as a tar of its
-# base name, the shape the engine writes.
+# The lookup index opens an image without starting it. image inspect answers a
+# fixed id for every image, for none with IGDEV_SHIM_IMAGE_MISSING=1, or only for
+# the images IGDEV_SHIM_IMAGES lists (space-separated), which image ls then
+# lists too; "cp <id>:<dir> -" streams <dir> from IGDEV_SHIM_DOCKER_CP_ROOT as a
+# tar of its base name, the shape the engine writes.
 if [ "$1" = "image" ] && [ "$2" = "inspect" ]; then
-  if [ -n "$IGDEV_SHIM_IMAGE_MISSING" ]; then
-    echo "Error response from daemon: No such image: $6" >&2
+  image="$5"
+  present=yes
+  [ -n "$IGDEV_SHIM_IMAGE_MISSING" ] && present=no
+  if [ -n "$IGDEV_SHIM_IMAGES" ]; then
+    case " $IGDEV_SHIM_IMAGES " in *" $image "*) ;; *) present=no ;; esac
+  fi
+  if [ "$present" = no ]; then
+    echo "Error response from daemon: No such image: $image" >&2
     exit 1
   fi
   printf 'sha256:%064x\n' 7
+  exit 0
+fi
+if [ "$1" = "image" ] && [ "$2" = "ls" ]; then
+  for image in $IGDEV_SHIM_IMAGES; do
+    case "$image" in igdev-*) printf '%s\n' "$image" ;; esac
+  done
   exit 0
 fi
 if [ "$1" = "cp" ]; then

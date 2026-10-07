@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sort"
 	"strings"
 )
 
@@ -49,6 +50,25 @@ func ImageID(image string) (string, error) {
 		return "", ErrImageMissing
 	}
 	return id, nil
+}
+
+// InstanceImages lists the Gateway images igdev built on this machine for a
+// version, igdev-<instance>:<version>, sorted by name.
+func InstanceImages(version string) ([]string, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command("docker", "image", "ls", "--filter", "reference=igdev-*:"+version, "--format", "{{.Repository}}:{{.Tag}}")
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, &EngineError{Action: "docker image ls", Output: stderr.String(), Err: err}
+	}
+	var out []string
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if line = strings.TrimSpace(line); strings.HasPrefix(line, "igdev-") && strings.HasSuffix(line, ":"+version) {
+			out = append(out, line)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // ReadImage reads the documentation bundles of an image's own jars and its

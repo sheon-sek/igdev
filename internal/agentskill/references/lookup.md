@@ -5,9 +5,11 @@
 lookup searches two local indexes with an offline keyword search and says how to
 use each result in this checkout.
 
-The function index is read from the Ignition image this machine already pulled
-for the contract's version: the documentation bundles in the image's own jars and
-in its built-in modules (<fn>.desc, .param.<name>, .param.<name>.default,
+The function index is read from an Ignition image already on this machine for the
+contract's version: this Instance's own Gateway image, the official image, or any
+other Gateway image igdev built (each is FROM the official one and keeps its jars).
+It reads the documentation bundles in the image's own jars and in its built-in
+modules (<fn>.desc, .param.<name>, .param.<name>.default,
 .returns), each placed in its system.* namespace. Nothing starts and no EULA is
 involved; the image is only opened. The .modl archives this checkout stages are
 read the same way, so a private module documented the SDK way is found too. A
@@ -21,9 +23,8 @@ falls back to the REST plane this binary embeds: method, path and module only,
 marked source embedded; run --refresh once a Gateway is up for the full index.
 
 Both indexes are cached under the igdev cache directory, per Ignition version, and
-built on first use: the function index again whenever the image changes, the REST
-index when it is the embedded fallback and a Gateway now answers. --refresh
-rebuilds both.
+built on first use; the REST index is rebuilt by itself when it is the embedded
+fallback and a Gateway now answers. --refresh rebuilds both.
 
 A name match ranks above a description match. Each result says how to use it
 here: a function's scope and module, and whether this checkout enables that
@@ -79,6 +80,7 @@ the body's Content-Type), and source (the bundle, catalog, openapi, or embedded)
 reports one entry in full: params with defaults and returns for a function; params,
 request_types, request_body and responses (schemas inlined) for an endpoint. An unknown
 --name is IGDEV_E_UNKNOWN_CAPABILITY. indexes.rest.source embedded means no Gateway
-answered: run igdev gateway ensure, then igdev lookup --refresh. A missing image is
-IGDEV_E_DOCKER with docker pull as the remediation. Look a function up before writing
+answered: run igdev gateway ensure, then igdev lookup --refresh. No Ignition image of the
+version on the machine (neither an igdev Gateway image nor the official one) is
+IGDEV_E_DOCKER; igdev gateway ensure or docker pull fixes it. Look a function up before writing
 Jython that calls it, and an endpoint before calling igdev gateway api.
