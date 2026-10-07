@@ -22,6 +22,10 @@ const SeedDir = "seed"
 // "Unable to create 'core' resource collection".
 const seedCollection = "config/resources/external/ignition"
 
+// projectSeedCollection is where a project's tracked seed lands: the same
+// external collection, whose module directories the project seed names itself.
+const projectSeedCollection = "config/resources/external"
+
 // Placeholders for the login names in the seeded security settings. The Gateway
 // entrypoint wrapper replaces them on a volume's first start with the names that
 // volume logs people in with, which igdev only knows at `gateway up` time

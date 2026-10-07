@@ -131,8 +131,9 @@ legal term) and `IGDEV_E_PORT_ALLOC` (the host refused three loopback binds). Th
 Gateway suite adds `IGDEV_E_CAPACITY` (exit 3: the Capacity Gate refused to start a
 Gateway and a person frees memory or passes `--force`), `IGDEV_E_GATEWAY_UNHEALTHY`
 (a Gateway did not answer before the deadline, or answered a smoke check with an error
-status) and `IGDEV_E_DOCKER` (a container-engine call failed, or the engine is not
-installed). The Baseline commands add `IGDEV_E_BASELINE_MISSING` (the `baseline set`
+status), `IGDEV_E_DOCKER` (a container-engine call failed, or the engine is not
+installed) and `IGDEV_E_DOCKER_DAEMON` (the docker CLI is there but its daemon is
+stopped or unreachable: start Docker, never `gateway reset`). The Baseline commands add `IGDEV_E_BASELINE_MISSING` (the `baseline set`
 source path is not there) and `IGDEV_E_BASELINE_INVALID` (the source exists but cannot
 be staged as a backup file); a source that is not a `.gwbk` is a usage error. The
 knowledge layer (ticket 12) adds `IGDEV_E_UNKNOWN_CAPABILITY` (nothing in the
@@ -195,10 +196,10 @@ name`, `[tool] min_version`, `[ignition] version|jython_version|edition`,
 `[modules] enabled|artifacts|require_private_module_consent`, `[scan] jython|capabilities`,
 `[catalog] overlay_paths`
 (omitted when empty), `[commands] check|test|build|smoke`
-(omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints|allow_unsigned_modules|trial_reset`.
+(omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints|allow_unsigned_modules|trial_reset|seed`.
 A key igdev does not know is refused, and a version-like field holds a version. Fields
 the file leaves out fall back to the embedded defaults, so a minimal `schema = 1`
-contract is valid. Five keys are optional and omitted from the rendered contract while
+contract is valid. Six keys are optional and omitted from the rendered contract while
 they hold the schema default: `smoke_endpoints` (a checkout that does not state it smokes
 the root document alone), `modules.artifacts` (a contract that does not state it has
 `igdev build` stage nothing on its own), `gateway.allow_unsigned_modules` (default false:
@@ -206,7 +207,8 @@ the Gateway loads only signed module artifacts), and
 `modules.require_private_module_consent` (default false: the private modules the checkout
 staged are accepted as part of starting the Gateway, ADR 0006), and `gateway.trial_reset`
 (default `"auto"`: a trial keeper resets an expired trial in place; `"off"` renders none,
-ADR 0008). Optional means additive — a
+ADR 0008), and `gateway.seed` (default none: the Gateway starts with igdev's own seed
+only, ADR 0009). Optional means additive — a
 contract written before either key existed parses, renders, and behaves exactly as it
 did, and stating an optional key is an edit of a tracked file, so it goes through
 `igdev init` and makes the Checkout Setup stale until `igdev setup` re-materializes it.
@@ -353,6 +355,8 @@ refused verb is the same frozen shape `setup` produces, and no verb ever talks t
 engine before both hold.
 
 ```
+igdev gateway ensure [--fresh] [--min-trial D]   reuse a healthy Gateway, start a
+                                    stopped one, or reset a broken one; reports which
 igdev gateway up [--force]          build if needed, then `docker compose up --detach
                                     --build` for this Instance's project
 igdev gateway down [--volumes]      stop and remove the containers; --volumes also
@@ -404,6 +408,33 @@ stderr, because the reason a Gateway never came up is in its own log. `smoke` ap
 the same readiness gate before it checks anything, fails
 with the failing endpoint named in the message, and the transport error or status is
 in `data.checks[].error` for a passing run's report.
+
+**Project seed.** `[gateway] seed = ["tests/ignition/seed"]` names tracked directories
+laid out like an Ignition resource collection, `<module>/<type>/<name>/{resource.json,
+config.json}`. `setup` checks them and copies them into
+`.igdev/runtime/seed/config/resources/external/`, next to igdev's own token and
+security resources, so a fresh volume holds them before the Gateway's first start
+(ADR 0009). Only tag providers, tag groups, tag and UDT definitions, OPC connections,
+OPC UA devices, database connections, schedules, holidays and historian providers are
+accepted. igdev's own resources (`security-levels`, `security-properties`, `api-token`)
+cannot be overridden, two seed directories may not write the same file, and a JSON key
+that names a credential (`password`, `secret`, `token`, `apiKey`, …) must be empty.
+Every refusal is `IGDEV_E_CONFIG_INVALID` naming the path. A change in a seed directory
+makes the Checkout Setup stale. The seed applies to a fresh volume only, so run
+`igdev gateway reset` or `igdev gateway ensure --fresh` to pick a change up.
+
+**One call before e2e.** `ensure` is what a harness or an agent runs instead of chaining
+`status`, `up`, `wait`, and `reset`. It reuses the Gateway (`action: reused`) when the
+container runs, `/StatusPing` reports RUNNING, and the Instance API token is accepted;
+it starts it (`started`) when the container is not running; and it resets it (`reset`)
+when the Gateway reports FAULTED, rejects the token because its volume predates it,
+`--fresh` was passed, or — only with `trial_reset = "off"` — the trial has less left
+than `--min-trial`. Under the default `trial_reset = "auto"` the trial keeper resets an
+expired trial in place, so `--min-trial` is accepted, never forces a reset, and the
+report's `note` says so. The report adds `reason`, `container`, `host_address`, `trial`
+and `capacity`. The Capacity Gate and Consent are applied before anything is
+discarded, so a refusal costs nothing. A Docker daemon that is not running is
+`IGDEV_E_DOCKER_DAEMON` from every verb: start Docker, never reset.
 
 **Reaching inside.** `exec` and `data` are how a workflow touches the running
 Gateway's container without rebuilding the compose call or bypassing the Gate (#31).

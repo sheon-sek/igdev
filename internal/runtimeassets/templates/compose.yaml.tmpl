@@ -6,8 +6,9 @@
 #
 # The build context is the runtime directory next to this file
 # ({{ .RuntimeDir }}), which holds
-# nothing but the Dockerfile: the repository's own files never enter the image and
-# no .dockerignore is ever edited. Secrets are absent on purpose — the Gateway
+# only what igdev generates: the repository's own files enter the image only as
+# the copy setup made of the checked [gateway] seed, and no .dockerignore is ever
+# edited. Secrets are absent on purpose — the Gateway
 # admin credentials live in .igdev/local.toml (mode 0600) and reach Compose from
 # the igdev process environment, so this file holds nothing worth leaking. The
 # staged Baseline's restore arguments (GATEWAY_RESTORE_ARGS) arrive the same way,

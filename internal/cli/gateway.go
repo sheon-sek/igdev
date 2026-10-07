@@ -441,6 +441,7 @@ never from a file on disk.`,
 	}
 	cmd.AddCommand(
 		a.newGatewayUpCmd(),
+		a.newGatewayEnsureCmd(),
 		a.newGatewayDownCmd(),
 		a.newGatewayResetCmd(),
 		a.newGatewayRestartCmd(),

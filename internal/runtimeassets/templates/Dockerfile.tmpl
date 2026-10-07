@@ -1,19 +1,19 @@
 # igdev Gateway image for Instance {{ .Namespace }} (generated; do not edit).
 #
-# The build context is {{ .RuntimeDir }} and holds only what igdev generates: the
-# repository's own files never enter the image, so no .dockerignore is needed.
-# Staged private modules are mounted from {{ .ModulesDir }} at run time, one file
-# each, instead of being baked into a layer. What the image does carry is generated next to this
-# file: the seed (the igdev security level and the Instance API token's hash,
-# never the token itself), which a fresh data volume takes as its initial content
-# so the token works on the Gateway's first start (ADR 0007), the entrypoint
-# wrapper that names the login provider in that seed, and the trial keeper
-# script (ADR 0008).
+# The build context is {{ .RuntimeDir }} and holds only what igdev generates, so
+# no .dockerignore is needed. Staged private modules are mounted from
+# {{ .ModulesDir }} at run time, one file each, instead of being baked into a layer.
+# The image carries the seed, which a fresh data volume takes as its initial
+# content: the igdev security level and the Instance API token's hash, never the
+# token itself, so the token works on the Gateway's first start (ADR 0007), plus
+# the copy setup made of the project's tracked seed (ADR 0009). It also carries
+# the entrypoint wrapper that names the login provider in that seed, and the
+# trial keeper script (ADR 0008).
 ARG IGNITION_VERSION={{ .IgnitionVersion }}
 FROM inductiveautomation/ignition:${IGNITION_VERSION}
 
 USER root
-{{- if .APITokenHash }}
+{{- if .Seeded }}
 COPY --chown=2003:0 {{ .SeedDir }}/ /usr/local/bin/ignition/data/
 {{- end }}
 COPY trial-keeper.sh /usr/local/bin/igdev-trial-keeper.sh

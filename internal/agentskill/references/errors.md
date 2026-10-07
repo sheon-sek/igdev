@@ -23,6 +23,7 @@ human action required. At exit 3 an agent stops and hands the Remediation to a p
 | `IGDEV_E_CAPACITY` | 3 | The Capacity Gate refused to start a Gateway: free memory is below the heap plus headroom. | Stop. A person frees memory or decides to pass `--force`. |
 | `IGDEV_E_GATEWAY_UNHEALTHY` | 1 | The Gateway missed its health deadline or failed a smoke check. | Read `igdev gateway logs --tail 200`, then fix the cause. |
 | `IGDEV_E_DOCKER` | 1 | A container-engine call failed, or the engine is missing or not compose v2. | Run `igdev doctor` and report what it finds. |
+| `IGDEV_E_DOCKER_DAEMON` | 1 | The docker CLI is installed but cannot reach the Docker daemon: it is stopped or its socket is unreachable. | Start Docker, then run `igdev doctor`. Never `gateway reset` for this. |
 | `IGDEV_E_BASELINE_MISSING` | 1 | The `baseline set` source path does not exist. | Pass the path of an existing `.gwbk`. |
 | `IGDEV_E_BASELINE_INVALID` | 1 | The `baseline set` source is a directory or cannot be read. | Pass a readable `.gwbk` file. |
 | `IGDEV_E_UNKNOWN_CAPABILITY` | 1 | Nothing in the Effective Catalog owns a `system.*` function, REST request, or capability name. | Check the spelling and the Ignition version. A private module's capability needs a Project Overlay. |

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,6 +26,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/modules"
 	"github.com/sheon-sek/igdev/internal/ports"
 	"github.com/sheon-sek/igdev/internal/project"
+	"github.com/sheon-sek/igdev/internal/projectseed"
 	"github.com/sheon-sek/igdev/internal/runtimeassets"
 	"github.com/sheon-sek/igdev/internal/xdg"
 )
@@ -320,6 +322,7 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 				Schema:         gate.StampSchema,
 				InstanceID:     instanceID,
 				ContractDigest: state.Digest,
+				SeedDigest:     projectseed.Digest(found.Root, doc.Gateway.Seed),
 				ContractSchema: state.Schema,
 				CLIContract:    contract.Version,
 				Ports:          triplet,
@@ -548,6 +551,16 @@ func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceI
 	if fault != nil {
 		return nil, fault
 	}
+	// The project's tracked seed is copied into the build context, checked
+	// against the allowlist and the secret rule first (ADR 0009).
+	seed, err := projectseed.Load(found.Root, doc.Gateway.Seed)
+	if err != nil {
+		return nil, err
+	}
+	projectSeed := make([]runtimeassets.File, 0, len(seed.Files))
+	for _, f := range seed.Files {
+		projectSeed = append(projectSeed, runtimeassets.File{Name: f.Path, Data: f.Data})
+	}
 	rendered := runtimeassets.Input{
 		InstanceID:           instanceID,
 		Namespace:            instance.Namespace(instanceID),
@@ -566,6 +579,7 @@ func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceI
 		APITokenHash:         tokenHash,
 		CreatedAtMillis:      epochMillis(createdAt),
 		TrialAutoReset:       doc.Gateway.TrialAutoReset(),
+		ProjectSeed:          projectSeed,
 	}
 	files, err := runtimeassets.Materialize(rendered)
 	if err != nil {
@@ -581,14 +595,49 @@ func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceI
 		}
 		writes = append(writes, write)
 	}
+	keep := map[string]bool{}
 	for _, file := range files {
 		write, err := materializeFile(filepath.Join(paths.runtime, file.Name), file.Data, renderedMode)
 		if err != nil {
 			return nil, err
 		}
 		writes = append(writes, write)
+		keep[filepath.Join(paths.runtime, file.Name)] = true
 	}
-	return writes, nil
+	removed, err := pruneSeed(filepath.Join(paths.runtime, runtimeassets.SeedDir), keep)
+	if err != nil {
+		return nil, err
+	}
+	return append(writes, removed...), nil
+}
+
+// pruneSeed removes seed files a previous setup wrote that this one did not, so
+// a resource dropped from the project seed leaves the image too.
+func pruneSeed(dir string, keep map[string]bool) ([]setupWrite, error) {
+	var stale []string
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return filepath.SkipDir
+			}
+			return err
+		}
+		if !d.IsDir() && !keep[p] {
+			stale = append(stale, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, writeFault(dir, err)
+	}
+	out := make([]setupWrite, 0, len(stale))
+	for _, p := range stale {
+		if err := os.Remove(p); err != nil {
+			return nil, writeFault(p, err)
+		}
+		out = append(out, setupWrite{Path: p, Kind: "file", Action: "removed"})
+	}
+	return out, nil
 }
 
 // moduleFiles are the staged artifacts the Gateway mounts, one file each: the

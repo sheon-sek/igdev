@@ -51,6 +51,7 @@ Orient before acting: igdev status --json works everywhere, and igdev agent cont
 | [`igdev gateway data get`](gateway-data-get.md) | Copy a file out of the Gateway's data directory |
 | [`igdev gateway data put`](gateway-data-put.md) | Copy a host file into the Gateway's data directory |
 | [`igdev gateway down`](gateway-down.md) | Stop this Instance's Gateway |
+| [`igdev gateway ensure`](gateway-ensure.md) | Leave this Instance with a running, healthy Gateway, reusing one when it can |
 | [`igdev gateway exec`](gateway-exec.md) | Run a command inside this Instance's Gateway container |
 | [`igdev gateway logs`](gateway-logs.md) | Print this Instance's Gateway log |
 | [`igdev gateway reset`](gateway-reset.md) | Recreate this Instance's Gateway from scratch |
