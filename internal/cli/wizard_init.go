@@ -148,14 +148,13 @@ func (a *App) runInitWizard(cmd *cobra.Command, found project.Found, res *config
 	}
 
 	// Step 6: the Gateway options — the one contract value that changes what the
-	// Gateway loads, and the one a module repository that builds unsigned
-	// artifacts has to state. The default is what the contract already holds, so
-	// an edit never flips it.
-	allowUnsignedModules := doc.Gateway.AllowUnsignedModules
+	// Gateway loads. The default is what the contract already holds, which is
+	// yes unless it states false, so an edit never flips it.
+	allowUnsignedModules := doc.Gateway.UnsignedModulesAllowed()
 	if run.prompt {
 		a.wizardBanner("init", 6, initWizardSteps, "the Gateway options")
 		a.wizardNote("a module repository builds unsigned artifacts until it has a signing key; " +
-			"the Gateway loads them only when the contract allows it")
+			"a development Gateway loads them unless the contract refuses it")
 		if err := a.ask("init", huh.NewConfirm().
 			Title("Allow unsigned modules").
 			Description("Render IGNITION_ALLOW_UNSIGNED_MODULES for this Instance's Gateway.").
@@ -199,9 +198,7 @@ func (a *App) printInitSummary(doc project.Doc) {
 	}
 	a.wizardNote("scan:      jython %s; capabilities %s",
 		listOr(doc.Scan.Jython, "none"), listOr(doc.Scan.Capabilities, "none"))
-	if doc.Gateway.AllowUnsignedModules {
-		a.wizardNote("gateway:   unsigned modules are allowed")
-	}
+	a.wizardNote("gateway:   unsigned modules %s", allowedWord(doc.Gateway.UnsignedModulesAllowed()))
 	if doc.Commands.Empty() {
 		a.wizardNote("commands:  none declared")
 		return

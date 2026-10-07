@@ -581,7 +581,7 @@ func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceI
 		Modules:              modules.EnabledList(doc.Modules.Enabled, records),
 		MemoryMB:             doc.Gateway.MemoryMB,
 		Timezone:             doc.Gateway.Timezone,
-		AllowUnsignedModules: doc.Gateway.AllowUnsignedModules,
+		AllowUnsignedModules: doc.Gateway.UnsignedModulesAllowed(),
 		Ports:                triplet,
 		RuntimeDir:           paths.runtime,
 		ModulesDir:           paths.modules,

@@ -391,7 +391,7 @@ func agentModulesOf(found project.Found, doc project.Doc) agentModules {
 	return agentModules{
 		Count:                       staged.Count,
 		Staged:                      staged.Staged,
-		AllowUnsignedModules:        doc.Gateway.AllowUnsignedModules,
+		AllowUnsignedModules:        doc.Gateway.UnsignedModulesAllowed(),
 		AutoAccepted:                autoAccepted,
 		RequirePrivateModuleConsent: doc.Modules.RequirePrivateModuleConsent,
 	}

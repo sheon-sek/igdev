@@ -222,8 +222,9 @@ the file leaves out fall back to the embedded defaults, so a minimal `schema = 1
 contract is valid. Six keys are optional and omitted from the rendered contract while
 they hold the schema default: `smoke_endpoints` (a checkout that does not state it smokes
 the root document alone), `modules.artifacts` (a contract that does not state it has
-`igdev build` stage nothing on its own), `gateway.allow_unsigned_modules` (default false:
-the Gateway loads only signed module artifacts), and
+`igdev build` stage nothing on its own), `gateway.allow_unsigned_modules` (default true:
+a development Gateway loads unsigned module artifacts; only `false` is written, ADR 0006
+amendment 1), and
 `modules.require_private_module_consent` (default false: the private modules the checkout
 staged are accepted as part of starting the Gateway, ADR 0006), and `gateway.trial_reset`
 (default `"auto"`: a trial keeper resets an expired trial in place; `"off"` renders none,
@@ -342,9 +343,8 @@ environment: `[gateway] allow_unsigned_modules` becomes `IGNITION_ALLOW_UNSIGNED
 which the rendered Compose file passes to the Gateway as
 `-Dignition.allowunsignedmodules`. It is the switch a module repository that builds
 unsigned artifacts needs — a `.modl` with no valid signature otherwise never loads. The
-rendered value is `false` unless a contract asks for `true`, so the file a checkout
-materializes without the key is byte-identical to the one it materialized before the key
-existed.
+rendered value is `true` unless a contract states `false` (ADR 0006, amendment 1), so a
+development Gateway loads the unsigned builds a module repository produces.
 
 **Consent.** The record is machine-global: `~/.config/igdev/accepted.toml`, keyed by
 term (`ignition-eula`, `module-license`, `module-cert`) and holding when each was
