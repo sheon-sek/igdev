@@ -216,7 +216,7 @@ name`, `[tool] min_version`, `[ignition] version|jython_version|edition`,
 `[modules] enabled|artifacts|require_private_module_consent`, `[scan] jython|capabilities`,
 `[catalog] overlay_paths`
 (omitted when empty), `[commands] check|test|build|smoke`
-(omitted when empty; `smoke` is recorded, but no igdev verb runs it yet), `[gateway] memory_mb|timezone|smoke_endpoints|allow_unsigned_modules|trial_reset|seed`.
+(omitted when empty), `[gateway] memory_mb|timezone|smoke_endpoints|allow_unsigned_modules|trial_reset|seed`.
 A key igdev does not know is refused, and a version-like field holds a version. Fields
 the file leaves out fall back to the embedded defaults, so a minimal `schema = 1`
 contract is valid. Six keys are optional and omitted from the rendered contract while

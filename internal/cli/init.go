@@ -231,7 +231,7 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 	flags.StringVar(&commandCheck, "command-check", "", "command igdev check runs for this project")
 	flags.StringVar(&commandTest, "command-test", "", "command igdev test runs for this project")
 	flags.StringVar(&commandBuild, "command-build", "", "command igdev build runs for this project")
-	flags.StringVar(&commandSmoke, "command-smoke", "", "command recorded as [commands].smoke (no igdev verb runs it yet)")
+	flags.StringVar(&commandSmoke, "command-smoke", "", "command igdev smoke runs after a Gateway starts")
 	flags.IntVar(&gatewayMemoryMB, "gateway-memory-mb", 0,
 		"Gateway heap in MiB (default "+fmt.Sprint(project.DefaultGatewayMemoryMB)+")")
 	flags.StringVar(&gatewayTimezone, "gateway-timezone", "",
