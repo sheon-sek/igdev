@@ -468,21 +468,27 @@ func TestModuleAddStagingReachesGatewayUp(t *testing.T) {
 		t.Fatal("the shim recorded no compose up call naming a compose file")
 	}
 	rendered := readFile(t, composeFile)
-	mount := ""
-	for _, line := range strings.Split(rendered, "\n") {
+	// Each staged artifact is mounted as one file into the image's modules
+	// directory, so the image's built-in modules stay visible (#47).
+	const target = "/usr/local/bin/ignition/user-lib/modules/"
+	var sources []string
+	lines := strings.Split(rendered, "\n")
+	for i, line := range lines {
 		line = strings.TrimSpace(line)
-		if strings.HasSuffix(line, ":/usr/local/bin/ignition/user-lib/modules") {
-			mount = strings.TrimPrefix(line, "- ")
-			mount = strings.TrimSuffix(mount, ":/usr/local/bin/ignition/user-lib/modules")
+		if strings.HasPrefix(line, "target: \""+target) && i > 0 {
+			source := strings.TrimSpace(lines[i-1])
+			source = strings.Trim(strings.TrimPrefix(source, "source: "), `"`)
+			sources = append(sources, source)
 		}
 	}
-	if mount == "" {
-		t.Fatalf("the rendered Compose file names no module mount:\n%s", rendered)
+	if len(sources) != 1 {
+		t.Fatalf("the rendered Compose file mounts %d module files, want 1:\n%s", len(sources), rendered)
 	}
+	mount := filepath.Dir(sources[0])
 	env.RegisterReplacement(mount, "<MODULES>")
 	staged := strings.Join(stagedArtifacts(t, mount), ", ")
-	if staged != "acme-vision.modl" {
-		t.Errorf("the Gateway would mount %q, want the staged artifact", staged)
+	if staged != "acme-vision.modl" || filepath.Base(sources[0]) != "acme-vision.modl" {
+		t.Errorf("the Gateway would mount %q (staged %q), want the staged artifact", sources[0], staged)
 	}
 	// The environment file the engine was handed points at the same directory, so
 	// nothing downstream has to guess where modules live.

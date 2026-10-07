@@ -792,7 +792,7 @@ func TestSetupRendersRuntimeFilesTheDockerShimAccepts(t *testing.T) {
 	for _, want := range []string{
 		labelOf(t, stamp),
 		fmt.Sprintf(`"%s:%d:8088"`, ports.BindAddress, stamp.Ports.HTTP),
-		filepath.Join(dir, ".igdev", "modules") + ":/usr/local/bin/ignition/user-lib/modules",
+		`"host.docker.internal:host-gateway"`,
 		filepath.Join(dir, ".igdev", baseline.DirName) + ":" + baseline.MountPoint + ":ro",
 	} {
 		if !strings.Contains(body, want) {

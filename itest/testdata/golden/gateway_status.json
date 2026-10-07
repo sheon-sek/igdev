@@ -22,6 +22,8 @@
         "status": "Up 1 second"
       }
     ],
+    "container": "igdev-<SHORT_ID>-gateway-1",
+    "host_address": "host.docker.internal",
     "trial": null
   }
 }
