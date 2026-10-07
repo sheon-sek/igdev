@@ -373,24 +373,24 @@ func TestAgentSkillInstallGlobal(t *testing.T) {
 	env.Golden(t, "agent_skill_install_global.json", res.Stdout)
 	res.AssertNoLeaksOutside(t, env.Home)
 
-	path := filepath.Join(env.Home, ".agents", "skills", "igdev", "SKILL.md")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read the installed skill: %v", err)
-	}
-	if string(raw) != string(agentskill.Content()) {
-		t.Error("the installed skill is not the embedded document")
-	}
-	if !strings.Contains(string(raw), "version: \""+contract.Version+"\"") {
-		t.Errorf("the installed frontmatter does not carry the CLI Contract Version:\n%s", firstLines(string(raw), 5))
-	}
-	skillDir := filepath.Join(env.Home, ".agents", "skills", "igdev")
-	for name, want := range agentskill.Files() {
-		got, err := os.ReadFile(filepath.Join(skillDir, filepath.FromSlash(name)))
+	// Both skills roots: Claude Code reads ~/.claude/skills, Codex and other
+	// Agent Skills harnesses read ~/.agents/skills.
+	for _, root := range []string{".agents", ".claude"} {
+		skillDir := filepath.Join(env.Home, root, "skills", "igdev")
+		raw, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
 		if err != nil {
-			t.Errorf("the skill file %s was not installed: %v", name, err)
-		} else if string(got) != string(want) {
-			t.Errorf("the installed %s is not the embedded file", name)
+			t.Fatalf("read the installed skill under %s: %v", root, err)
+		}
+		if !strings.Contains(string(raw), "version: \""+contract.Version+"\"") {
+			t.Errorf("the installed frontmatter does not carry the CLI Contract Version:\n%s", firstLines(string(raw), 5))
+		}
+		for name, want := range agentskill.Files() {
+			got, err := os.ReadFile(filepath.Join(skillDir, filepath.FromSlash(name)))
+			if err != nil {
+				t.Errorf("the skill file %s was not installed under %s: %v", name, root, err)
+			} else if string(got) != string(want) {
+				t.Errorf("the installed %s under %s is not the embedded file", name, root)
+			}
 		}
 	}
 
@@ -398,10 +398,80 @@ func TestAgentSkillInstallGlobal(t *testing.T) {
 		Scope   string `json:"scope"`
 		Action  string `json:"action"`
 		Version string `json:"version"`
+		Harness string `json:"harness"`
+		Targets []struct {
+			Harness string `json:"harness"`
+			Action  string `json:"action"`
+		} `json:"targets"`
 	}
 	testrig.DataOf(t, res.Stdout, &data)
-	if data.Scope != "global" || data.Action != "created" || data.Version != contract.Version {
-		t.Errorf("install report = %+v, want global/created/%s", data, contract.Version)
+	if data.Scope != "global" || data.Action != "created" || data.Version != contract.Version || data.Harness != "all" {
+		t.Errorf("install report = %+v, want global/created/%s/all", data, contract.Version)
+	}
+	if len(data.Targets) != 2 || data.Targets[0].Harness != "agents" || data.Targets[1].Harness != "claude" {
+		t.Errorf("targets = %+v, want agents then claude", data.Targets)
+	}
+}
+
+// --harness installs into one skills root only, and refuses a value it does not
+// know as a usage error that writes nothing.
+func TestAgentSkillInstallHarness(t *testing.T) {
+	env := testrig.NewEnv(t)
+	dir := env.Mkdir("plain")
+
+	res := env.RunIn(dir, "agent", "skill-install", "--harness", "claude", "--json")
+	testrig.WantExit(t, res, contract.ExitOK)
+	env.Golden(t, "agent_skill_install_claude.json", res.Stdout)
+	if _, err := os.Stat(filepath.Join(env.Home, ".claude", "skills", "igdev", "SKILL.md")); err != nil {
+		t.Errorf("--harness claude did not install into ~/.claude/skills: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(env.Home, ".agents")); !os.IsNotExist(err) {
+		t.Errorf("--harness claude wrote ~/.agents (err = %v)", err)
+	}
+
+	base := env.Snapshot()
+	bad := env.RunIn(dir, "agent", "skill-install", "--harness", "cursor", "--json")
+	testrig.WantExit(t, bad, contract.ExitUsage)
+	testrig.WantCode(t, testrig.Envelope(t, bad.Stdout), contract.CodeUsage)
+	if changes := env.Changes(base); len(changes) != 0 {
+		t.Errorf("a refused run wrote %v", changes)
+	}
+}
+
+// A ~/.claude/skills/igdev linked to ~/.agents/skills/igdev (a link-skills
+// setup) is written once through the link: the second target reports
+// unchanged and the link survives.
+func TestAgentSkillInstallLinkedRoots(t *testing.T) {
+	env := testrig.NewEnv(t)
+	dir := env.Mkdir("plain")
+	target := filepath.Join(env.Home, ".agents", "skills", "igdev")
+	link := filepath.Join(env.Home, ".claude", "skills", "igdev")
+	for _, d := range []string{target, filepath.Dir(link)} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	res := env.RunIn(dir, "agent", "skill-install", "--json")
+	testrig.WantExit(t, res, contract.ExitOK)
+	var data struct {
+		Action  string `json:"action"`
+		Targets []struct {
+			Action string `json:"action"`
+		} `json:"targets"`
+	}
+	testrig.DataOf(t, res.Stdout, &data)
+	if len(data.Targets) != 2 || data.Targets[0].Action != "created" || data.Targets[1].Action != "unchanged" {
+		t.Errorf("targets = %+v, want created then unchanged", data.Targets)
+	}
+	if data.Action != "updated" {
+		t.Errorf("summed action = %q, want updated", data.Action)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("the linked skills root did not survive the install (err = %v)", err)
 	}
 }
 
@@ -416,11 +486,13 @@ func TestAgentSkillInstallRepoScope(t *testing.T) {
 	testrig.WantExit(t, res, contract.ExitOK)
 	res.AssertNoLeaksOutside(t, dir)
 
-	path := filepath.Join(dir, ".agents", "skills", "igdev", "SKILL.md")
-	if raw, err := os.ReadFile(path); err != nil {
-		t.Fatalf("read the repo-scoped skill: %v", err)
-	} else if string(raw) != string(agentskill.Content()) {
-		t.Error("the repo-scoped skill is not the embedded document")
+	for _, root := range []string{".agents", ".claude"} {
+		path := filepath.Join(dir, root, "skills", "igdev", "SKILL.md")
+		if raw, err := os.ReadFile(path); err != nil {
+			t.Fatalf("read the repo-scoped skill under %s: %v", root, err)
+		} else if string(raw) != string(agentskill.Content()) {
+			t.Errorf("the repo-scoped skill under %s is not the embedded document", root)
+		}
 	}
 }
 

@@ -6,16 +6,20 @@ skill-install writes the Agent Skill embedded in this binary. Its entry,
 SKILL.md, is the thin workflow an agent follows when working an igdev repository.
 Beside it, references/ holds the command reference and the error-code reference,
 which an agent reads only when a task needs them. It is installed globally by
-default, into `~/.agents/skills/igdev/`, so one install covers every repository.
-With `--scope repo` it goes into the repository instead, at
-`.agents/skills/igdev/`, where it can be committed and reviewed.
+default, so one install covers every repository, and into both skills roots:
+`~/.claude/skills/igdev/`, which Claude Code reads, and `~/.agents/skills/igdev/`,
+which Codex and other Agent Skills harnesses read. `--harness claude` or
+`--harness agents` installs into one of them. With `--scope repo` it goes into the
+repository instead, at `.claude/skills/igdev/` and `.agents/skills/igdev/`, where it can
+be committed and reviewed.
 
 The entry's frontmatter carries the CLI Contract Version this binary speaks, so the
-guidance can never disagree with the tool. igdev owns SKILL.md and references/:
-installation writes every embedded file and removes pages from references/ that the
-embedded skill no longer carries. Other files beside them are left alone, and a
-symlinked skill directory or references/ is written through, never replaced. It is
-idempotent: files that already match are left untouched.
+guidance can never disagree with the tool. igdev owns SKILL.md and references/ at
+every target: installation writes every embedded file and removes pages from
+references/ that the embedded skill no longer carries. Other files beside them are
+left alone, and a symlinked skill directory or references/ is written through, never
+replaced, so one root linked to the other is written once and reported unchanged the
+second time. It is idempotent: files that already match are left untouched.
 
 ## Usage
 
@@ -27,6 +31,7 @@ igdev agent skill-install [flags]
 
 ```text
   igdev agent skill-install
+  igdev agent skill-install --harness claude
   igdev agent skill-install --scope repo
   igdev agent skill-install --json
 ```
@@ -34,8 +39,9 @@ igdev agent skill-install [flags]
 ## Options
 
 ```text
-  -h, --help           help for skill-install
-      --scope string   where to install the skill: global (~/.agents/skills) or repo (.agents/skills) (default "global")
+      --harness string   which skills roots to install into: all, claude (Claude Code), or agents (Codex and other harnesses) (default "all")
+  -h, --help             help for skill-install
+      --scope string     where to install the skill: global (~/.claude/skills, ~/.agents/skills) or repo (.claude/skills, .agents/skills) (default "global")
 ```
 
 ## Global options
@@ -48,10 +54,13 @@ igdev agent skill-install [flags]
 ## Agent usage
 
 pass --json for the machine contract. data carries scope, path (the
-installed SKILL.md), action (created, updated, or unchanged), and version (the CLI
-Contract Version the installed frontmatter records). Installation is idempotent: identical
+first target's SKILL.md), action (created, updated, or unchanged, summed over the
+targets), version (the CLI Contract Version the installed frontmatter records), harness
+(all, claude, or agents), and targets: one entry per skills root with its harness, path,
+and action. Installation is idempotent: identical
 files are left untouched, so a re-install never moves their mtimes, and pages in
 references/ the embedded skill no longer carries are removed. igdev owns SKILL.md and
 references/; other files beside them are left alone, and a symlinked skill directory or
 references/ is written through, never replaced. --scope repo requires a Project Root
-(IGDEV_E_NOT_INITIALIZED otherwise) and writes .agents/skills/igdev/ into it.
+(IGDEV_E_NOT_INITIALIZED otherwise) and writes .claude/skills/igdev/ and
+.agents/skills/igdev/ into it.

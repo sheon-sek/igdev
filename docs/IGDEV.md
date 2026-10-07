@@ -1248,9 +1248,11 @@ the generated `docs/reference/agent-context.md`, which is rendered from the
 `AgentContextFields` table in `internal/cli/agent.go` (a test checks that table against
 the envelope's own struct tags). `agent skill-install` writes the embedded Agent Skill
 (`internal/agentskill/SKILL.md`,
-frontmatter carrying the CLI Contract Version) globally at `~/.agents/skills/igdev/` by
-default, or into the repository's `.agents/skills/igdev/` with `--scope repo`; it is
-idempotent and updates an install left by an older binary in place. `init` now also
+frontmatter carrying the CLI Contract Version) globally by default, or into the
+repository with `--scope repo`. Since Phase 9 (issue #88) it writes both skills roots,
+`.claude/skills/igdev/` for Claude Code and `.agents/skills/igdev/` for Codex and other
+Agent Skills harnesses; `--harness claude|agents` picks one, and the envelope lists one
+entry per target in `data.targets`. It is idempotent and updates an install left by an older binary in place. `init` now also
 maintains a minimal, version-free managed block in `AGENTS.md`: created when absent,
 replaced in place when present, never duplicated, and reported with the same diff as its
 other tracked writes. Neither agent verb ever prompts.
