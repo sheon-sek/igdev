@@ -58,7 +58,8 @@ type Input struct {
 	Namespace string
 	// IgnitionVersion selects the Gateway image tag.
 	IgnitionVersion string
-	// JythonVersion is rendered into the Compose environment for later tickets.
+	// JythonVersion is recorded in the Compose environment file; the Gateway
+	// does not read it.
 	JythonVersion string
 	// Edition is the Ignition module edition.
 	Edition string
@@ -80,7 +81,7 @@ type Input struct {
 	// RuntimeDir is the absolute path of the build context, `.igdev/runtime`.
 	RuntimeDir string
 	// ModulesDir is the absolute staged-modules path, mounted into the Gateway.
-	// The staging content is later tickets; setup creates the mount point.
+	// Setup creates it; private module artifacts are staged into it.
 	ModulesDir string
 	// ModuleFiles are the file names of the private module artifacts staged in
 	// ModulesDir, sorted. Each is mounted read-only as one file into the image's

@@ -256,7 +256,7 @@ func ImportOpenAPI(version string, existing []byte, operations []OpenAPIOperatio
 
 	written := make(map[string]RestOperation, len(operations))
 	for _, op := range operations {
-		row := RestOperation{Method: op.Method, Path: op.Path, Owner: op.Owner, Modules: op.Modules}
+		row := RestOperation(op)
 		key := restKey(row.Method, row.Path)
 		if held, ok := coreRows[key]; ok {
 			if ownerKey(held) == ownerKey(row) {

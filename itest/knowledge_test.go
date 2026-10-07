@@ -61,22 +61,6 @@ type requireData struct {
 	Capabilities []requireEntry `json:"capabilities"`
 }
 
-// scanEntry is one element of `module scan --json` data.
-type scanEntry struct {
-	Capability string   `json:"capability"`
-	Kind       string   `json:"kind"`
-	Platform   bool     `json:"platform"`
-	Modules    []string `json:"modules"`
-	Layer      string   `json:"layer"`
-	File       string   `json:"file"`
-	Line       int      `json:"line"`
-}
-
-type scanData struct {
-	Checked  int         `json:"checked"`
-	Findings []scanEntry `json:"findings"`
-}
-
 type builtInEntry struct {
 	ID       string `json:"id"`
 	Artifact string `json:"artifact"`

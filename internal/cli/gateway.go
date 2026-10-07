@@ -31,11 +31,9 @@ import (
 
 // The Gateway lifecycle's frozen timings and sizes.
 const (
-	// gatewayWaitDefault is how long `wait` and `smoke` give a starting Gateway.
+	// gatewayWaitDefault is how long `wait` (with or without --smoke) gives a
+	// starting Gateway.
 	gatewayWaitDefault = 180 * time.Second
-	// gatewaySmokeDefault is the shorter wait `smoke` uses for a Gateway that is
-	// expected to be up already.
-	gatewaySmokeDefault = 60 * time.Second
 	// gatewayPollInterval is how often the health check is retried.
 	gatewayPollInterval = 500 * time.Millisecond
 	// gatewayProbeTimeout bounds one health check, so a socket that accepts and
