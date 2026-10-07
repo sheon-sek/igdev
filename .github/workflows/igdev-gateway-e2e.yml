@@ -177,6 +177,22 @@ jobs:
             | jq -e '[.items[].name] | index("igdev-sim")' >/dev/null || { echo "the seeded tag provider is missing"; exit 1; }
           igdev gateway ensure --json | jq -e '.data.action == "reused"' >/dev/null
 
+      # Phase 5 (#58): the composite action other repositories use. igdev is
+      # already built from this ref, so the action uses it instead of a release.
+      - name: Ensure the Gateway through the composite action
+        id: gateway
+        uses: ./actions/gateway
+        with:
+          install: "false"
+          working-directory: ${{ env.CHECKOUT }}
+
+      - name: Call gateway-info with the exported token
+        run: |
+          set -euo pipefail
+          [ "${{ steps.gateway.outputs.action }}" = reused ] || { echo "the action did not reuse the Gateway"; exit 1; }
+          code="$(curl -s -o /dev/null -w '%{http_code}' -H "X-Ignition-API-Token: $IGDEV_GATEWAY_TOKEN" "$IGDEV_GATEWAY_URL/data/api/v1/gateway-info")"
+          [ "$code" = 200 ] || { echo "gateway-info answered $code"; exit 1; }
+
       - name: Collect diagnostics on failure
         if: failure()
         working-directory: ${{ env.CHECKOUT }}

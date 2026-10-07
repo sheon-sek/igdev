@@ -111,44 +111,12 @@ anything is discarded, so a refusal costs nothing.`,
 			if err != nil {
 				return err
 			}
-			data := gatewayEnsureData{
-				gatewayAddress: g.address(),
-				Container:      docker.GatewayContainer(g.compose.Namespace),
-				HostAddress:    runtimeassets.HostAddress,
-			}
-			autoTrial := g.doc.Gateway.EffectiveTrialReset() == project.TrialResetAuto
-			if minTrial > 0 && autoTrial {
-				data.Note = `--min-trial does not apply: trial_reset = "auto" resets an expired trial in place`
-			}
-
-			action, reason, err := a.ensureDecision(g, fresh, timeout, minTrial, autoTrial)
+			data, err := a.ensureGateway(g, ensureOptions{
+				fresh: fresh, force: force, timeout: timeout, minTrial: minTrial,
+			})
 			if err != nil {
 				return err
 			}
-			data.Action, data.Reason = action, reason
-			if action != ensureReused {
-				decision, fault := a.admit(g, force)
-				if fault != nil {
-					return fault
-				}
-				capacity := capacityOf(decision, force)
-				data.Capacity = &capacity
-				if action == ensureReset {
-					a.stage("gateway ensure: resetting %s (%s)", g.stamp.Namespace(), reason)
-					if fault := g.compose.Down(true); fault != nil {
-						return fault
-					}
-				}
-				a.stage("gateway ensure: starting %s (docker compose up --detach --build %s)",
-					g.stamp.Namespace(), strings.Join(g.compose.UpServices(), " "))
-				if fault := g.compose.Up(); fault != nil {
-					return fault
-				}
-				if err := a.waitForGateway(g, timeout); err != nil {
-					return err
-				}
-			}
-			data.Trial = readTrial(g.url())
 			a.emit(g.res, data, func() { a.printGatewayEnsure(data) })
 			return nil
 		},
@@ -261,4 +229,57 @@ func (a *App) printGatewayEnsure(data gatewayEnsureData) {
 	if data.Note != "" {
 		fmt.Fprintf(a.Stdout, "note:        %s\n", data.Note)
 	}
+}
+
+// ensureOptions are the knobs of one ensure.
+type ensureOptions struct {
+	fresh    bool
+	force    bool
+	timeout  time.Duration
+	minTrial time.Duration
+}
+
+// ensureGateway leaves the Instance with a running, healthy Gateway and reports
+// what it did. It is `gateway ensure` and the first step of
+// `ci-local --with-gateway`.
+func (a *App) ensureGateway(g *gateway, opts ensureOptions) (gatewayEnsureData, error) {
+	data := gatewayEnsureData{
+		gatewayAddress: g.address(),
+		Container:      docker.GatewayContainer(g.compose.Namespace),
+		HostAddress:    runtimeassets.HostAddress,
+	}
+	autoTrial := g.doc.Gateway.EffectiveTrialReset() == project.TrialResetAuto
+	if opts.minTrial > 0 && autoTrial {
+		data.Note = `--min-trial does not apply: trial_reset = "auto" resets an expired trial in place`
+	}
+
+	action, reason, err := a.ensureDecision(g, opts.fresh, opts.timeout, opts.minTrial, autoTrial)
+	if err != nil {
+		return data, err
+	}
+	data.Action, data.Reason = action, reason
+	if action != ensureReused {
+		decision, fault := a.admit(g, opts.force)
+		if fault != nil {
+			return data, fault
+		}
+		capacity := capacityOf(decision, opts.force)
+		data.Capacity = &capacity
+		if action == ensureReset {
+			a.stage("gateway ensure: resetting %s (%s)", g.stamp.Namespace(), reason)
+			if fault := g.compose.Down(true); fault != nil {
+				return data, fault
+			}
+		}
+		a.stage("gateway ensure: starting %s (docker compose up --detach --build %s)",
+			g.stamp.Namespace(), strings.Join(g.compose.UpServices(), " "))
+		if fault := g.compose.Up(); fault != nil {
+			return data, fault
+		}
+		if err := a.waitForGateway(g, opts.timeout); err != nil {
+			return data, err
+		}
+	}
+	data.Trial = readTrial(g.url())
+	return data, nil
 }

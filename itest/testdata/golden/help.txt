@@ -28,6 +28,7 @@ Available Commands:
   check       Run the fixed preflight pipeline before anything else
   ci-local    Run this project's GitHub Actions workflows locally through act
   completion  Print the shell completion script for igdev
+  consent     Carry a person's Consent record to an unattended runner
   doctor      Audit the host prerequisites igdev's runtime work depends on
   gateway     Control this Instance's Ignition Gateway
   help        Show help for a command

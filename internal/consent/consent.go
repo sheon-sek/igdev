@@ -277,3 +277,104 @@ func remediationsOf(terms []Term) []contract.Remediation {
 	}
 	return out
 }
+
+// FileEnv names a Consent record exported by a person (`igdev consent export`)
+// for an unattended runner that has no person (ADR 0004, amendment 1). When it
+// is set, igdev reads the record from that file instead of the machine-global
+// one, and never writes either.
+const FileEnv = "IGDEV_CONSENT_FILE"
+
+// Location is where this run reads Consent from.
+type Location struct {
+	// Path is the record's path.
+	Path string
+	// Exported is true when Path came from IGDEV_CONSENT_FILE: the record is a
+	// person's export, read only, and validated entry by entry.
+	Exported bool
+}
+
+// Locate resolves the record this run reads: IGDEV_CONSENT_FILE when it is set,
+// otherwise the machine-global record in configDir.
+func Locate(environ map[string]string, configDir string) Location {
+	if file := strings.TrimSpace(environ[FileEnv]); file != "" {
+		return Location{Path: file, Exported: true}
+	}
+	return Location{Path: Path(configDir)}
+}
+
+// Load reads the record at the location. An exported record keeps only the
+// entries that prove an acceptance: a known term, an RFC 3339 time that is not
+// in the future, and the igdev version that recorded it. Anything else is a term
+// not accepted.
+func (l Location) Load() (Record, error) {
+	rec, err := Load(l.Path)
+	if err != nil || !l.Exported {
+		return rec, err
+	}
+	return rec.valid(time.Now()), nil
+}
+
+// valid drops every entry that does not prove an acceptance.
+func (r Record) valid(now time.Time) Record {
+	out := Record{Terms: map[string]Acceptance{}}
+	for id, a := range r.Terms {
+		if _, known := TermByID(id); !known || a.CLIVersion == "" {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339, a.AcceptedAt)
+		if err != nil || at.After(now) {
+			continue
+		}
+		out.Terms[id] = a
+	}
+	return out
+}
+
+// Check is Check for this location. An exported record that misses a term
+// points at the person who exports it, not at a flag no runner may pass.
+func (l Location) Check(required ...Term) *contract.Fault {
+	if !l.Exported {
+		return Check(l.Path, required...)
+	}
+	return l.CheckAll(required...)
+}
+
+// CheckAll is CheckAll for this location.
+func (l Location) CheckAll(required ...Term) *contract.Fault {
+	if !l.Exported {
+		return CheckAll(l.Path, required...)
+	}
+	rec, _ := l.Load()
+	missing := []string{}
+	for _, term := range required {
+		if _, ok := rec.Accepted(term); !ok {
+			missing = append(missing, term.Title)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return contract.NewFault(contract.CodeConsentRequired, contract.ExitHumanAction,
+		fmt.Sprintf("%s not accepted in the exported Consent record %s (%s)",
+			strings.Join(missing, " and "), l.Path, FileEnv)).
+		WithRemediation(contract.Remediation{
+			Command: "igdev consent export",
+			Why: "a person who accepted the terms on their own machine exports the record and stores it " +
+				"as the CI secret " + FileEnv + " points to (agents may never accept on a human's behalf, ADR 0004)",
+		})
+}
+
+// Export renders the record at path for IGDEV_CONSENT_FILE: the same format,
+// with a header that says where it came from. It refuses a record that does not
+// accept every term in required.
+func Export(path string, required ...Term) ([]byte, *contract.Fault) {
+	if fault := CheckAll(path, required...); fault != nil {
+		return nil, fault
+	}
+	rec, _ := Load(path)
+	body := rec.valid(time.Now()).Encode()
+	header := "# Exported with `igdev consent export` for " + FileEnv + ".\n" +
+		"# Store it as a CI secret. igdev reads it on an unattended runner and never\n" +
+		"# writes it; it proves what a person accepted, so keep it with that person.\n"
+	return append([]byte(header), body...), nil
+}

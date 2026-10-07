@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "contract": "1",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "event": "pull_request",
+    "job": "e2e",
+    "offline": false,
+    "command": "act pull_request -j e2e --network igdev-<SHORT_ID>_default --env-file <ACT_FILES>/gateway.env --secret-file <ACT_FILES>/gateway.secrets",
+    "args": [
+      "act",
+      "pull_request",
+      "-j",
+      "e2e",
+      "--network",
+      "igdev-<SHORT_ID>_default",
+      "--env-file",
+      "<ACT_FILES>/gateway.env",
+      "--secret-file",
+      "<ACT_FILES>/gateway.secrets"
+    ],
+    "workdir": "<ROOT>/repo",
+    "exit": 0,
+    "output_tail": [],
+    "gateway": {
+      "action": "started",
+      "reason": "not_running",
+      "url": "http://gateway:8088",
+      "host_url": "http://127.0.0.1:<PORT_HTTP>",
+      "network": "igdev-<SHORT_ID>_default"
+    }
+  }
+}

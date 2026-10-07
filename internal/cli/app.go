@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sheon-sek/igdev/internal/config"
+	"github.com/sheon-sek/igdev/internal/consent"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/gate"
 	"github.com/sheon-sek/igdev/internal/project"
@@ -170,6 +171,12 @@ func (a *App) gateInput(found project.Found) gate.Input {
 		CLIVersion:     Version(),
 		CLIContract:    contract.Version,
 	}
+}
+
+// consentLocation is where this run reads Consent from: IGDEV_CONSENT_FILE when
+// it is set, otherwise the machine-global record (ADR 0004).
+func (a *App) consentLocation() consent.Location {
+	return consent.Locate(config.EnvironMap(a.Environ), xdg.Resolve().Config)
 }
 
 // seedDigest is the digest of the project seed the contract declares, so the

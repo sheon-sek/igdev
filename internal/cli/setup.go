@@ -28,7 +28,6 @@ import (
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/projectseed"
 	"github.com/sheon-sek/igdev/internal/runtimeassets"
-	"github.com/sheon-sek/igdev/internal/xdg"
 )
 
 // The permissions of the materialized Checkout Setup. Rendered runtime files are
@@ -184,7 +183,19 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 			// that names the flag. Only a human-typed flag reaches this loop
 			// (ADR 0004). acceptedAt is the acceptance, not the materialization:
 			// the timestamps below are taken after a possibly long walkthrough.
-			consentPath := consent.Path(xdg.Resolve().Config)
+			location := a.consentLocation()
+			consentPath := location.Path
+			if location.Exported && (acceptEULA || acceptModuleLicense || acceptModuleCert) {
+				// An exported record is a person's acceptance carried to a runner.
+				// Nothing on the runner may add to it (ADR 0004, amendment 1).
+				return contract.UsageFault(
+					fmt.Sprintf("%s is set: the Consent record is read from %s and never written, so the --accept-* flags are refused",
+						consent.FileEnv, consentPath),
+					contract.Remediation{
+						Command: "igdev consent export",
+						Why:     "a person accepts on their own machine and exports the record for the runner",
+					})
+			}
 			acceptedAt := time.Now().UTC()
 			accepted := []string{}
 			for _, term := range []struct {
@@ -218,7 +229,7 @@ next fresh launch restores from, which is what ` + "`igdev gateway reset`" + ` a
 
 			// Nothing is materialized until the required terms are on record: a
 			// missing term is a human action, not a transient failure.
-			if fault := consent.Check(consentPath, consent.EULA); fault != nil {
+			if fault := location.Check(consent.EULA); fault != nil {
 				return fault
 			}
 

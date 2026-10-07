@@ -27,7 +27,6 @@ import (
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/runtimeassets"
 	"github.com/sheon-sek/igdev/internal/trial"
-	"github.com/sheon-sek/igdev/internal/xdg"
 )
 
 // The Gateway lifecycle's frozen timings and sizes.
@@ -221,7 +220,7 @@ func (a *App) gatewayContext() (*gateway, error) {
 
 	// Running an Ignition Gateway is governed by the EULA, so every verb stops at
 	// the same human-required fault setup does, with the same accept command.
-	if fault := consent.Check(consent.Path(xdg.Resolve().Config), consent.EULA); fault != nil {
+	if fault := a.consentLocation().Check(consent.EULA); fault != nil {
 		return nil, fault
 	}
 
@@ -276,7 +275,7 @@ func (a *App) gatewayContext() (*gateway, error) {
 	// never loads. `[modules] require_private_module_consent` puts the
 	// machine-global terms back in front of that, and the ids are then passed only
 	// once a human recorded them.
-	accepted, fault := moduleAcceptance(found, doc)
+	accepted, fault := moduleAcceptance(found, doc, a.consentLocation())
 	if fault != nil {
 		return nil, fault
 	}
@@ -328,7 +327,7 @@ func (a *App) gatewayContext() (*gateway, error) {
 // and module-cert terms gate that, and a missing term is the human-required fault
 // every other Consent refusal is (ADR 0004): the ids are passed only once a person
 // has recorded them, and the remediation names the exact command.
-func moduleAcceptance(found project.Found, doc project.Doc) (string, *contract.Fault) {
+func moduleAcceptance(found project.Found, doc project.Doc, location consent.Location) (string, *contract.Fault) {
 	records, fault := modules.Scan(modules.Dir(found.Root))
 	if fault != nil {
 		return "", fault
@@ -339,7 +338,7 @@ func moduleAcceptance(found project.Found, doc project.Doc) (string, *contract.F
 	}
 	if doc.Modules.RequirePrivateModuleConsent {
 		required := []consent.Term{consent.ModuleLicense, consent.ModuleCert}
-		if fault := consent.CheckAll(consent.Path(xdg.Resolve().Config), required...); fault != nil {
+		if fault := location.CheckAll(required...); fault != nil {
 			return "", fault
 		}
 	}

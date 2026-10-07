@@ -348,8 +348,18 @@ if [ -n "$state" ]; then
   done
   # IGDEV_ACT_OFFLINE is the env tier of the offline decision: recording it makes
   # the environment act inherits observable, not just the flags it was handed.
-  printf '{"n":%s,"cwd":"%s","exit":%s,"argv":[%s],"env":{"IGDEV_ACT_OFFLINE":"%s"}}\n' \
-    "$n" "$(escape "$PWD")" "${IGDEV_SHIM_ACT_EXIT:-0}" "$argv" "$(escape "$IGDEV_ACT_OFFLINE")" >> "$state"
+  # The keys of the --env-file and --secret-file igdev hands act, never their
+  # values: a test asserts what the job receives without the shim logging a token.
+  envkeys=""; secretkeys=""; prev=""
+  for arg in "$@"; do
+    case "$prev" in
+      --env-file) envkeys="$(sed -n 's/=.*//p' "$arg" 2>/dev/null | tr '\n' ',' | sed 's/,$//')" ;;
+      --secret-file) secretkeys="$(sed -n 's/=.*//p' "$arg" 2>/dev/null | tr '\n' ',' | sed 's/,$//')" ;;
+    esac
+    prev="$arg"
+  done
+  printf '{"n":%s,"cwd":"%s","exit":%s,"argv":[%s],"env":{"IGDEV_ACT_OFFLINE":"%s"},"env_file_keys":"%s","secret_file_keys":"%s"}\n' \
+    "$n" "$(escape "$PWD")" "${IGDEV_SHIM_ACT_EXIT:-0}" "$argv" "$(escape "$IGDEV_ACT_OFFLINE")" "$envkeys" "$secretkeys" >> "$state"
 fi
 if [ -n "$IGDEV_SHIM_ACT_LINES" ]; then
   i=1
@@ -392,6 +402,10 @@ type ActCall struct {
 	// Env is the environment variable set act inherited that igdev's own
 	// behaviour depends on.
 	Env map[string]string `json:"env"`
+	// EnvFileKeys and SecretFileKeys are the variable names in the --env-file and
+	// --secret-file act was handed, comma-separated; values are never recorded.
+	EnvFileKeys    string `json:"env_file_keys"`
+	SecretFileKeys string `json:"secret_file_keys"`
 }
 
 // ActCalls returns the shim's call log, oldest first. An absent log means act was

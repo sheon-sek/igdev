@@ -1,0 +1,96 @@
+name: igdev Gateway
+description: >-
+  Install a pinned igdev release, set up this checkout, and ensure its Ignition
+  Gateway, then export IGDEV_GATEWAY_URL and IGDEV_GATEWAY_TOKEN for later steps.
+  Under `igdev ci-local --with-gateway` both variables already exist and the
+  action does nothing, so one workflow runs on GitHub and locally through act.
+
+inputs:
+  version:
+    description: igdev release to install, without the leading v (for example 0.9.0).
+    required: false
+    default: ""
+  install:
+    description: Set to "false" to use the igdev already on PATH instead of installing one.
+    required: false
+    default: "true"
+  consent:
+    description: >-
+      The Consent record a person exported with `igdev consent export`, passed from a
+      secret. Required unless the runner already has a record. It is written to a
+      0600 file under RUNNER_TEMP and read through IGDEV_CONSENT_FILE; it never
+      accepts anything itself.
+    required: false
+    default: ""
+  working-directory:
+    description: Directory holding igdev.toml.
+    required: false
+    default: "."
+  fresh:
+    description: Set to "true" to discard the Gateway's data and start from a fresh volume.
+    required: false
+    default: "false"
+
+outputs:
+  url:
+    description: The Gateway URL, as later steps reach it.
+    value: ${{ steps.ensure.outputs.url }}
+  action:
+    description: What ensure did (reused, started, reset), or "provided" under act.
+    value: ${{ steps.ensure.outputs.action }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install igdev
+      if: ${{ inputs.install == 'true' && !(env.ACT == 'true' && env.IGDEV_GATEWAY_URL != '') }}
+      shell: bash
+      env:
+        IGDEV_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        if [ -z "$IGDEV_VERSION" ]; then
+          echo "::error::the igdev Gateway action needs a pinned version input"
+          exit 2
+        fi
+        # The installer at this action's own ref verifies the release checksum
+        # before it puts the binary on disk.
+        bash "$GITHUB_ACTION_PATH/../../packaging/install.sh" --version "$IGDEV_VERSION" --prefix "$HOME/.local/bin"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Ensure the Gateway
+      id: ensure
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        IGDEV_CONSENT: ${{ inputs.consent }}
+        IGDEV_FRESH: ${{ inputs.fresh }}
+      run: |
+        set -euo pipefail
+        if [ "${ACT:-}" = "true" ] && [ -n "${IGDEV_GATEWAY_URL:-}" ]; then
+          # igdev ci-local --with-gateway already ensured the Gateway and handed
+          # this job its URL and token.
+          echo "url=$IGDEV_GATEWAY_URL" >> "$GITHUB_OUTPUT"
+          echo "action=provided" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        export PATH="$HOME/.local/bin:$PATH"
+        if [ -n "$IGDEV_CONSENT" ]; then
+          consent_file="${RUNNER_TEMP:-/tmp}/igdev-consent.toml"
+          (umask 077 && printf '%s\n' "$IGDEV_CONSENT" > "$consent_file")
+          export IGDEV_CONSENT_FILE="$consent_file"
+          echo "IGDEV_CONSENT_FILE=$consent_file" >> "$GITHUB_ENV"
+        fi
+        igdev setup --json > "${RUNNER_TEMP:-/tmp}/igdev-setup.json"
+        fresh=()
+        [ "$IGDEV_FRESH" = "true" ] && fresh=(--fresh)
+        igdev gateway ensure "${fresh[@]}" --json > "${RUNNER_TEMP:-/tmp}/igdev-ensure.json"
+        token="$(igdev gateway credentials --json | jq -r '.data.api_token')"
+        echo "::add-mask::$token"
+        url="$(jq -r '.data.url' "${RUNNER_TEMP:-/tmp}/igdev-ensure.json")"
+        {
+          echo "IGDEV_GATEWAY_URL=$url"
+          echo "IGDEV_GATEWAY_TOKEN=$token"
+        } >> "$GITHUB_ENV"
+        echo "url=$url" >> "$GITHUB_OUTPUT"
+        echo "action=$(jq -r '.data.action' "${RUNNER_TEMP:-/tmp}/igdev-ensure.json")" >> "$GITHUB_OUTPUT"
