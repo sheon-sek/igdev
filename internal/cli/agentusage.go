@@ -87,7 +87,7 @@ gateway_url carrying the Gateway --gateway left running (stop it with igdev gate
 down); the --gateway half needs recorded Consent, so without it the run stops at exit 3
 with IGDEV_E_CONSENT_REQUIRED.`,
 	"igdev test": `pass --json for the machine contract. data.stages carries the declared-
-check stage with its command and status; an undeclared stage is reported skipped, never
+test stage with its command and status; an undeclared stage is reported skipped, never
 failed, so a repository that declares no test command still passes the verb. The stage's
 own non-zero exit propagates unchanged, and its output streams to stderr in both
 dialects.`,
@@ -114,12 +114,11 @@ does not exist is IGDEV_E_JYTHON_PATH_MISSING. The cache is disposable: a jar th
 its pin is quarantined and re-fetched, so never work around a hash mismatch by hand.`,
 	"igdev module": `pass --json for the machine contract. Each verb has its own data member:
 list carries ignition_version, enabled_all, whitelist, and the built_in/private rows;
-require carries capabilities, one entry per argument; scan carries checked and findings
-with file and line. A capability that needs a module the whitelist does not name fails
+require carries capabilities, one entry per argument. A capability that needs a module the whitelist does not name fails
 with IGDEV_E_MODULE_NOT_ENABLED and a Remediation naming igdev module enable; an enabled
 module nothing stages fails with IGDEV_E_MODULE_ARTIFACT_MISSING and names igdev module
-add. Both writes move the Contract Digest, so the next project command wants igdev
-setup.`,
+add. enable moves the Contract Digest, so the next project command wants igdev setup;
+add and clear only change what is staged and leave the Setup Stamp current.`,
 	"igdev module list": `pass --json for the machine contract. data carries ignition_version,
 enabled_all (the empty whitelist means every module loads), whitelist, and the selected
 rows: built_in (id, artifact, enabled) and private (id, name, version, artifact, source,
@@ -153,7 +152,7 @@ runtime files re-rendered. Clearing an empty staging area is a successful no-op.
 	"igdev gateway": `pass --json for the machine contract. Every URL-producing verb reports the
 same address block — instance_id, namespace, url, ports (http, https, debug) — read from
 the Checkout Setup, so an agent never assumes a port. up and reset add capacity
-(measured, available_mb, required_mb, headroom_mb, forced); smoke adds checks; status
+(measured, available_mb, required_mb, headroom_mb, forced); wait --smoke adds checks; status
 adds state and services; down adds volumes_removed; logs carries the log text;
 credentials carries the password. Every verb needs recorded Consent (exit 3,
 IGDEV_E_CONSENT_REQUIRED) and a current Checkout Setup, and up/reset also pass the

@@ -39,7 +39,7 @@ igdev test [flags]
 ## Agent usage
 
 pass --json for the machine contract. data.stages carries the declared-
-check stage with its command and status; an undeclared stage is reported skipped, never
+test stage with its command and status; an undeclared stage is reported skipped, never
 failed, so a repository that declares no test command still passes the verb. The stage's
 own non-zero exit propagates unchanged, and its output streams to stderr in both
 dialects.

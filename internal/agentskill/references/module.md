@@ -28,7 +28,7 @@ The write verbs change what the next Gateway sees. `enable` adds module ids to t
 tracked whitelist, which moves the Contract Digest and so makes the Checkout Setup
 stale until `igdev setup` re-materializes it. `add` stages a private `.modl` in the
 checkout and re-renders the runtime, which the next `gateway up` mounts. `clear`
-removes the staged artifacts. Both write verbs pass the Gate, so they need a current
+removes the staged artifacts. All three write verbs pass the Gate, so they need a current
 Checkout Setup; every contract write is atomic and prints a unified diff.
 
 ## Subcommands
@@ -75,9 +75,8 @@ igdev module [flags]
 
 pass --json for the machine contract. Each verb has its own data member:
 list carries ignition_version, enabled_all, whitelist, and the built_in/private rows;
-require carries capabilities, one entry per argument; scan carries checked and findings
-with file and line. A capability that needs a module the whitelist does not name fails
+require carries capabilities, one entry per argument. A capability that needs a module the whitelist does not name fails
 with IGDEV_E_MODULE_NOT_ENABLED and a Remediation naming igdev module enable; an enabled
 module nothing stages fails with IGDEV_E_MODULE_ARTIFACT_MISSING and names igdev module
-add. Both writes move the Contract Digest, so the next project command wants igdev
-setup.
+add. enable moves the Contract Digest, so the next project command wants igdev setup;
+add and clear only change what is staged and leave the Setup Stamp current.

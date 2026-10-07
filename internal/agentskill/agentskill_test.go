@@ -52,6 +52,26 @@ func TestFrontmatterCarriesTheContractVersion(t *testing.T) {
 	}
 }
 
+// The frontmatter has to be YAML that GitHub and skill loaders parse: a plain
+// (unquoted) scalar may not contain ": ", which YAML reads as a nested mapping.
+func TestFrontmatterPlainValuesAreValidYAML(t *testing.T) {
+	doc := string(Content())
+	frontmatter(t, doc)
+	for _, line := range strings.Split(doc, "\n")[1:] {
+		if strings.TrimSpace(line) == "---" {
+			return
+		}
+		_, value, ok := strings.Cut(line, ":")
+		value = strings.TrimSpace(value)
+		if !ok || strings.HasPrefix(value, `"`) || strings.HasPrefix(value, "'") {
+			continue
+		}
+		if strings.Contains(value, ": ") || strings.Contains(value, " #") {
+			t.Errorf("frontmatter line %q needs quoting to be valid YAML", line)
+		}
+	}
+}
+
 // The body is the thin 8-rule workflow the spec fixes: status first, the init
 // vs setup boundary, human-only consent, check-first validation, a Gateway only
 // when runtime matters, never editing .igdev/, never bypassing a preflight

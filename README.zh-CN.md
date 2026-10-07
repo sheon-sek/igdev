@@ -27,7 +27,7 @@ igdev agent skill-install  # 安装与本二进制版本匹配的 Agent Skill
 ## 生命周期：先 init，再 setup
 
 `igdev init` 写入 Project Contract：Ignition/Jython 版本、模块白名单、扫描路径、Gateway 堆
-大小与时区，以及项目自己的 `check`/`test`/`build`/`smoke` 命令。它**唯一**会改动被 git 跟踪
+大小与时区，以及项目自己的 `check`/`test`/`build` 命令。它**唯一**会改动被 git 跟踪
 的文件，并且每次写入都会打印 unified diff。在一个还没有 contract 的仓库里，终端会得到
 Wizard；`--yes` 静默采用同样的默认值，`--json` 永不提问。
 
@@ -90,7 +90,9 @@ Silent Mode，无论 stdin 是不是终端都绝不提问。
 开局先调用 `igdev agent context --json`：一次调用返回生命周期状态与 Consent、各版本号、
 Instance 与端口、Gateway 是否在运行、已暂存的模块、catalog 摘要，以及当前可用的项目命令。
 它的字段说明见 [`docs/reference/agent-context.md`](docs/reference/agent-context.md)。
-要本地复现某个 CI job，用 `igdev ci-local --job <name>`。
+要本地复现某个 CI job，用 `igdev ci-local --job <name>`；加 `--with-gateway` 会先确保本
+checkout 的 Gateway 就绪，并把 URL 和 token 交给 job。GitHub runner 上用 composite action
+`sheon-sek/igdev/actions/gateway` 做同样的事，同一份 workflow 两边都能跑。
 
 ## 其它文档
 

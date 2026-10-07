@@ -1,7 +1,7 @@
 ---
 name: igdev
 version: "2"
-description: Work an Ignition local-development checkout from an agent session with igdev: orient with status, keep init and setup apart, never accept legal terms, validate before running, and speak JSON.
+description: "Work an Ignition local-development checkout from an agent session with igdev: orient with status, keep init and setup apart, never accept legal terms, validate before running, and speak JSON."
 ---
 
 # igdev

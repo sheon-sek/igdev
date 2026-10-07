@@ -53,7 +53,7 @@ The resolution of Core Catalog plus Project Overlay. What preflight checks consu
 _Avoid_: merged config
 
 **Private Module**:
-A licensed or EA `.modl` that is never committed. Lives in the Checkout Setup, or in the global cache only when explicitly opted into.
+A licensed or EA `.modl` that is never committed. Lives only in the Checkout Setup (`.igdev/modules/`), staged by `igdev module add` or by `igdev build` from `[modules].artifacts`; there is no machine-global module cache.
 _Avoid_: custom module, vendor module
 
 **Baseline**:

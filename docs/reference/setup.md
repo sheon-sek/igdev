@@ -31,7 +31,7 @@ the local config that is already there, and is generated otherwise. It is never 
 in either dialect: read it with `igdev gateway credentials --json`.
 
 The Capacity Gate (ADR 0003) attaches where a Gateway starts, not here: setup records
-the requested heap, and `igdev gateway up` (ticket 10) compares it against the host's
+the requested heap, and `igdev gateway up` compares it against the host's
 free memory.
 
 A terminal gets the setup Wizard when the checkout has not been materialized yet, when
@@ -66,16 +66,16 @@ igdev setup [flags]
 ## Options
 
 ```text
-      --accept-eula                    record the Ignition EULA acceptance for this machine (human-only, ADR 0004)
-      --accept-module-certificate      record the module-certificate acceptance for this machine (human-only, ADR 0004)
-      --accept-module-license          record the module-license acceptance for this machine (human-only, ADR 0004)
-      --admin-password string          Gateway admin password (default: IGDEV_GATEWAY_ADMIN_PASSWORD or a generated one; the value is never printed)
-      --admin-username string          Gateway admin username (default admin)
-      --baseline igdev gateway reset   stage a .gwbk as this checkout's Baseline, restored by igdev gateway reset
-      --gateway-port int               pin the Gateway HTTP port for this checkout, recorded machine-locally in local.toml
-  -h, --help                           help for setup
-  -i, --interactive                    run the Wizard even when every value is already supplied
-  -y, --yes                            take the Wizard's defaults and never prompt
+      --accept-eula                 record the Ignition EULA acceptance for this machine (human-only, ADR 0004)
+      --accept-module-certificate   record the module-certificate acceptance for this machine (human-only, ADR 0004)
+      --accept-module-license       record the module-license acceptance for this machine (human-only, ADR 0004)
+      --admin-password string       Gateway admin password (default: IGDEV_GATEWAY_ADMIN_PASSWORD or a generated one; the value is never printed)
+      --admin-username string       Gateway admin username (default admin)
+      --baseline string             stage a .gwbk as this checkout's Baseline, restored by igdev gateway reset
+      --gateway-port int            pin the Gateway HTTP port for this checkout, recorded machine-locally in local.toml
+  -h, --help                        help for setup
+  -i, --interactive                 run the Wizard even when every value is already supplied
+  -y, --yes                         take the Wizard's defaults and never prompt
 ```
 
 ## Global options

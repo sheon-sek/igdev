@@ -96,12 +96,18 @@ and `packaging/install.sh` for real against a loopback file server.
 | `internal/updater` | notice-only update check with a 24 h XDG cache |
 | `internal/semver` | version ordering used by the notice |
 | `internal/xdg` | `~/.cache/igdev`, `~/.config/igdev`, `~/.local/state/igdev` |
+| `internal/gatewayapi` | the `gateway api` request, built from the recorded URL with the token and origin headers a caller cannot replace (ADR 0007) |
+| `internal/projectseed` | the tracked `[gateway] seed`: the type allowlist, the secret-key and size refusals, and its digest (ADR 0009) |
+| `internal/jython` | the pinned standalone-jar table, the lock-guarded cache, and the one-JVM batched compile |
+| `internal/agentskill` | the embedded Agent Skill (`SKILL.md` plus `references/`, which `make reference` writes) |
+| `internal/buildinfo` | the release version and commit stamped in at build time |
 | `internal/testrig` | seam S1 harness: scratch HOME, PATH shims, loopback server, goldens, gates |
 | `itest` | behaviour tests and the goldens that freeze the contract |
 | `packaging` | `package.sh` (linux/darwin x amd64/arm64 tarballs + `checksums.txt`), `install.sh` |
 | `.github/workflows/igdev-ci.yml` | build, vet, gofmt, goldens, resource gates |
 | `.github/workflows/igdev-gateway-e2e.yml` | the non-hermetic tier: real docker, real Ignition image, the whole Gateway lifecycle |
 | `.github/workflows/igdev-release.yml` | tag push → checksummed GitHub Release |
+| `actions/gateway` | the composite action that installs igdev and runs `setup` plus `gateway ensure` on a GitHub runner |
 
 ## Agent contract (frozen)
 
@@ -152,16 +158,15 @@ would whitelist a module nothing can load) and `IGDEV_E_MODULE_ARCHIVE_INVALID`
 `igdev ci-local` adds `IGDEV_E_ACT_MISSING` (no act on PATH: the remediation carries
 the install commands and no subprocess is attempted) and `IGDEV_E_ACT_FAILED` (act
 exited non-zero — the exit level is act's own exit code, and the envelope's `data`
-carries the invocation and the tail of act's output).
-A typo in
+carries the invocation and the tail of act's output). The pipeline verbs add
+`IGDEV_E_COMMAND_FAILED` (a declared stage exited non-zero) and the Jython codes below;
+the later Gateway verbs add `IGDEV_E_TRIAL_RESET`, `IGDEV_E_EXEC_FAILED` and
+`IGDEV_E_GATEWAY_API`. The generated [`docs/reference/errors.md`](reference/errors.md)
+is the complete table, with each code's exit level and next step. A typo in
 a `--config` flag is a usage error (the invocation was wrong); a value igdev read from
 a tier is `IGDEV_E_CONFIG_INVALID` (machine or project state is wrong). `contract` is
 the CLI Contract Version and bumps only when the envelope, codes, or exit levels
 break — never alongside release semver.
-
-`igdev help`, `igdev <command> --help`, and a bare `igdev` are documentation, and in
-machine mode they are envelopes too: the rendered reference arrives in `data.help`
-with `data.command` and `data.section`, never as raw text on a JSON stdout.
 
 `igdev help`, `igdev <command> --help`, and a bare `igdev` are documentation, and in
 machine mode they are envelopes too: the rendered reference arrives in `data.help`
@@ -224,7 +229,7 @@ staged are accepted as part of starting the Gateway, ADR 0006), and `gateway.tri
 (default `"auto"`: a trial keeper resets an expired trial in place; `"off"` renders none,
 ADR 0008), and `gateway.seed` (default none: the Gateway starts with igdev's own seed
 only, ADR 0009). Optional means additive — a
-contract written before either key existed parses, renders, and behaves exactly as it
+contract written before any of these keys existed parses, renders, and behaves exactly as it
 did, and stating an optional key is an edit of a tracked file, so it goes through
 `igdev init` and makes the Checkout Setup stale until `igdev setup` re-materializes it.
 `init` merges: a flag
@@ -269,9 +274,11 @@ leaves the old stamp and setup simply runs again.
     compose.env         the environment docker compose reads with --env-file
     Dockerfile          the Instance image, FROM the Ignition version in the contract
     trial-keeper.sh     the trial keeper's loop, copied into the image (ADR 0008)
+    gateway-entrypoint.sh  the wrapper that names the login provider on a volume's
+                        first start (ADR 0007, amendment 1)
     seed/               Gateway configuration the image copies over its data
                         directory: the igdev security level and the API token's hash
-                        (ADR 0007)
+                        (ADR 0007), plus the project's `[gateway] seed` (ADR 0009)
   modules/              staged Private Modules, mounted into the Gateway
   baseline/             the staged Baseline (.gwbk), mounted read-only at /restore
 ```
@@ -423,15 +430,15 @@ hung command. The verbs whose output igdev parses (`status`, `logs`) are not str
 `status --json` writes nothing to stderr.
 
 `wait` accepts bare seconds (`--timeout 240`) or a Go duration (`--timeout 3m`);
-180 s is the default, 60 s for `smoke`. Readiness is the state the Gateway reports about
+180 s is the default, with or without `--smoke`. Readiness is the state the Gateway reports about
 itself on `/StatusPing` — the same endpoint and state the Ignition image's own health
 check reads — and not the root document, which Jetty answers with a redirect while the
 Gateway is still starting and modules are not mounted yet; a returned `wait` therefore
 means the Gateway is usable. A failed wait reports the last 50 log lines on
-stderr, because the reason a Gateway never came up is in its own log. `smoke` applies
-the same readiness gate before it checks anything, fails
-with the failing endpoint named in the message, and the transport error or status is
-in `data.checks[].error` for a passing run's report.
+stderr, because the reason a Gateway never came up is in its own log. `--smoke` checks
+the endpoints only after that readiness gate passed, fails with the failing endpoint
+named in the message, and reports each request in `data.checks[]` (`path`, `url`,
+`status`, `ok`, and `error` when it did not answer).
 
 **Project seed.** `[gateway] seed = ["tests/ignition/seed"]` names tracked directories
 laid out like an Ignition resource collection, `<module>/<type>/<name>/{resource.json,
@@ -791,8 +798,8 @@ with `module clear`.
 }
 ```
 
-Human diagnostics keep the legacy `[module-preflight]` vocabulary — `OK`, `NOTE` for a
-conditional function's note . Failures
+Human diagnostics keep the legacy `[module-preflight]` vocabulary: `OK` for a resolved
+capability and `NOTE` for a conditional function's note. Failures
 are contract faults, so their wording lives in `message` and their fix in
 `remediation`, which is what makes them machine-readable.
 
@@ -886,7 +893,7 @@ override cannot make an unpinned version supported — the table still decides w
 versions igdev speaks — so an unknown `[ignition].jython_version` fails closed with
 `IGDEV_E_JYTHON_VERSION_UNSUPPORTED`.
 
-### test, build, and verify
+### test, build, and check --all
 
 `igdev test` dispatches `[commands].test` at the Project Root. `igdev build`
 dispatches `[commands].build` and then re-materializes the module staging the Gateway
@@ -896,7 +903,8 @@ propagate a declared stage's exit code (`IGDEV_E_COMMAND_FAILED`) as their own e
 level, stopping before anything that follows.
 
 `igdev check --all` is check, then test, then build, each stopping the run. `--gateway`
-adds the runtime half — the Capacity Gate, `up`, `wait` (240 s), and `smoke` — and
+adds the runtime half — the Capacity Gate, `up`, `wait` (240 s), and the `--smoke`
+endpoint checks — and
 leaves the Gateway running so the URL it reports can be opened by hand; stop it with
 `igdev gateway down`. The Gateway half needs recorded Consent like every gateway
 verb, so on a machine that has not accepted the EULA it fails with
@@ -1108,7 +1116,8 @@ passes the Gate and the Consent check once for every verb, and freezes its refus
 
 `docs/reference/` is generated, never hand-edited: `cmd/igdev-docs` renders one page per
 command (plus the index and the `agent context` field table) from the cobra definitions
-and the agent-usage table, so the reference, `--help`, and the goldens are three views of
+and the agent-usage table, and writes the same pages into
+`internal/agentskill/references/` for the Agent Skill, so the reference, `--help`, and the goldens are three views of
 one definition. `internal/docsgen`'s drift test compares the committed pages against a
 fresh render on every `go test ./...`, and the `igdev-ci` "Reference docs up to date"
 step runs `go run ./cmd/igdev-docs -check`; both fail when a command definition changed
@@ -1141,7 +1150,8 @@ Ticket 02: the Project Contract (`init` reads, validates, renders, and diffs
 Ticket 03: the Checkout Setup (`setup` mints the Instance identity, allocates the ports,
 materializes the runtime from the embedded templates, records the machine-global
 Consent, and writes the admin credential; `doctor` audits the host).
-Ticket 04: the Gateway suite (`gateway up|down|reset|restart|wait|smoke|status|logs|url`
+Ticket 04: the Gateway suite (`gateway up|down|reset|restart|wait|status|logs|url`, and
+`smoke` until CLI Contract 2 made it `wait --smoke`,
 drives the Instance's compose project through the Gate, the Consent record, and the
 Capacity Gate, and `gateway credentials --json` is the one readable home of the admin
 password). Its non-hermetic half is `.github/workflows/igdev-gateway-e2e.yml`, which
@@ -1161,8 +1171,8 @@ made it `check --all`; the module-validate and module-scan stages, the declared-
 dispatch, and the Gateway half) and the Jython
 layer (the pinned, lock-guarded standalone-artifact cache and the one-JVM batched
 compile behind `igdev jython check`). The 500-file timing gate lives in
-real-docker half is deferred to the e2e tier, exactly as the
-real-docker half is.
+`itest/gates_test.go` with the JVM shimmed; the JVM's real cost is deferred to the e2e
+tier, exactly as the real-docker half is.
 Ticket 15: the overlay generator (`catalog import-openapi` — the port of the retired
 bash generator: the generator's mapping rules over a Gateway
 `/openapi.json` snapshot, writing the REST plane of the tracked overlay inside the
@@ -1205,8 +1215,8 @@ architecture and troubleshooting notes, and the README appendix) was deleted in 
 change with no dead references left. The PR gate `igdev-ci` gained a self-dogfood job
 next to the Go suite: package, install the tarball into a temp prefix, then
 `init` → `setup --accept-eula` → `status --json` → `check` → `doctor` in a scratch clone;
-`igdev-gateway-e2e` stays the real-Docker tier. The GitHub repository rename to `igdev`
-is still pending — the Go module path and the install docs already anticipate it.
+`igdev-gateway-e2e` stays the real-Docker tier. The repository has since been renamed to
+`sheon-sek/igdev`, which the Go module path and the install docs use.
 
 Ticket 16 adds the Wizards: `init` (7 steps), `setup` (7 steps), and `module add` (3
 steps — staging is what enables a private module, so there is no whitelist question). A

@@ -19,13 +19,13 @@ Read-only; may run automatically after relevant changes:
 - `igdev module list`, `igdev module require <capability>`
 - `igdev catalog status --json`
 - `igdev doctor` — read-only host audit; it never fails
-- `igdev gateway status`, `igdev gateway logs --tail 200`, `igdev gateway url`
+- `igdev gateway status`, `igdev gateway logs --tail 200`, `igdev gateway url`, `igdev gateway trial`
 
 Mutating local state; run when the task calls for it:
 
 - `igdev test` (`make test`) and `igdev build` (`make build`)
 - `igdev setup` — re-materializes `.igdev/`; run it after any `igdev.toml` change
-- `igdev gateway up|wait|smoke|down --volumes` — a disposable local Gateway only
+- `igdev gateway ensure`, or `up`, `wait --smoke` and `down --volumes` — a disposable local Gateway only
 - `igdev gateway reset` only when the task explicitly requires a clean Gateway
 
 Repository tooling (the Go half of this tree):
@@ -40,7 +40,8 @@ Repository tooling (the Go half of this tree):
 Validate cheapest first: `igdev check`, then `igdev test`, then the real Gateway.
 Escalate to a real Gateway (Docker) only when behavior depends on Ignition runtime APIs,
 modules, tags, OPC, Gateway configuration, or MCP — and then only through `igdev gateway
-*`, never ad-hoc `docker run` or `docker compose` commands.
+*`, never ad-hoc `docker run` or `docker compose` commands: `igdev gateway api` for REST
+calls, `igdev gateway exec` and `igdev gateway data put|get` inside the container.
 
 A standalone `igdev jython check` is a syntax and bytecode compatibility gate: it does
 not prove `system.*` behavior. Runtime-dependent behavior must be checked against the

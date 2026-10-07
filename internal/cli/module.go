@@ -91,7 +91,7 @@ The write verbs change what the next Gateway sees. ` + "`enable`" + ` adds modul
 tracked whitelist, which moves the Contract Digest and so makes the Checkout Setup
 stale until ` + "`igdev setup`" + ` re-materializes it. ` + "`add`" + ` stages a private ` + "`.modl`" + ` in the
 checkout and re-renders the runtime, which the next ` + "`gateway up`" + ` mounts. ` + "`clear`" + `
-removes the staged artifacts. Both write verbs pass the Gate, so they need a current
+removes the staged artifacts. All three write verbs pass the Gate, so they need a current
 Checkout Setup; every contract write is atomic and prints a unified diff.`,
 		Example: `  igdev module list
   igdev module list --private --json

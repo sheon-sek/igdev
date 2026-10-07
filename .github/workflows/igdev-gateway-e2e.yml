@@ -1,7 +1,7 @@
 name: igdev-gateway-e2e
 
 # The non-hermetic tier: one real container engine, one real Ignition image, the
-# whole Gateway lifecycle — `up`, `wait`, `smoke`, `down --volumes`. The PR suite
+# whole Gateway lifecycle — `up`, `wait`, `wait --smoke`, `down --volumes`. The PR suite
 # stays hermetic (a PATH-shimmed docker and a loopback Gateway stand-in); an
 # Ignition image is pulled here and nowhere else, so this job is dispatched or
 # scheduled, never a required check.
