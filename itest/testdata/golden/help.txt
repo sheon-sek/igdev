@@ -6,7 +6,7 @@ Lifecycle verbs: init creates the Project Contract, setup materializes this chec
 Every project command first passes the Gate: discover Project Root, validate contract
 schema, validate Setup Stamp, check command prerequisites.
 
-Contract: 1
+Contract: 2
 
 Agent usage: pass --json for the machine contract. stdout is then a single JSON envelope
 {ok, contract, code, message, remediation, data}; progress and notices go to stderr.
@@ -38,7 +38,6 @@ Available Commands:
   setup       Materialize this checkout: Instance identity, ports, runtime files
   status      Report project, setup, and effective config state
   test        Run the project's declared test stage
-  verify      Run check, test, and build in sequence
   version     Print the CLI version and the CLI Contract Version
 
 Flags:

@@ -14,7 +14,7 @@ func TestEncodeIsStableAndComplete(t *testing.T) {
 	}
 	want := `{
   "ok": true,
-  "contract": "1",
+  "contract": "2",
   "code": "",
   "message": "ok",
   "remediation": [],

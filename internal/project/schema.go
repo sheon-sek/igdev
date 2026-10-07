@@ -146,7 +146,7 @@ type Commands struct {
 type Gateway struct {
 	MemoryMB int    `toml:"memory_mb"`
 	Timezone string `toml:"timezone"`
-	// SmokeEndpoints are the request paths `igdev gateway smoke` checks beyond the
+	// SmokeEndpoints are the request paths `igdev gateway wait --smoke` checks beyond the
 	// root document, in the order they are checked. The key is optional: a
 	// contract that does not state it checks the root alone.
 	SmokeEndpoints []string `toml:"smoke_endpoints"`

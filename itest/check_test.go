@@ -15,7 +15,7 @@ import (
 
 // The check pipeline and the verbs that dispatch the project's declared stages:
 // the frozen stage order, stop-on-failure, an undeclared stage skipped rather
-// than failed, a declared stage's exit code propagated, and `verify --gateway`
+// than failed, a declared stage's exit code propagated, and `check --all --gateway`
 // composing the runtime half.
 
 // pipelineStageState is one stage as the envelope reports it.
@@ -215,6 +215,49 @@ func TestCheckStopsAtTheScanStage(t *testing.T) {
 	if len(env.JavaCalls(t)) != 0 {
 		t.Error("a stopped pipeline launched a JVM")
 	}
+}
+
+// The scan stage walks [scan].capabilities for nested system.* references and REST
+// paths, checks each one, and fails naming the file:line of every reference whose
+// module is not enabled; a declared path that does not exist is a warning.
+func TestCheckScanStageReportsFileLine(t *testing.T) {
+	env := testrig.NewEnv(t)
+	jythonHarness(t, env)
+	dir := pipelineFixture(t, env, func(doc *project.Doc) {
+		doc.Scan.Capabilities = []string{"src", "absent"}
+		doc.Scan.Jython = nil
+	})
+	env.Write("repo/src/handlers.py", strings.Join([]string{
+		"system.historian.types.dataPoint(1, 2, 3)",
+		"system.tag.readBlocking([])",
+		"client.get('GET /data/api/v1/gateway-info')",
+		"backup = '/data/perspective/api/v1/sessions/'",
+	}, "\n")+"\n")
+	env.Write("repo/src/nested/deep.js", "system.alarm.getRosters()\n")
+
+	res := env.RunIn(dir, "check", "--json")
+	testrig.WantExit(t, res, contract.ExitOK)
+	if scan := stageNamed(t, pipelineOf(t, res.Stdout), "module-scan"); scan.Checked != 5 || scan.Findings != 5 {
+		t.Errorf("module-scan = %+v, want 5 distinct capabilities and 5 findings", scan)
+	}
+	if !strings.Contains(res.Stderr, "module scan path missing: ") || !strings.HasSuffix(strings.TrimSpace(res.Stderr), "/absent") {
+		t.Errorf("stderr = %q, want the missing-path warning", res.Stderr)
+	}
+
+	env.Write("repo/igdev.toml", pipelineContract(func(doc *project.Doc) {
+		doc.Modules.Enabled = []string{"com.inductiveautomation.perspective"}
+		doc.Scan.Jython = nil
+	}))
+	testrig.WantExit(t, env.RunIn(dir, "setup"), contract.ExitOK)
+	env.Write("repo/src/report.py", "system.report.executeReport('a', {}, {})\n")
+	res = env.RunIn(dir, "check", "--json")
+	testrig.WantExit(t, res, contract.ExitFailure)
+	envelope := testrig.Envelope(t, res.Stdout)
+	testrig.WantCode(t, envelope, contract.CodeModuleNotEnabled)
+	if !strings.Contains(envelope.Message, "src/report.py:1") {
+		t.Errorf("message = %q, want the file:line of the offending reference", envelope.Message)
+	}
+	testrig.WantRemediation(t, envelope, "igdev module enable com.inductiveautomation.reporting")
 }
 
 // A declared stage that exits non-zero propagates its own exit code and stops the
@@ -471,9 +514,9 @@ func TestBuildFailsWhenADeclaredGlobMatchesNothing(t *testing.T) {
 	res.AssertNoLeaksOutside(t, dir, env.Home, env.Path("state"))
 }
 
-// verify --gateway composes the runtime half: the Gateway starts, is waited for,
+// check --all --gateway composes the runtime half: the Gateway starts, is waited for,
 // and is smoke checked, and it is left running so the URL stays usable.
-func TestVerifyGatewayRunsTheRuntimeHalf(t *testing.T) {
+func TestCheckAllGatewayRunsTheRuntimeHalf(t *testing.T) {
 	env := testrig.NewEnv(t)
 	env.ShimDocker()
 	env.ShimMeminfo(65536)
@@ -490,9 +533,9 @@ func TestVerifyGatewayRunsTheRuntimeHalf(t *testing.T) {
 		"/system/gateway/info": 200,
 	})
 
-	res := env.RunIn(dir, "verify", "--gateway", "--json")
+	res := env.RunIn(dir, "check", "--all", "--gateway", "--json")
 	testrig.WantExit(t, res, contract.ExitOK)
-	env.Golden(t, "verify_gateway.json", res.Stdout)
+	env.Golden(t, "check_all_gateway.json", res.Stdout)
 
 	data := pipelineOf(t, res.Stdout)
 	want := []string{
@@ -513,17 +556,22 @@ func TestVerifyGatewayRunsTheRuntimeHalf(t *testing.T) {
 		t.Errorf("gateway_url = %q, want the recorded %q", data.GatewayURL, wantURL)
 	}
 	if stub.Hits() == 0 {
-		t.Error("verify --gateway never probed the Gateway")
+		t.Error("check --all --gateway never probed the Gateway")
 	}
 	// The Gateway is left running: the run must not have stopped it.
 	for _, call := range env.DockerCalls(t) {
 		if testrig.ComposeVerb(call.Argv) == "down" {
-			t.Errorf("verify --gateway stopped the Gateway it just started: %v", call.Argv)
+			t.Errorf("check --all --gateway stopped the Gateway it just started: %v", call.Argv)
 		}
 	}
 	// The run left the Gateway up; stopping it is the caller's step, and the
 	// test does it so the hygiene gate still sees a clean machine.
 	testrig.WantExit(t, env.RunIn(dir, "gateway", "down", "--volumes"), contract.ExitOK)
 	env.AssertNoDockerOrphans(t)
+
+	// --gateway belongs to the whole gate: alone it is a usage error.
+	alone := env.RunIn(dir, "check", "--gateway", "--json")
+	testrig.WantExit(t, alone, contract.ExitUsage)
+	testrig.WantCode(t, testrig.Envelope(t, alone.Stdout), contract.CodeUsage)
 	res.AssertNoLeaksOutside(t, dir, env.Home, env.Path("state"))
 }

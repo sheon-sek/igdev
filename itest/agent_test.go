@@ -74,7 +74,6 @@ type agentContext struct {
 		Check    bool `json:"check"`
 		Test     bool `json:"test"`
 		Build    bool `json:"build"`
-		Verify   bool `json:"verify"`
 		Gateway  bool `json:"gateway"`
 		Module   bool `json:"module"`
 		Baseline bool `json:"baseline"`

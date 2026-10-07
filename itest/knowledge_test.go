@@ -340,89 +340,6 @@ func TestModuleRequirePrivateModuleEndpoint(t *testing.T) {
 	res.AssertNoLeaks(t)
 }
 
-// scan finds nested references in a fixture tree and reports file:line, and the
-// contract's [scan].capabilities paths are the default.
-func TestModuleScanReportsFileLine(t *testing.T) {
-	env := testrig.NewEnv(t)
-	root := env.Project("repo", knowledgeContract())
-	env.Write("repo/src/handlers.py", strings.Join([]string{
-		"system.historian.types.dataPoint(1, 2, 3)",
-		"system.tag.readBlocking([])",
-		"client.get('GET /data/api/v1/gateway-info')",
-		"backup = '/data/perspective/api/v1/sessions/'",
-	}, "\n")+"\n")
-	env.Write("repo/src/nested/deep.js", "system.alarm.getRosters()\n")
-
-	res := env.RunIn(root, "module", "scan", "--json")
-	testrig.WantExit(t, res, contract.ExitOK)
-	env.Golden(t, "module_scan_findings.json", res.Stdout)
-
-	var data scanData
-	testrig.DataOf(t, res.Stdout, &data)
-	type location struct {
-		file string
-		line int
-	}
-	want := map[string]location{
-		"system.historian.types.dataPoint":   {"src/handlers.py", 1},
-		"system.tag.readBlocking":            {"src/handlers.py", 2},
-		"GET /data/api/v1/gateway-info":      {"src/handlers.py", 3},
-		"/data/perspective/api/v1/sessions/": {"src/handlers.py", 4},
-		"system.alarm.getRosters":            {"src/nested/deep.js", 1},
-	}
-	got := map[string]scanEntry{}
-	for _, finding := range data.Findings {
-		got[finding.Capability] = finding
-	}
-	if len(got) != len(want) {
-		t.Errorf("findings = %+v, want %d entries", data.Findings, len(want))
-	}
-	for capability, expected := range want {
-		finding, ok := got[capability]
-		if !ok {
-			t.Errorf("finding for %q is missing", capability)
-			continue
-		}
-		if finding.File != expected.file || finding.Line != expected.line {
-			t.Errorf("%s = %s:%d, want %s:%d", capability, finding.File, finding.Line, expected.file, expected.line)
-		}
-	}
-	if data.Checked != len(want) {
-		t.Errorf("checked = %d, want the %d distinct capabilities", data.Checked, len(want))
-	}
-	env.AssertNoDockerCalls(t)
-	res.AssertNoLeaks(t)
-}
-
-// scan fails, with the file:line of every offending reference, when a required
-// module is not enabled; and it warns about a path that does not exist instead of
-// failing on it.
-func TestModuleScanFailures(t *testing.T) {
-	env := testrig.NewEnv(t)
-	root := env.Project("repo", strings.Replace(knowledgeContract(),
-		"enabled = []", `enabled = ["com.inductiveautomation.perspective"]`, 1))
-	env.Write("repo/src/report.py", "system.report.executeReport('a', {}, {})\n")
-
-	res := env.RunIn(root, "module", "scan", "--json")
-	testrig.WantExit(t, res, contract.ExitFailure)
-	envelope := testrig.Envelope(t, res.Stdout)
-	testrig.WantCode(t, envelope, contract.CodeModuleNotEnabled)
-	if !strings.Contains(envelope.Message, "src/report.py:1") {
-		t.Errorf("message = %q, want the file:line of the offending reference", envelope.Message)
-	}
-
-	res = env.RunIn(root, "module", "scan", "src")
-	testrig.WantExit(t, res, contract.ExitFailure)
-	env.Golden(t, "module_scan_not_enabled.txt", res.Stderr)
-
-	res = env.RunIn(root, "module", "scan", "src", "absent")
-	testrig.WantExit(t, res, contract.ExitFailure)
-	if !strings.Contains(res.Stderr, "module scan path missing: absent") {
-		t.Errorf("stderr = %q, want the missing-path warning", res.Stderr)
-	}
-	res.AssertNoLeaks(t)
-}
-
 // module list reports the built-in group, the private artifacts, and the
 // whitelist; the human dialect keeps the legacy group headings and status
 // vocabulary.
@@ -573,13 +490,7 @@ func TestOverlayAddsCapabilities(t *testing.T) {
 	overlayRequire := env.RunIn(root, "module", "require", "GET /data/acme/api/v1/widgets", "--json")
 	testrig.WantExit(t, overlayRequire, contract.ExitOK)
 	env.Golden(t, "module_require_overlay.json", overlayRequire.Stdout)
-
-	// The overlay is scanned like any other capability source.
-	env.Write("repo/src/widgets.py", "system.acme.widget.ping('GET /data/acme/api/v1/widgets')\n")
-	res := env.RunIn(root, "module", "scan", "--json")
-	testrig.WantExit(t, res, contract.ExitOK)
-	env.Golden(t, "module_scan_overlay.json", res.Stdout)
-	res.AssertNoLeaks(t)
+	overlayRequire.AssertNoLeaks(t)
 }
 
 // An overlay row that shadows a Core Catalog row is a fault naming both rows.
@@ -673,11 +584,6 @@ func TestKnowledgeUsageErrors(t *testing.T) {
 	root := env.Project("repo", knowledgeContract())
 
 	res := env.RunIn(root, "module", "require", "--json")
-	testrig.WantExit(t, res, contract.ExitUsage)
-	testrig.WantCode(t, testrig.Envelope(t, res.Stdout), contract.CodeMissingArgument)
-
-	noScan := env.Project("bare", "schema = 1\n\n[project]\nname = \"no-scan\"\n")
-	res = env.RunIn(noScan, "module", "scan", "--json")
 	testrig.WantExit(t, res, contract.ExitUsage)
 	testrig.WantCode(t, testrig.Envelope(t, res.Stdout), contract.CodeMissingArgument)
 	res.AssertNoLeaks(t)

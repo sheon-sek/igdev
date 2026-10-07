@@ -46,4 +46,3 @@ igdev module clear [flags]
 pass --json for the machine contract. data carries modules_dir, removed
 (the artifact file names deleted), count, staged (what is left), runtime_dir, and the
 runtime files re-rendered. Clearing an empty staging area is a successful no-op.
-Deleting the whole cache is not this verb: it stays safe to remove by hand.

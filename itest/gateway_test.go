@@ -548,7 +548,7 @@ func TestGatewayWaitRequiresTheRunningState(t *testing.T) {
 	testrig.WantExit(t, ready, contract.ExitOK)
 }
 
-// smoke checks the root document plus the endpoints the Project Contract declares,
+// wait --smoke checks the root document plus the endpoints the Project Contract declares,
 // and a failing endpoint is named in the failure.
 func TestGatewaySmokeChecksDeclaredEndpoints(t *testing.T) {
 	env := testrig.NewEnv(t)
@@ -561,9 +561,9 @@ func TestGatewaySmokeChecksDeclaredEndpoints(t *testing.T) {
 		"/system/gateway/info":      200,
 		"/data/api/v1/gateway-info": 200,
 	})
-	res := env.RunIn(dir, "gateway", "smoke", "--json")
+	res := env.RunIn(dir, "gateway", "wait", "--smoke", "--json")
 	testrig.WantExit(t, res, contract.ExitOK)
-	env.Golden(t, "gateway_smoke.json", res.Stdout)
+	env.Golden(t, "gateway_wait_smoke.json", res.Stdout)
 
 	var data struct {
 		URL    string `json:"url"`
@@ -593,7 +593,7 @@ func TestGatewaySmokeChecksDeclaredEndpoints(t *testing.T) {
 
 	// One endpoint starts answering 500: smoke fails and says which one.
 	stub.SetStatus("/system/gateway/info", 500)
-	failed := env.RunIn(dir, "gateway", "smoke", "--json")
+	failed := env.RunIn(dir, "gateway", "wait", "--smoke", "--json")
 	testrig.WantExit(t, failed, contract.ExitFailure)
 	envelope := testrig.Envelope(t, failed.Stdout)
 	testrig.WantCode(t, envelope, contract.CodeGatewayUnhealthy)
@@ -614,7 +614,7 @@ func TestGatewaySmokeWithoutDeclaredEndpoints(t *testing.T) {
 	dir, stamp := gatewayFixture(t, env, testrig.MinimalContract)
 	testrig.ServeGateway(t, stamp.Ports.HTTP, map[string]int{"/": 200})
 
-	res := env.RunIn(dir, "gateway", "smoke", "--json")
+	res := env.RunIn(dir, "gateway", "wait", "--smoke", "--json")
 	testrig.WantExit(t, res, contract.ExitOK)
 	var data struct {
 		Checks []struct {

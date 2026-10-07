@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
@@ -15,7 +14,6 @@ import (
 	"github.com/sheon-sek/igdev/internal/localconfig"
 	"github.com/sheon-sek/igdev/internal/modules"
 	"github.com/sheon-sek/igdev/internal/project"
-	"github.com/sheon-sek/igdev/internal/xdg"
 )
 
 // moduleListData is the `data` member of a successful `igdev module list`
@@ -63,21 +61,6 @@ type requireData struct {
 	Capabilities []capabilityData `json:"capabilities"`
 }
 
-// scanData is the `data` member of a successful `igdev module scan` envelope.
-type scanData struct {
-	// Checked is how many distinct capabilities the scan resolved.
-	Checked int `json:"checked"`
-	// Findings are every occurrence, ordered by file, line, and capability.
-	Findings []scanFinding `json:"findings"`
-}
-
-// scanFinding is one capability occurrence: its resolution plus where it is.
-type scanFinding struct {
-	capabilityData
-	File string `json:"file"`
-	Line int    `json:"line"`
-}
-
 func (a *App) newModuleCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "module",
@@ -93,8 +76,8 @@ Contract.
 
 ` + "`require`" + ` resolves a capability: a system.* function, a REST request as
 ` + "`METHOD /data/path`" + ` (the method is optional and case-insensitive) or a bare
-` + "`/data/path`" + `, or an explicit ` + "`module:<id>`" + ` / ` + "`com.*`" + ` id. ` + "`scan`" + ` finds those
-references in project code and checks each one, reporting file:line.
+` + "`/data/path`" + `, or an explicit ` + "`module:<id>`" + ` / ` + "`com.*`" + ` id. ` + "`igdev check`" + `
+finds those references in project code and checks each one, reporting file:line.
 
 Whether a required module is satisfied depends on the contract's
 ` + "`[modules].enabled`" + ` whitelist and on the ` + "`.modl`" + ` artifacts staged in
@@ -108,14 +91,12 @@ The write verbs change what the next Gateway sees. ` + "`enable`" + ` adds modul
 tracked whitelist, which moves the Contract Digest and so makes the Checkout Setup
 stale until ` + "`igdev setup`" + ` re-materializes it. ` + "`add`" + ` stages a private ` + "`.modl`" + ` in the
 checkout and re-renders the runtime, which the next ` + "`gateway up`" + ` mounts. ` + "`clear`" + `
-removes the staged artifacts, and ` + "`cache-path`" + ` names the machine-wide cache this
-Ignition version shares. Both write verbs pass the Gate, so they need a current
+removes the staged artifacts. Both write verbs pass the Gate, so they need a current
 Checkout Setup; every contract write is atomic and prints a unified diff.`,
 		Example: `  igdev module list
   igdev module list --private --json
   igdev module require system.tag.readBlocking
   igdev module require 'GET /data/reporting/api/v1/reports/current' system.report.executeReport
-  igdev module scan src/main/python
   igdev module enable com.inductiveautomation.perspective
   igdev module add ~/Downloads/com.acme.vision.modl`,
 		Args: rejectUnknownCommand,
@@ -124,10 +105,8 @@ Checkout Setup; every contract write is atomic and prints a unified diff.`,
 	cmd.AddCommand(
 		a.newModuleListCmd(),
 		a.newModuleRequireCmd(),
-		a.newModuleScanCmd(),
 		a.newModuleEnableCmd(),
 		a.newModuleAddCmd(),
-		a.newModuleCachePathCmd(),
 		a.newModuleClearCmd(),
 	)
 	return cmd
@@ -236,79 +215,12 @@ Every argument is checked, so one run reports every problem it found.`,
 	}
 }
 
-func (a *App) newModuleScanCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "scan [path]...",
-		Short: "Find capability references in project code and check them",
-		Long: `scan reads project files, finds the capabilities the code intends to use, and
-checks each one: every system.* reference including nested namespaces such as
-system.report.executeReport, and every REST path.
-
-A directory is walked for .py, .json, .js, .ts, .tsx, .java, .kt, and .sh files; a
-file argument is read whatever its extension. Paths are reported as file:line, so
-the finding can be fixed.
-
-Without arguments the contract's ` + "`[scan].capabilities`" + ` paths are used, which is
-what ` + "`igdev check`" + ` scans too (ticket 14). A path that does not exist is a warning,
-not a failure: the scan reports what it could read.
-
-The scan reports every reference it finds and the line each one sits on.`,
-		Example: `  igdev module scan
-  igdev module scan src/main/python scripts
-  igdev module scan ignition/script-python --json`,
-
-		RunE: func(_ *cobra.Command, args []string) error {
-			k, err := a.projectKnowledge()
-			if err != nil {
-				return err
-			}
-			paths := args
-			if len(paths) == 0 {
-				paths = k.doc.Scan.Capabilities
-			}
-			if len(paths) == 0 {
-				return missingArgument("module scan", "path", "igdev module scan src/main/python",
-					"name a path to scan, or declare [scan].capabilities in the contract")
-			}
-			result, resolved, fault := k.scanCapabilities(paths)
-			for _, missing := range result.Missing {
-				fmt.Fprintf(a.Stderr, "[igdev] WARNING: module scan path missing: %s\n", missing)
-			}
-			if fault != nil {
-				if !k.res.IsJSON() {
-					a.printCapabilityLines(orderedResolutions(result, resolved))
-					a.printScanSummary(result)
-				}
-				return fault
-			}
-
-			data := scanData{
-				Checked:  len(result.Capabilities()),
-				Findings: make([]scanFinding, 0, len(result.Findings)),
-			}
-			for _, finding := range result.Findings {
-				data.Findings = append(data.Findings, scanFinding{
-					capabilityData: capabilityOf(resolved[finding.Capability]),
-					File:           finding.File,
-					Line:           finding.Line,
-				})
-			}
-			a.emit(k.res, data, func() {
-				a.printCapabilityLines(orderedResolutions(result, resolved))
-				a.printScanSummary(result)
-			})
-			return nil
-		},
-	}
-}
-
 // scanCapabilities finds the capability references under paths and checks every
 // one against this checkout. It returns the scan, the capabilities that
 // resolved, and one fault describing every failure — or a nil fault when all of
 // them resolved.
 //
-// Both `module scan` and the check pipeline's scan stage answer from here, so the
-// two report the same findings, the same fault code, and the same remediation.
+// The check pipeline's scan stage answers from here.
 func (k *knowledge) scanCapabilities(paths []string) (catalog.ScanResult, map[string]catalog.Resolution, *contract.Fault) {
 	result := catalog.Scan(paths)
 	resolved := map[string]catalog.Resolution{}
@@ -339,27 +251,6 @@ func (k *knowledge) scanCapabilities(paths []string) (catalog.ScanResult, map[st
 			WithRemediation(remediation...)
 	}
 	return result, resolved, nil
-}
-
-// orderedResolutions lists the resolved capabilities in the order the scan found
-// them, which is the order a human reads them in.
-func orderedResolutions(result catalog.ScanResult, resolved map[string]catalog.Resolution) []catalog.Resolution {
-	out := make([]catalog.Resolution, 0, len(resolved))
-	for _, capability := range result.Capabilities() {
-		if res, ok := resolved[capability]; ok {
-			out = append(out, res)
-		}
-	}
-	return out
-}
-
-// printScanSummary is the legacy closing line: how many distinct capabilities
-// the scan checked.
-func (a *App) printScanSummary(result catalog.ScanResult) {
-	n := len(result.Capabilities())
-	if n > 0 {
-		fmt.Fprintf(a.Stdout, "[igdev] Checked %d native/REST capability reference(s)\n", n)
-	}
 }
 
 // listData assembles the listing for the selected groups.
@@ -537,18 +428,6 @@ type moduleClearData struct {
 	// RuntimeDir is the build context the re-rendered runtime files live in.
 	RuntimeDir string       `json:"runtime_dir"`
 	Runtime    []setupWrite `json:"runtime"`
-}
-
-// moduleCacheData is the `data` member of a successful `igdev module
-// cache-path` envelope.
-type moduleCacheData struct {
-	// Path is the machine-wide module cache directory for this Ignition version.
-	Path string `json:"path"`
-	// IgnitionVersion is the version the path is keyed by.
-	IgnitionVersion string `json:"ignition_version"`
-	// Exists reports whether the directory is there yet; an absent cache is
-	// normal and never an error, because the cache is disposable.
-	Exists bool `json:"exists"`
 }
 
 func (a *App) newModuleEnableCmd() *cobra.Command {
@@ -787,41 +666,6 @@ Wizard has no way to ask.`,
 	return cmd
 }
 
-func (a *App) newModuleCachePathCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "cache-path",
-		Short: "Print the machine-wide module cache directory for this Ignition version",
-		Long: `cache-path prints where igdev keeps the module artifacts it downloads once for
-the whole machine, keyed by Ignition version. It is the answer to "where would a
-shared module live", and it is printed as a bare path in the human dialect so a
-script can use it directly.
-
-The cache is disposable: deleting it costs a re-download and nothing else, and the
-directory being absent is reported, never failed on. Moving a repository's private
-modules into that cache is ` + "`igdev module add --global`" + `, which this release does not
-have yet.`,
-		Example: `  igdev module cache-path
-  igdev module cache-path --json`,
-		Args: rejectArgs("module cache-path"),
-		RunE: func(_ *cobra.Command, _ []string) error {
-			_, res, err := a.gate()
-			if err != nil {
-				return err
-			}
-			version := res.String("ignition.version")
-			path := moduleCachePath(version)
-			_, statErr := os.Stat(path)
-			data := moduleCacheData{
-				Path:            path,
-				IgnitionVersion: version,
-				Exists:          statErr == nil,
-			}
-			a.emit(res, data, func() { fmt.Fprintln(a.Stdout, data.Path) })
-			return nil
-		},
-	}
-}
-
 func (a *App) newModuleClearCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "clear",
@@ -874,13 +718,6 @@ files are staged again.`,
 			return nil
 		},
 	}
-}
-
-// moduleCachePath is the machine-wide module cache directory for one Ignition
-// version: the same XDG cache the rest of igdev's downloads use, namespaced by
-// version so two Ignition versions never share a module artifact.
-func moduleCachePath(version string) string {
-	return filepath.Join(xdg.Resolve().Cache, "modules", version)
 }
 
 // restage re-renders the Instance runtime after a module write. Staging lives in

@@ -19,6 +19,12 @@ standalone jar is fetched once into the machine-wide cache (sha256-verified,
 lock-guarded) and one JVM compiles every file. A syntax error names the file and
 the line.
 
+--all is the whole local gate in one call: the check stages, then `test`, then
+`build`, each stopping the run when it fails. It is what "is this checkout good"
+means. --gateway, with --all, adds the runtime half: the Gateway starts, is waited
+for, and is smoke checked. It is left running so the URL it reports can be opened
+by hand; stop it with `igdev gateway down`.
+
 ## Usage
 
 ```text
@@ -30,12 +36,16 @@ igdev check [flags]
 ```text
   igdev check
   igdev check --json
+  igdev check --all
+  igdev check --all --gateway --json
 ```
 
 ## Options
 
 ```text
-  -h, --help   help for check
+      --all       also run test and build after the check stages
+      --gateway   with --all, also start the Gateway, wait for it, and smoke check it (leaves it running)
+  -h, --help      help for check
 ```
 
 ## Global options
@@ -53,4 +63,8 @@ its status and per-stage detail (paths, checked, findings, command, file_count),
 failed naming the stage that stopped the run. The stage order is a contract, so a
 failure is always at the same place, and an earlier stage's result is still in the same
 envelope. Fix the reported stage and re-run; a missing or stale Checkout Setup arrives
-as IGDEV_E_SETUP_REQUIRED or IGDEV_E_SETUP_STALE, repaired with igdev setup.
+as IGDEV_E_SETUP_REQUIRED or IGDEV_E_SETUP_STALE, repaired with igdev setup. --all
+appends the test and build stages, and --all --gateway the Gateway stages, with
+gateway_url carrying the Gateway --gateway left running (stop it with igdev gateway
+down); the --gateway half needs recorded Consent, so without it the run stops at exit 3
+with IGDEV_E_CONSENT_REQUIRED.

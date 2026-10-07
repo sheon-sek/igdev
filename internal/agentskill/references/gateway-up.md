@@ -49,8 +49,8 @@ igdev gateway up [flags]
 
 pass --json for the machine contract. data carries instance_id, namespace,
 url, ports, and capacity (measured, available_mb, required_mb, headroom_mb, forced). up
-returns as soon as the container is started: follow it with igdev gateway wait or igdev
-gateway smoke, and never assume the URL from the address block is answering yet. A
+returns as soon as the container is started: follow it with igdev gateway wait (--smoke to
+check the declared endpoints too), and never assume the URL from the address block is answering yet. A
 refusal is IGDEV_E_CAPACITY at exit 3 — a human frees memory or passes --force — and a
 machine that was never set up is IGDEV_E_SETUP_REQUIRED, repaired with igdev setup. The
 staged private modules are accepted by module id as part of starting (ADR 0006); with

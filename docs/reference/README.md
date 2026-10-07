@@ -14,7 +14,7 @@ Lifecycle verbs: init creates the Project Contract, setup materializes this chec
 Every project command first passes the Gate: discover Project Root, validate contract
 schema, validate Setup Stamp, check command prerequisites.
 
-Contract: 1
+Contract: 2
 
 ## Agent usage
 
@@ -59,7 +59,6 @@ Orient before acting: igdev status --json works everywhere, and igdev agent cont
 | [`igdev gateway logs`](gateway-logs.md) | Print this Instance's Gateway log |
 | [`igdev gateway reset`](gateway-reset.md) | Recreate this Instance's Gateway from scratch |
 | [`igdev gateway restart`](gateway-restart.md) | Restart this Instance's Gateway container |
-| [`igdev gateway smoke`](gateway-smoke.md) | Check the Gateway's root document and this project's declared endpoints |
 | [`igdev gateway status`](gateway-status.md) | Report this Instance's compose state and recorded URL |
 | [`igdev gateway trial`](gateway-trial.md) | Report this Instance's Gateway trial |
 | [`igdev gateway trial reset`](gateway-trial-reset.md) | Reset this Instance's expired Gateway trial in place |
@@ -72,14 +71,11 @@ Orient before acting: igdev status --json works everywhere, and igdev agent cont
 | [`igdev jython check`](jython-check.md) | Compile every .py file under the given paths in one JVM |
 | [`igdev module`](module.md) | List modules and check what project code requires |
 | [`igdev module add`](module-add.md) | Stage a private module artifact in the checkout |
-| [`igdev module cache-path`](module-cache-path.md) | Print the machine-wide module cache directory for this Ignition version |
 | [`igdev module clear`](module-clear.md) | Remove the private modules this checkout stages |
 | [`igdev module enable`](module-enable.md) | Add modules to the contract's [modules].enabled whitelist |
 | [`igdev module list`](module-list.md) | List the built-in modules, the private artifacts, and the whitelist |
 | [`igdev module require`](module-require.md) | Check that every required module of a capability is enabled |
-| [`igdev module scan`](module-scan.md) | Find capability references in project code and check them |
 | [`igdev setup`](setup.md) | Materialize this checkout: Instance identity, ports, runtime files |
 | [`igdev status`](status.md) | Report project, setup, and effective config state |
 | [`igdev test`](test.md) | Run the project's declared test stage |
-| [`igdev verify`](verify.md) | Run check, test, and build in sequence |
 | [`igdev version`](version.md) | Print the CLI version and the CLI Contract Version |

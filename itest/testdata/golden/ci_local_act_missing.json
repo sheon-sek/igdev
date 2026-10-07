@@ -1,6 +1,6 @@
 {
   "ok": false,
-  "contract": "1",
+  "contract": "2",
   "code": "IGDEV_E_ACT_MISSING",
   "message": "act is not on PATH: igdev ci-local runs this project's GitHub Actions workflows through it",
   "remediation": [

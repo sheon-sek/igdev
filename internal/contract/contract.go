@@ -15,7 +15,7 @@ import (
 // Version is the CLI Contract Version: the stability epoch of the
 // machine-facing interface (envelope keys, code namespace, exit levels).
 // It is independent of the release semver of the binary.
-const Version = "1"
+const Version = "2"
 
 // Exit is a process exit level. The four levels are the frozen vocabulary an
 // agent uses to decide what to do next.

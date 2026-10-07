@@ -1,6 +1,6 @@
 {
   "ok": false,
-  "contract": "1",
+  "contract": "2",
   "code": "IGDEV_E_CAPACITY",
   "message": "the Capacity Gate refused to start a Gateway: 1024 MiB available, 2560 MiB required (2048 MiB heap plus 512 MiB headroom); running igdev instances: igdev-<SHORT_ID>",
   "remediation": [

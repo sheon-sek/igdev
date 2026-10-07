@@ -112,7 +112,7 @@ type gatewayStatusData struct {
 	Trial *trial.State `json:"trial"`
 }
 
-// gatewaySmokeCheck is one request `gateway smoke` made.
+// gatewaySmokeCheck is one request `gateway wait --smoke` made.
 type gatewaySmokeCheck struct {
 	Path   string `json:"path"`
 	URL    string `json:"url"`
@@ -121,7 +121,7 @@ type gatewaySmokeCheck struct {
 	Error  string `json:"error,omitempty"`
 }
 
-// gatewaySmokeData is the `gateway smoke` result: every check that ran, in order.
+// gatewaySmokeData is the `gateway wait --smoke` result: every check that ran, in order.
 type gatewaySmokeData struct {
 	Instance string              `json:"instance_id"`
 	URL      string              `json:"url"`
@@ -431,7 +431,7 @@ rendered, and that file's environment file (` + "`--project-name`" + `, ` + "`--
 never from a file on disk.`,
 		Example: `  igdev gateway up
   igdev gateway wait --timeout 240
-  igdev gateway smoke
+  igdev gateway wait --smoke
   igdev gateway url
   igdev gateway status --json
   igdev gateway down --volumes`,
@@ -445,7 +445,6 @@ never from a file on disk.`,
 		a.newGatewayResetCmd(),
 		a.newGatewayRestartCmd(),
 		a.newGatewayWaitCmd(),
-		a.newGatewaySmokeCmd(),
 		a.newGatewayStatusCmd(),
 		a.newGatewayLogsCmd(),
 		a.newGatewayURLCmd(),
@@ -631,7 +630,10 @@ recorded ports.`,
 }
 
 func (a *App) newGatewayWaitCmd() *cobra.Command {
-	var timeoutRaw string
+	var (
+		timeoutRaw string
+		smoke      bool
+	)
 	cmd := &cobra.Command{
 		Use:   "wait",
 		Short: "Wait until this Instance's Gateway reports running",
@@ -647,9 +649,15 @@ bounded by its own client timeout, so a socket that accepts and then hangs canno
 swallow the deadline.
 
 On timeout the command reports the tail of the Gateway's own log, because the reason
-a Gateway never came up is in that log.`,
+a Gateway never came up is in that log.
+
+--smoke then requests the root document and every path the Project Contract declares
+in ` + "`[gateway] smoke_endpoints`" + `, in that order, and reports each answer. A check
+fails when the Gateway answers 400 or above, or does not answer at all; the failure
+names the endpoint that failed.`,
 		Example: `  igdev gateway wait
   igdev gateway wait --timeout 240
+  igdev gateway wait --smoke --json
   igdev gateway wait --timeout 3m --json`,
 		Args: rejectArgs("gateway wait"),
 		RunE: func(_ *cobra.Command, _ []string) error {
@@ -664,6 +672,14 @@ a Gateway never came up is in that log.`,
 			if err := a.waitForGateway(g, timeout); err != nil {
 				return err
 			}
+			if smoke {
+				data, err := a.smokeGateway(g)
+				if err != nil {
+					return err
+				}
+				a.emit(g.res, data, func() { a.printSmoke(data) })
+				return nil
+			}
 			data := g.address()
 			a.emit(g.res, data, func() { fmt.Fprintf(a.Stdout, "gateway ready: %s\n", data.URL) })
 			return nil
@@ -671,54 +687,25 @@ a Gateway never came up is in that log.`,
 	}
 	cmd.Flags().StringVar(&timeoutRaw, "timeout", "",
 		"how long to wait: seconds, or a duration like 3m (default 180s)")
+	cmd.Flags().BoolVar(&smoke, "smoke", false,
+		"once ready, also check the root document and the declared [gateway] smoke_endpoints")
 	return cmd
 }
 
-func (a *App) newGatewaySmokeCmd() *cobra.Command {
-	var timeoutRaw string
-	cmd := &cobra.Command{
-		Use:   "smoke",
-		Short: "Check the Gateway's root document and this project's declared endpoints",
-		Long: `smoke waits (default 60s) for the Gateway to report RUNNING — the same readiness
-gate ` + "`igdev gateway wait`" + ` applies — then requests the root document and every path the
-Project Contract declares in ` + "`[gateway] smoke_endpoints`" + `, in that order. A contract
-that declares none checks the root alone.
-
-A check fails when the Gateway answers 400 or above, or does not answer at all; the
-failure names the endpoint that failed.`,
-		Example: `  igdev gateway smoke
-  igdev gateway smoke --json`,
-		Args: rejectArgs("gateway smoke"),
-		RunE: func(_ *cobra.Command, _ []string) error {
-			g, err := a.gatewayContext()
-			if err != nil {
-				return err
-			}
-			timeout, err := parseTimeout(timeoutRaw, gatewaySmokeDefault)
-			if err != nil {
-				return err
-			}
-			if err := a.waitForGateway(g, timeout); err != nil {
-				return err
-			}
-			checks := a.runSmokeChecks(g)
-			if failed, ok := failedCheck(checks); ok {
-				passed := len(checks) - countFailed(checks)
-				return contract.NewFault(contract.CodeGatewayUnhealthy, contract.ExitFailure,
-					fmt.Sprintf("gateway smoke failed: %s (%d of %d checks passed)",
-						failed.reason(), passed, len(checks))).
-					WithRemediation(
-						contract.Remediation{Command: "igdev gateway logs --tail 50", Why: "read the Gateway's own log"},
-						contract.Remediation{Command: "igdev gateway status --json", Why: "report the compose service state"})
-			}
-			data := gatewaySmokeData{Instance: g.stamp.InstanceID, URL: g.url(), Checks: checks}
-			a.emit(g.res, data, func() { a.printSmoke(data) })
-			return nil
-		},
+// smokeGateway checks the root document and the declared smoke endpoints of a
+// Gateway that is already ready. It is `gateway wait --smoke`.
+func (a *App) smokeGateway(g *gateway) (gatewaySmokeData, error) {
+	checks := a.runSmokeChecks(g)
+	if failed, ok := failedCheck(checks); ok {
+		passed := len(checks) - countFailed(checks)
+		return gatewaySmokeData{}, contract.NewFault(contract.CodeGatewayUnhealthy, contract.ExitFailure,
+			fmt.Sprintf("gateway smoke failed: %s (%d of %d checks passed)",
+				failed.reason(), passed, len(checks))).
+			WithRemediation(
+				contract.Remediation{Command: "igdev gateway logs --tail 50", Why: "read the Gateway's own log"},
+				contract.Remediation{Command: "igdev gateway status --json", Why: "report the compose service state"})
 	}
-	cmd.Flags().StringVar(&timeoutRaw, "timeout", "",
-		"how long to wait for health first: seconds, or a duration like 3m (default 60s)")
-	return cmd
+	return gatewaySmokeData{Instance: g.stamp.InstanceID, URL: g.url(), Checks: checks}, nil
 }
 
 func (a *App) newGatewayStatusCmd() *cobra.Command {

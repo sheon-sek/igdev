@@ -1,6 +1,6 @@
 {
   "ok": false,
-  "contract": "1",
+  "contract": "2",
   "code": "IGDEV_E_MODULE_NOT_ENABLED",
   "message": "system.report.executeReport requires com.inductiveautomation.reporting (not enabled by the module whitelist)",
   "remediation": [

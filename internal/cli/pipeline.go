@@ -29,7 +29,7 @@ const (
 	stageFailed  = "failed"
 )
 
-// verifyGatewayWait is how long `verify --gateway` gives a starting Gateway: the
+// verifyGatewayWait is how long `check --all --gateway` gives a starting Gateway: the
 // bash specification's `gateway wait 240`.
 const verifyGatewayWait = 240 * time.Second
 
@@ -98,7 +98,7 @@ type pipelineData struct {
 	Stages []stageResult `json:"stages"`
 	// Failed names the stage that stopped the pipeline; empty on success.
 	Failed string `json:"failed,omitempty"`
-	// GatewayURL is `verify --gateway`'s running Gateway, left up for smoke
+	// GatewayURL is `check --all --gateway`'s running Gateway, left up for smoke
 	// testing by hand.
 	GatewayURL string `json:"gateway_url,omitempty"`
 }
@@ -111,7 +111,8 @@ func failPipeline(data *pipelineData, stage string, fault *contract.Fault) *cont
 }
 
 func (a *App) newCheckCmd() *cobra.Command {
-	return &cobra.Command{
+	var all, gateway bool
+	cmd := &cobra.Command{
 		Use:   "check",
 		Short: "Run the fixed preflight pipeline before anything else",
 		Long: `check is the fast, fixed gate every change passes: the same stages in the same
@@ -129,23 +130,63 @@ stage that ran, with the failing one marked failed.
 The Jython stage replaces the old one-process-per-file check: the pinned
 standalone jar is fetched once into the machine-wide cache (sha256-verified,
 lock-guarded) and one JVM compiles every file. A syntax error names the file and
-the line.`,
+the line.
+
+--all is the whole local gate in one call: the check stages, then ` + "`test`" + `, then
+` + "`build`" + `, each stopping the run when it fails. It is what "is this checkout good"
+means. --gateway, with --all, adds the runtime half: the Gateway starts, is waited
+for, and is smoke checked. It is left running so the URL it reports can be opened
+by hand; stop it with ` + "`igdev gateway down`" + `.`,
 		Example: `  igdev check
-  igdev check --json`,
+  igdev check --json
+  igdev check --all
+  igdev check --all --gateway --json`,
 		Args: rejectArgs("check"),
 		RunE: func(_ *cobra.Command, _ []string) error {
-			found, k, err := a.projectStaged()
+			if gateway && !all {
+				return contract.UsageFault("igdev check --gateway needs --all: the runtime half runs after test and build",
+					contract.Remediation{Command: "igdev check --all --gateway", Why: "run the whole gate and the Gateway"})
+			}
+			data, k, err := a.runPipeline(all, gateway)
 			if err != nil {
 				return err
-			}
-			data := pipelineData{}
-			if fault := a.runCheckStages(found, k, &data); fault != nil {
-				return fault
 			}
 			a.emit(k.res, data, func() { a.printPipeline(data) })
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&all, "all", false, "also run test and build after the check stages")
+	cmd.Flags().BoolVar(&gateway, "gateway", false,
+		"with --all, also start the Gateway, wait for it, and smoke check it (leaves it running)")
+	return cmd
+}
+
+// runPipeline runs the check stages and, with all, test and build, and with
+// gateway the runtime half. It is `check`.
+func (a *App) runPipeline(all, gateway bool) (pipelineData, *knowledge, error) {
+	found, k, err := a.projectStaged()
+	if err != nil {
+		return pipelineData{}, nil, err
+	}
+	data := pipelineData{}
+	if fault := a.runCheckStages(found, k, &data); fault != nil {
+		return data, k, fault
+	}
+	if !all {
+		return data, k, nil
+	}
+	if fault := a.runTestStage(found, k, &data); fault != nil {
+		return data, k, fault
+	}
+	if fault := a.runBuildStages(found, k, &data); fault != nil {
+		return data, k, fault
+	}
+	if gateway {
+		if fault := a.runGatewayStages(&data); fault != nil {
+			return data, k, fault
+		}
+	}
+	return data, k, nil
 }
 
 func (a *App) newTestCmd() *cobra.Command {
@@ -212,50 +253,6 @@ re-staged. An undeclared artifacts list stages nothing on its own.`,
 	}
 }
 
-func (a *App) newVerifyCmd() *cobra.Command {
-	var gateway bool
-	cmd := &cobra.Command{
-		Use:   "verify",
-		Short: "Run check, test, and build in sequence",
-		Long: `verify is the whole local gate in one call: check, then test, then build, each
-stopping the run when it fails. It is what "is this checkout good" means.
-
---gateway adds the runtime half: the Gateway starts, is waited for, and is smoke
-checked. It is left running so the URL it reports can be opened by hand; stop it
-with ` + "`igdev gateway down`" + `.`,
-		Example: `  igdev verify
-  igdev verify --gateway
-  igdev verify --gateway --json`,
-		Args: rejectArgs("verify"),
-		RunE: func(_ *cobra.Command, _ []string) error {
-			found, k, err := a.projectStaged()
-			if err != nil {
-				return err
-			}
-			data := pipelineData{}
-			if fault := a.runCheckStages(found, k, &data); fault != nil {
-				return fault
-			}
-			if fault := a.runTestStage(found, k, &data); fault != nil {
-				return fault
-			}
-			if fault := a.runBuildStages(found, k, &data); fault != nil {
-				return fault
-			}
-			if gateway {
-				if fault := a.runGatewayStages(&data); fault != nil {
-					return fault
-				}
-			}
-			a.emit(k.res, data, func() { a.printPipeline(data) })
-			return nil
-		},
-	}
-	cmd.Flags().BoolVar(&gateway, "gateway", false,
-		"also start the Gateway, wait for it, and smoke check it (leaves it running)")
-	return cmd
-}
-
 // runCheckStages runs the four frozen check stages in order.
 func (a *App) runCheckStages(found project.Found, k *knowledge, data *pipelineData) *contract.Fault {
 	stage, fault := a.validateStage(k)
@@ -307,7 +304,7 @@ func (a *App) runBuildStages(found project.Found, k *knowledge, data *pipelineDa
 }
 
 // runGatewayStages starts the Gateway, waits for it, and smoke checks it, leaving
-// it running. It is `verify --gateway`, the runtime half the bash
+// it running. It is `check --all --gateway`, the runtime half the bash
 // specification gated behind VERIFY_GATEWAY=1.
 func (a *App) runGatewayStages(data *pipelineData) *contract.Fault {
 	g, err := a.gatewayContext()

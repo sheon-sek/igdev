@@ -13,8 +13,8 @@ Contract.
 
 `require` resolves a capability: a system.* function, a REST request as
 `METHOD /data/path` (the method is optional and case-insensitive) or a bare
-`/data/path`, or an explicit `module:<id>` / `com.*` id. `scan` finds those
-references in project code and checks each one, reporting file:line.
+`/data/path`, or an explicit `module:<id>` / `com.*` id. `igdev check`
+finds those references in project code and checks each one, reporting file:line.
 
 Whether a required module is satisfied depends on the contract's
 `[modules].enabled` whitelist and on the `.modl` artifacts staged in
@@ -28,8 +28,7 @@ The write verbs change what the next Gateway sees. `enable` adds module ids to t
 tracked whitelist, which moves the Contract Digest and so makes the Checkout Setup
 stale until `igdev setup` re-materializes it. `add` stages a private `.modl` in the
 checkout and re-renders the runtime, which the next `gateway up` mounts. `clear`
-removes the staged artifacts, and `cache-path` names the machine-wide cache this
-Ignition version shares. Both write verbs pass the Gate, so they need a current
+removes the staged artifacts. Both write verbs pass the Gate, so they need a current
 Checkout Setup; every contract write is atomic and prints a unified diff.
 
 ## Subcommands
@@ -37,12 +36,10 @@ Checkout Setup; every contract write is atomic and prints a unified diff.
 | Command | What it does |
 | --- | --- |
 | [`igdev module add`](module-add.md) | Stage a private module artifact in the checkout |
-| [`igdev module cache-path`](module-cache-path.md) | Print the machine-wide module cache directory for this Ignition version |
 | [`igdev module clear`](module-clear.md) | Remove the private modules this checkout stages |
 | [`igdev module enable`](module-enable.md) | Add modules to the contract's [modules].enabled whitelist |
 | [`igdev module list`](module-list.md) | List the built-in modules, the private artifacts, and the whitelist |
 | [`igdev module require`](module-require.md) | Check that every required module of a capability is enabled |
-| [`igdev module scan`](module-scan.md) | Find capability references in project code and check them |
 
 ## Usage
 
@@ -57,7 +54,6 @@ igdev module [flags]
   igdev module list --private --json
   igdev module require system.tag.readBlocking
   igdev module require 'GET /data/reporting/api/v1/reports/current' system.report.executeReport
-  igdev module scan src/main/python
   igdev module enable com.inductiveautomation.perspective
   igdev module add ~/Downloads/com.acme.vision.modl
 ```

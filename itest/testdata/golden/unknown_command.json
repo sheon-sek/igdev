@@ -1,6 +1,6 @@
 {
   "ok": false,
-  "contract": "1",
+  "contract": "2",
   "code": "IGDEV_E_USAGE",
   "message": "unknown command \"stat\" for \"igdev\"",
   "remediation": [

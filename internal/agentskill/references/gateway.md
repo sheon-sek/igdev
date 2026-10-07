@@ -39,7 +39,6 @@ never from a file on disk.
 | [`igdev gateway logs`](gateway-logs.md) | Print this Instance's Gateway log |
 | [`igdev gateway reset`](gateway-reset.md) | Recreate this Instance's Gateway from scratch |
 | [`igdev gateway restart`](gateway-restart.md) | Restart this Instance's Gateway container |
-| [`igdev gateway smoke`](gateway-smoke.md) | Check the Gateway's root document and this project's declared endpoints |
 | [`igdev gateway status`](gateway-status.md) | Report this Instance's compose state and recorded URL |
 | [`igdev gateway trial`](gateway-trial.md) | Report this Instance's Gateway trial |
 | [`igdev gateway up`](gateway-up.md) | Build if needed and start this Instance's Gateway |
@@ -57,7 +56,7 @@ igdev gateway [flags]
 ```text
   igdev gateway up
   igdev gateway wait --timeout 240
-  igdev gateway smoke
+  igdev gateway wait --smoke
   igdev gateway url
   igdev gateway status --json
   igdev gateway down --volumes

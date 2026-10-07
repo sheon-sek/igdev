@@ -1,6 +1,6 @@
 {
   "ok": false,
-  "contract": "1",
+  "contract": "2",
   "code": "IGDEV_E_MODULE_ARTIFACT_MISSING",
   "message": "com.acme.ghost is enabled but its .modl is missing",
   "remediation": [

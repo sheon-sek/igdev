@@ -1,6 +1,6 @@
 {
   "ok": false,
-  "contract": "1",
+  "contract": "2",
   "code": "IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED",
   "message": "project contract <ROOT>/repo/igdev.toml declares schema 2; this igdev speaks schema 1 and will not read the file partially",
   "remediation": [
