@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/sheon-sek/igdev/internal/atomicfile"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/gatewayapi"
 )
@@ -45,10 +48,24 @@ type gatewayAPIData struct {
 	Truncated bool `json:"truncated"`
 }
 
+// gatewayAPIFileData is what `gateway api --output` reports: the body went to a
+// file, whole, so the report carries where and how much instead of the body.
+type gatewayAPIFileData struct {
+	Method  string            `json:"method"`
+	Path    string            `json:"path"`
+	URL     string            `json:"url"`
+	Status  int               `json:"status"`
+	Headers map[string]string `json:"headers"`
+	// Output is the absolute path of the file the body was written to.
+	Output    string `json:"output"`
+	BodyBytes int64  `json:"body_bytes"`
+}
+
 func (a *App) newGatewayAPICmd() *cobra.Command {
 	var (
 		data    string
 		headers []string
+		output  string
 	)
 	cmd := &cobra.Command{
 		Use:   "api <METHOD> <path>",
@@ -66,10 +83,17 @@ given, as application/json unless a --header names another Content-Type. A body 
 Human mode prints the response body and fails on a 4xx or 5xx answer. --json
 reports {method, path, url, status, headers, body, body_bytes, truncated}: body is
 parsed when it is JSON, and a response over 4 MiB is reported as truncated with its
-full size rather than cut silently.`,
+full size rather than cut silently.
+
+--output <file> streams the whole body into the file instead, with no size cap,
+and replaces the file in one rename once the body has arrived, so a failed or
+refused call leaves no partial file. --json then reports {method, path, url,
+status, headers, output, body_bytes} without the body. Use it for anything larger
+than 4 MiB, such as the Gateway's own OpenAPI document.`,
 		Example: `  igdev gateway api GET /data/api/v1/gateway-info
   igdev gateway api GET /data/api/v1/resources/names/ignition/tag-provider --json
-  igdev gateway api PUT /data/api/v1/resources/ignition/tag-provider --data @provider.json`,
+  igdev gateway api PUT /data/api/v1/resources/ignition/tag-provider --data @provider.json
+  igdev gateway api GET /openapi.json --output openapi.json`,
 		RunE: func(_ *cobra.Command, args []string) error {
 			if len(args) < 2 {
 				return missingArgument("gateway api", "path",
@@ -103,20 +127,22 @@ full size rather than cut silently.`,
 			if body != nil {
 				reader = bytes.NewReader(body)
 			}
-			req, err := gatewayapi.NewRequest(method, g.url(), path, reader, g.token, extra)
+			resp, target, err := sendAPI(g, method, path, reader, extra)
 			if err != nil {
-				return contract.UsageFault(err.Error(),
-					contract.Remediation{Command: "igdev help gateway api", Why: "show what gateway api accepts"})
-			}
-			resp, err := (&http.Client{Timeout: apiTimeout}).Do(req)
-			if err != nil {
-				return contract.NewFault(contract.CodeGatewayUnhealthy, contract.ExitFailure,
-					fmt.Sprintf("the Gateway at %s did not answer %s %s (%v)", g.url(), method, path, err)).
-					WithCause(err).
-					WithRemediation(contract.Remediation{Command: "igdev gateway ensure", Why: "leave this Instance with a running Gateway"})
+				return err
 			}
 			defer resp.Body.Close()
-			out, raw := readAPIResponse(resp, method, path, req.URL.String())
+			if output != "" && resp.StatusCode < 400 {
+				saved, err := saveAPIResponse(resp, method, path, target, output)
+				if err != nil {
+					return err
+				}
+				a.emit(g.res, saved, func() {
+					fmt.Fprintf(a.Stdout, "wrote %d bytes to %s\n", saved.BodyBytes, saved.Output)
+				})
+				return nil
+			}
+			out, raw := readAPIResponse(resp, method, path, target)
 			if resp.StatusCode >= 400 {
 				return contract.NewFault(contract.CodeGatewayAPI, contract.ExitFailure,
 					fmt.Sprintf("%s %s answered %s", method, path, resp.Status)).
@@ -137,7 +163,67 @@ full size rather than cut silently.`,
 	}
 	cmd.Flags().StringVar(&data, "data", "", "request body: @file, - for stdin, or the body itself")
 	cmd.Flags().StringArrayVar(&headers, "header", nil, "extra request header, Name: value (repeatable)")
+	cmd.Flags().StringVar(&output, "output", "", "write the whole response body to this file instead of printing it")
 	return cmd
+}
+
+// sendAPI sends one request to the Instance's Gateway with its token, and
+// returns the answer and the URL it went to. A Gateway that does not answer is
+// IGDEV_E_GATEWAY_UNHEALTHY.
+func sendAPI(g *gateway, method, path string, body io.Reader, extra http.Header) (*http.Response, string, error) {
+	req, err := gatewayapi.NewRequest(method, g.url(), path, body, g.token, extra)
+	if err != nil {
+		return nil, "", contract.UsageFault(err.Error(),
+			contract.Remediation{Command: "igdev help gateway api", Why: "show what gateway api accepts"})
+	}
+	// The timeout covers connecting and the answer's headers; a large body then
+	// streams for as long as it takes.
+	client := &http.Client{Transport: &http.Transport{
+		Proxy:                 nil,
+		ResponseHeaderTimeout: apiTimeout,
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+	}}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", contract.NewFault(contract.CodeGatewayUnhealthy, contract.ExitFailure,
+			fmt.Sprintf("the Gateway at %s did not answer %s %s (%v)", g.url(), method, path, err)).
+			WithCause(err).
+			WithRemediation(contract.Remediation{Command: "igdev gateway ensure", Why: "leave this Instance with a running Gateway"})
+	}
+	return resp, req.URL.String(), nil
+}
+
+// saveAPIResponse streams a successful answer's whole body into dest, replacing
+// it in one rename once the body has arrived.
+func saveAPIResponse(resp *http.Response, method, path, url, dest string) (gatewayAPIFileData, error) {
+	out := gatewayAPIFileData{Method: method, Path: path, URL: url, Status: resp.StatusCode, Headers: apiHeadersOf(resp)}
+	abs, err := filepath.Abs(dest)
+	if err != nil {
+		abs = dest
+	}
+	out.Output = abs
+	written, err := atomicfile.Fill(abs, 0o644, 0o755, func(w io.Writer) (int64, error) {
+		return io.Copy(w, resp.Body)
+	})
+	if err != nil {
+		return out, contract.NewFault(contract.CodeGatewayAPI, contract.ExitFailure,
+			fmt.Sprintf("%s %s answered %s, but the body could not be written to %s: %v", method, path, resp.Status, abs, err)).
+			WithCause(err).
+			WithRemediation(contract.Remediation{Command: "igdev gateway api " + method + " " + path + " --output <writable file>", Why: "write the body somewhere igdev can create a file"})
+	}
+	out.BodyBytes = written
+	return out, nil
+}
+
+// apiHeadersOf picks the reported response headers that were present.
+func apiHeadersOf(resp *http.Response) map[string]string {
+	out := map[string]string{}
+	for _, name := range apiResponseHeaders {
+		if v := resp.Header.Get(name); v != "" {
+			out[strings.ToLower(name)] = v
+		}
+	}
+	return out
 }
 
 func validMethod(method string) bool {
@@ -202,12 +288,7 @@ func (a *App) apiBody(data string) ([]byte, *contract.Fault) {
 // readAPIResponse reads the answer up to the cap, counts the rest, and decodes it
 // for the report. raw is what human mode prints.
 func readAPIResponse(resp *http.Response, method, path, url string) (gatewayAPIData, []byte) {
-	out := gatewayAPIData{Method: method, Path: path, URL: url, Status: resp.StatusCode, Headers: map[string]string{}}
-	for _, name := range apiResponseHeaders {
-		if v := resp.Header.Get(name); v != "" {
-			out.Headers[strings.ToLower(name)] = v
-		}
-	}
+	out := gatewayAPIData{Method: method, Path: path, URL: url, Status: resp.StatusCode, Headers: apiHeadersOf(resp)}
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, apiResponseLimit))
 	rest, _ := io.Copy(io.Discard, resp.Body)
 	out.BodyBytes = int64(len(raw)) + rest

@@ -73,6 +73,27 @@ if [ -n "$IGDEV_SHIM_DOCKER_OUT" ]; then
   exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
 fi
 [ $# -gt 0 ] || exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
+# The lookup index opens an image without starting it: image inspect answers a
+# fixed id (or "No such image" with IGDEV_SHIM_IMAGE_MISSING=1), and
+# "cp <id>:<dir> -" streams <dir> from IGDEV_SHIM_DOCKER_CP_ROOT as a tar of its
+# base name, the shape the engine writes.
+if [ "$1" = "image" ] && [ "$2" = "inspect" ]; then
+  if [ -n "$IGDEV_SHIM_IMAGE_MISSING" ]; then
+    echo "Error response from daemon: No such image: $6" >&2
+    exit 1
+  fi
+  printf 'sha256:%064x\n' 7
+  exit 0
+fi
+if [ "$1" = "cp" ]; then
+  src="${2#*:}"
+  if [ -z "$IGDEV_SHIM_DOCKER_CP_ROOT" ] || [ ! -d "$IGDEV_SHIM_DOCKER_CP_ROOT$src" ]; then
+    echo "Error response from daemon: Could not find the file $src in container" >&2
+    exit 1
+  fi
+  tar -C "$(dirname "$IGDEV_SHIM_DOCKER_CP_ROOT$src")" -cf - "$(basename "$src")"
+  exit 0
+fi
 if [ "$1" = "run" ] || [ "$1" = "create" ]; then
   printf '%064x\n' "$n"
   exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"

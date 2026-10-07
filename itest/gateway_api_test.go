@@ -2,6 +2,8 @@ package itest
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -91,5 +93,42 @@ func TestGatewayAPIReportsATruncatedAnswer(t *testing.T) {
 	testrig.DataOf(t, res.Stdout, &data)
 	if !data.Truncated || data.BodyBytes != 5<<20 {
 		t.Errorf("truncated = %v, body_bytes = %d, want true and %d", data.Truncated, data.BodyBytes, 5<<20)
+	}
+}
+
+// --output writes the whole answer to a file, past the 4 MiB print cap, and the
+// report carries where and how much instead of the body.
+func TestGatewayAPIOutputWritesTheWholeAnswer(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.ShimDocker()
+	dir, stamp := gatewayFixture(t, env, testrig.MinimalContract)
+	stub := testrig.ServeGateway(t, stamp.Ports.HTTP, map[string]int{"/big": 200, "/missing": 404})
+	body := `{"x":"` + strings.Repeat("y", 5<<20) + `"}`
+	stub.SetBody("/big", body)
+	out := filepath.Join(dir, "big.json")
+	res := env.RunIn(dir, "gateway", "api", "GET", "/big", "--output", "big.json", "--json")
+	testrig.WantExit(t, res, contract.ExitOK)
+	var data struct {
+		Output    string `json:"output"`
+		BodyBytes int64  `json:"body_bytes"`
+		Body      any    `json:"body"`
+	}
+	testrig.DataOf(t, res.Stdout, &data)
+	written, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(written) != body || data.BodyBytes != int64(len(body)) || data.Output != out || data.Body != nil {
+		t.Errorf("output = %s (%d bytes reported, %d written), body = %v", data.Output, data.BodyBytes, len(written), data.Body)
+	}
+	if strings.Contains(res.Stdout, "yyyy") {
+		t.Error("the body was printed as well as written")
+	}
+
+	// A refused call writes no file.
+	failed := env.RunIn(dir, "gateway", "api", "GET", "/missing", "--output", "missing.json", "--json")
+	testrig.WantExit(t, failed, contract.ExitFailure)
+	if _, err := os.Stat(filepath.Join(dir, "missing.json")); !os.IsNotExist(err) {
+		t.Errorf("a 404 left a file behind: %v", err)
 	}
 }
