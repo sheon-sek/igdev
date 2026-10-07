@@ -24,3 +24,19 @@ The owner reviewed the command surface item by item (issue #63) and decided:
 The removed verbs are unregistered outright, with no deprecation release: calling one is
 an unknown command, IGDEV_E_USAGE at exit 2. The CLI Contract Version is now 2, so a
 checkout set up under Contract 1 reads stale until `igdev setup` runs again.
+
+## Amendment 1: `[commands].smoke` is retired (2026-10-07)
+
+`igdev init` asked for a `[commands].smoke` command and wrote it to `igdev.toml`, but no
+verb ever ran it: the only smoke check igdev has is `gateway wait --smoke`, which reads
+`[gateway].smoke_endpoints`. A field a person fills in and nothing uses is a promise the
+tool does not keep, so the owner decided to remove it:
+
+- `init` no longer has `--command-smoke`, and the `init` Wizard no longer asks for it.
+  The Wizard itself stays. Passing the flag is an unknown flag, IGDEV_E_USAGE at exit 2.
+- A contract that still states `[commands] smoke = …` loads: schema v1 accepts the key
+  and ignores it, so no existing checkout breaks. The next `igdev init` run drops it,
+  and its diff shows the removal.
+
+The CLI Contract Version stays 2: no verb or `--json` envelope changes, and existing
+contracts keep loading.

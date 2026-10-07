@@ -39,13 +39,6 @@ func Resolve() Dir {
 	}
 }
 
-// DataDir returns the per-machine data directory (global cache in later
-// tickets). It follows XDG_DATA_HOME.
-func DataDir() string {
-	home := Home()
-	return filepath.Join(envOr("XDG_DATA_HOME", filepath.Join(home, ".local", "share")), App)
-}
-
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v

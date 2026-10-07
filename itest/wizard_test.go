@@ -72,7 +72,6 @@ func TestWizardInitWalkthroughOnGradleLayout(t *testing.T) {
 	session.Expect("[commands].check").Send("\r")
 	session.Expect("[commands].test").Send("\r")
 	session.Expect("[commands].build").Send("\r")
-	session.Expect("[commands].smoke").Send("\r")
 	session.Expect("Allow unsigned modules").Send("\r") // no
 	res := session.Wait()
 	testrig.WantExit(t, res, contract.ExitOK)
@@ -209,7 +208,6 @@ func TestWizardInteractiveForcesPromptsWithDefaultsPreselected(t *testing.T) {
 	session.Expect("[commands].check").Send("\r")
 	session.Expect("[commands].test").Send("\r")
 	session.Expect("[commands].build").Send("\r")
-	session.Expect("[commands].smoke").Send("\r")
 	session.Expect("Allow unsigned modules").Send("\r") // no
 	res := session.Wait()
 	testrig.WantExit(t, res, contract.ExitOK)

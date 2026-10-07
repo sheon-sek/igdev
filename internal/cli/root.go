@@ -13,9 +13,6 @@ import (
 // Version is the release semver compiled into this binary.
 func Version() string { return buildinfo.Version }
 
-// ContractVersion is the CLI Contract Version this binary speaks.
-func ContractVersion() string { return contract.Version }
-
 const rootLong = `igdev is the Ignition local-development toolchain: one global binary that
 owns the engine and the Ignition domain knowledge, while each repository keeps only a
 thin tracked Project Contract (igdev.toml) plus disposable local state in .igdev/.

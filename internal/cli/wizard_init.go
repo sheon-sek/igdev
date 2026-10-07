@@ -142,8 +142,6 @@ func (a *App) runInitWizard(cmd *cobra.Command, found project.Found, res *config
 				Description("What `igdev test` runs for this project.").Value(&commands.Test),
 			huh.NewInput().Title("[commands].build").
 				Description("What `igdev build` runs for this project.").Value(&commands.Build),
-			huh.NewInput().Title("[commands].smoke").
-				Description("What `igdev smoke` runs after a Gateway starts.").Value(&commands.Smoke),
 		); err != nil {
 			return err
 		}
@@ -175,7 +173,6 @@ func (a *App) runInitWizard(cmd *cobra.Command, found project.Found, res *config
 		"command-check":          commands.Check,
 		"command-test":           commands.Test,
 		"command-build":          commands.Build,
-		"command-smoke":          commands.Smoke,
 		"allow-unsigned-modules": strconv.FormatBool(allowUnsignedModules),
 	}); err != nil {
 		return err
@@ -209,9 +206,8 @@ func (a *App) printInitSummary(doc project.Doc) {
 		a.wizardNote("commands:  none declared")
 		return
 	}
-	a.wizardNote("commands:  check %s; test %s; build %s; smoke %s",
-		stageOr(doc.Commands.Check), stageOr(doc.Commands.Test),
-		stageOr(doc.Commands.Build), stageOr(doc.Commands.Smoke))
+	a.wizardNote("commands:  check %s; test %s; build %s",
+		stageOr(doc.Commands.Check), stageOr(doc.Commands.Test), stageOr(doc.Commands.Build))
 }
 
 // moduleOptions renders the module whitelist step: every built-in module of the
@@ -291,9 +287,6 @@ func mergedCommands(detected, declared project.Commands) project.Commands {
 	}
 	if declared.Build != "" {
 		out.Build = declared.Build
-	}
-	if declared.Smoke != "" {
-		out.Smoke = declared.Smoke
 	}
 	return out
 }
