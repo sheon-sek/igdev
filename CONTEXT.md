@@ -75,7 +75,7 @@ The mandatory first-stage checks every project command passes before doing work:
 _Avoid_: middleware, boot check
 
 **Wizard**:
-An interactive flow that triggers only when a required value is missing, stdin is a TTY, and `--json` is absent. Exists for `init`, `setup`, and `module add` only.
+An interactive flow that triggers only when a required value is missing, stdin is a TTY, and `--json` is absent. Exists for `init`, `setup`, and `module add` only. The one other prompt igdev shows is `cleanup --machine`'s y/N confirmation, in a terminal without `--yes` (ADR 0013).
 _Avoid_: TUI, prompt mode
 
 **Silent Mode**:

@@ -70,6 +70,20 @@ envelope 里的 `ports` 才是答案。
 配置按层级解析，先命中者胜出：命令行 flag > `IGDEV_*` 环境变量 > `.igdev/local.toml` >
 被跟踪的 `igdev.toml` > 内嵌默认值。配置文件永远不会被执行。
 
+### 项目结束后的清理
+
+```bash
+igdev cleanup --dry-run               # 只列出会删除什么，不改动任何东西
+igdev cleanup                         # 本检出：Gateway 容器、数据卷、网络、镜像和 .igdev/
+igdev cleanup --deinit                # 再删 igdev.toml、AGENTS.md 托管块、仓库级 skill
+igdev cleanup --machine --yes         # 整机所有 igdev 实例、基础镜像、缓存/状态/配置、全局 skill
+igdev cleanup --uninstall --yes       # 以上全部，最后删除 igdev 本身和它的 PATH 行
+```
+
+Gateway 里的项目会一起删掉，需要保留的先 `igdev project export`。`--machine` 会删除 Consent
+记录，下次启动 Gateway 前需要人重新接受 EULA。`.gitignore`、Docker 构建缓存和 act 的镜像不动，
+列为 kept。
+
 ### 从 CLI Contract 1 升级
 
 Contract 2 移除了 `gateway smoke`（改用 `gateway wait --smoke`）、`verify`（改用

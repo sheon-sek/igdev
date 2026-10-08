@@ -91,6 +91,7 @@ and `packaging/install.sh` for real against a loopback file server.
 | `internal/apitoken` | the Instance API token: generation, and the hash the Gateway stores (ADR 0007) |
 | `internal/trial` | the Gateway's trial over its REST API: read, and reset after expiry (ADR 0008) |
 | `internal/doctor` | the host prerequisite probes and their report |
+| `internal/cleanup` | `igdev cleanup`: the per-scope inventory of what igdev created (Docker objects by compose label or namespace, `.igdev/`, tracked files, XDG directories, skills, the binary) and its ordered removal (ADR 0013) |
 | `internal/atomicfile` | the temp-file-plus-rename write every generated file goes through |
 | `internal/textdiff` | the unified diff every tracked write prints |
 | `internal/updater` | notice-only update check with a 24 h XDG cache |
@@ -997,6 +998,30 @@ variables already provided it does nothing, so one workflow file runs in both pl
     consent: ${{ secrets.IGDEV_CONSENT }}
 - run: curl -fsS -H "X-Ignition-API-Token: $IGDEV_GATEWAY_TOKEN" "$IGDEV_GATEWAY_URL/data/api/v1/gateway-info"
 ```
+
+## Cleaning up
+
+`igdev cleanup` removes what igdev created once a project is finished (ADR 0013). It
+plans first and removes second, and `--dry-run` stops after the plan:
+
+```
+igdev cleanup                    this checkout's containers, volume, network, the image
+                                 igdev built for it, and .igdev/
+igdev cleanup --deinit           + igdev.toml, the AGENTS.md block, a repo-scope skill;
+                                 .gitignore is left alone
+igdev cleanup --machine --yes    every igdev Instance on the engine (orphans too), the
+                                 .igdev/ each container's working_dir names, every
+                                 official Ignition image no container uses, the XDG
+                                 directories, global skills
+igdev cleanup --uninstall --yes  + the binary under an install.sh prefix and its PATH entry
+```
+
+An object is igdev's when its compose project is `igdev-` plus eight hex digits, or its
+container carries `dev.igdev.instance`. Docker objects go first, files last, and an engine
+that does not answer stops the run before anything is removed. Cleanup never runs the
+Gate's Setup refresh. `--machine` and `--uninstall` need `--yes`: a terminal asks once,
+any other run gets the plan back at exit 2. A failed item is `IGDEV_E_CLEANUP_PARTIAL`
+with every outcome in `data.items`; the same command run again picks up what is left.
 
 ## Host prerequisites
 
