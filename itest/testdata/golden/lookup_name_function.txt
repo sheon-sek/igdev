@@ -1,0 +1,12 @@
+system.tag.readBlocking  (function; scope all; module platform)
+
+Reads the value of the tags at the given tag paths. This function will block until the read operation is complete or times out.
+
+Parameters:
+  tagPaths: A list of tag paths to read from.
+  timeout (default 45000): How long to wait (in milliseconds) before the read operation times out.
+
+Returns: A list of qualified values corresponding to the tag paths.
+
+Docs: https://www.docs.inductiveautomation.com/docs/8.3/appendix/scripting-functions/system-tag/system-tag-readBlocking
+Source: lib/core/common/common.jar!/com/inductiveautomation/ignition/common/script/builtin/AbstractTagUtilities.properties

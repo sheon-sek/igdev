@@ -17,6 +17,13 @@ reports {method, path, url, status, headers, body, body_bytes, truncated}: body 
 parsed when it is JSON, and a response over 4 MiB is reported as truncated with its
 full size rather than cut silently.
 
+--output <file> streams the whole body into the file instead, with no size cap,
+and replaces the file in one rename once the body has arrived, so a failed or
+refused call leaves no partial file. --json then reports {method, path, url,
+status, headers, output, body_bytes} without the body. Use it for anything larger
+than 4 MiB, such as the Gateway's own OpenAPI document. --output alone names the
+file after the path's last segment: GET /openapi.json --output writes openapi.json.
+
 ## Usage
 
 ```text
@@ -29,14 +36,17 @@ igdev gateway api <METHOD> <path> [flags]
   igdev gateway api GET /data/api/v1/gateway-info
   igdev gateway api GET /data/api/v1/resources/names/ignition/tag-provider --json
   igdev gateway api PUT /data/api/v1/resources/ignition/tag-provider --data @provider.json
+  igdev gateway api GET /openapi.json --output openapi.json
+  igdev gateway api GET /openapi.json --output
 ```
 
 ## Options
 
 ```text
-      --data string          request body: @file, - for stdin, or the body itself
-      --header stringArray   extra request header, Name: value (repeatable)
-  -h, --help                 help for api
+      --data string                    request body: @file, - for stdin, or the body itself
+      --header stringArray             extra request header, Name: value (repeatable)
+  -h, --help                           help for api
+      --output string[="{basename}"]   write the whole response body to this file instead of printing it (alone: the path's last segment)
 ```
 
 ## Global options
@@ -55,3 +65,7 @@ over 4 MiB: body is then the first bytes as text). Use it for every REST call to
 Instance instead of curl with the token: the path must start with /, and the token and
 origin headers cannot be overridden. A 4xx or 5xx answer is IGDEV_E_GATEWAY_API with the
 same data; no answer is IGDEV_E_GATEWAY_UNHEALTHY, fixed with igdev gateway ensure.
+With --output <file> the whole body goes to the file, with no cap, and data carries
+method, path, url, status, headers, output (the absolute path), and body_bytes instead of
+body: use it for /openapi.json and any other answer over 4 MiB. --output alone writes
+the path's last segment (GET /openapi.json --output writes openapi.json).

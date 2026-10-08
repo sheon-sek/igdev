@@ -133,6 +133,19 @@ and the layer that resolved it (core or overlay). Every argument is checked befo
 run exits, so one call reports every problem; a mixed run reports the resolutions that
 passed in the same envelope as the fault. Remediation on the fault names igdev module
 enable for a module the whitelist misses and igdev module add for one nothing stages.`,
+	"igdev lookup": `pass --json for the machine contract. A query reports data.query, kind
+(all, function, or rest), ignition_version, indexes, and results[], best first, each with
+kind, name, score, summary, module (platform, a module id, ids joined by commas, or
+unknown), module_enabled (absent outside a Project Root), scope (functions: all or the
+scopes joined by commas) or call (endpoints: a ready-to-run igdev gateway api line with
+the body's Content-Type), and source (the bundle, catalog, openapi, or embedded). --name
+reports one entry in full: params with defaults and returns for a function; params,
+request_types, request_body and responses (schemas inlined) for an endpoint. An unknown
+--name is IGDEV_E_UNKNOWN_CAPABILITY. indexes.rest.source embedded means no Gateway
+answered: run igdev gateway ensure, then igdev lookup --refresh. No Ignition image of the
+version on the machine (neither an igdev Gateway image nor the official one) is
+IGDEV_E_DOCKER; igdev gateway ensure or docker pull fixes it. Look a function up before writing
+Jython that calls it, and an endpoint before calling igdev gateway api.`,
 	"igdev module enable": `pass --json for the machine contract. data carries contract (path, action,
 the Contract Digest afterwards, and the unified diff), whitelist, added,
 already_enabled, unrestricted, and setup_stale. The write is tracked, so it follows the
@@ -167,7 +180,11 @@ JSON, else text, null when empty), body_bytes, and truncated (true when the answ
 over 4 MiB: body is then the first bytes as text). Use it for every REST call to the
 Instance instead of curl with the token: the path must start with /, and the token and
 origin headers cannot be overridden. A 4xx or 5xx answer is IGDEV_E_GATEWAY_API with the
-same data; no answer is IGDEV_E_GATEWAY_UNHEALTHY, fixed with igdev gateway ensure.`,
+same data; no answer is IGDEV_E_GATEWAY_UNHEALTHY, fixed with igdev gateway ensure.
+With --output <file> the whole body goes to the file, with no cap, and data carries
+method, path, url, status, headers, output (the absolute path), and body_bytes instead of
+body: use it for /openapi.json and any other answer over 4 MiB. --output alone writes
+the path's last segment (GET /openapi.json --output writes openapi.json).`,
 	"igdev gateway ensure": `pass --json for the machine contract. data carries action
 (reused, started, reset), reason (healthy, not_running, fresh, faulted, token_rejected,
 trial_short), instance_id, namespace, url, ports, container, host_address, trial (or

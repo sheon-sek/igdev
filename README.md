@@ -89,6 +89,8 @@ igdev test
 igdev build                           # re-stages the modules the Gateway mounts
 igdev check --all --gateway           # everything, plus the runtime half
 
+igdev lookup "read tag values"                     # find a system.* function or REST endpoint
+igdev lookup --name system.tag.readBlocking        # one entry in full
 igdev module require system.report.executeReport   # capability preflight
 igdev jython check src/main/python
 
