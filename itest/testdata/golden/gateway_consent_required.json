@@ -7,6 +7,10 @@
     {
       "command": "igdev setup --accept-eula",
       "why": "a person must accept Ignition EULA once per machine: the Gateway image refuses to start without it (agents may never accept on a human's behalf, ADR 0004)"
+    },
+    {
+      "command": "export IGDEV_ACCEPT_EULA=Y",
+      "why": "or a person sets it once in this environment's configuration (a cloud environment, a CI secret, a shell profile); agents never set it themselves"
     }
   ],
   "data": {}

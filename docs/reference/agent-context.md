@@ -58,8 +58,8 @@ no Instance before `setup`).
 | `project_root` | `string` | Absolute path of the Project Root, or empty when the working directory is outside one. |
 | `lifecycle` | `object` | Where the checkout sits in the lifecycle and what this machine has accepted. |
 | `lifecycle.initialized` | `bool` | A Project Contract (igdev.toml) was found by searching upward. |
-| `lifecycle.setup_state` | `string` | none, required, stale, or current: none is no contract at all; the other three are the Gate's Setup Stamp verdicts. Only current admits the project verbs. |
-| `lifecycle.consent` | `object` | Per-term machine Consent. It is reported here, never enforced: creating it is a human action (ADR 0004). |
+| `lifecycle.setup_state` | `string` | none, required, stale, or current: none is no contract at all; the other three are the Gate's Setup Stamp verdicts. A project verb refreshes required or stale on its own before it runs. |
+| `lifecycle.consent` | `object` | Per-term machine Consent. It is reported here, never enforced: creating it is a human action (ADR 0004). ignition_eula is also true when a person set IGDEV_ACCEPT_EULA=Y in the environment; only the verbs that start a Gateway need it. |
 | `lifecycle.consent.ignition_eula` | `bool` | The Ignition EULA is accepted on this machine. |
 | `lifecycle.consent.module_license` | `bool` | The module licenses are accepted on this machine. |
 | `lifecycle.consent.module_certificate` | `bool` | The third-party module certificates are accepted on this machine. |

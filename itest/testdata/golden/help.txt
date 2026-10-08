@@ -11,8 +11,8 @@ Contract: 2
 Agent usage: pass --json for the machine contract. stdout is then a single JSON envelope
 {ok, contract, code, message, remediation, data}; progress and notices go to stderr.
 Exit levels are 0 success, 1 command failure, 2 usage error, 3 human action required:
-exit 3 means a person must act (Consent, the Capacity Gate) and Remediation names the
-exact command. With every argument supplied igdev runs in Silent Mode and never prompts.
+exit 3 means a person must accept a legal term (Consent) and Remediation names the
+exact command. A missing or stale Checkout Setup is refreshed automatically. With every argument supplied igdev runs in Silent Mode and never prompts.
 Orient before acting: igdev status --json works everywhere, and igdev agent context
 --json answers the whole orientation in one call.
 

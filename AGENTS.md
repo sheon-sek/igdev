@@ -1,7 +1,7 @@
 <!-- igdev:start -->
 <!-- managed by igdev; edit outside these markers only -->
 ## igdev
-`igdev.toml` declares this repository's Ignition toolchain; run `igdev status` first, and reach the Gateway only through `igdev gateway` verbs, never raw docker or curl.
+`igdev.toml` declares this repository's Ignition toolchain; run `igdev status` first, and prefer `igdev gateway` verbs for the Gateway, and use docker or curl directly when no verb covers the need.
 <!-- igdev:end -->
 
 # Agent Instructions

@@ -2,7 +2,8 @@
 
 # `igdev gateway data get`
 
-get copies one file from under the Gateway's data directory. With <local> it is
+get copies one file out of the Gateway container: a relative <gateway-path> is
+under the data directory, an absolute one anywhere in the container. With <local> it is
 written there (atomically: a failed copy leaves nothing behind); without it the bytes
 go to stdout, or with --json into data.content_base64, up to 1 MiB — a larger file
 needs <local>. --json reports {path, container_path, local, bytes, sha256}.
@@ -10,7 +11,7 @@ needs <local>. --json reports {path, container_path, local, bytes, sha256}.
 ## Usage
 
 ```text
-igdev gateway data get <data-relative-path> [<local>] [flags]
+igdev gateway data get <gateway-path> [<local>] [flags]
 ```
 
 ## Examples
@@ -23,7 +24,8 @@ igdev gateway data get <data-relative-path> [<local>] [flags]
 ## Options
 
 ```text
-  -h, --help   help for get
+  -h, --help          help for get
+      --user string   the container user: ignition (2003:0) or root (default "ignition")
 ```
 
 ## Global options

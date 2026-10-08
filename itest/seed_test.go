@@ -37,11 +37,12 @@ func TestSetupMergesTheProjectSeed(t *testing.T) {
 
 	env.Write("repo/tests/seed/ignition/tag-provider/sim/config.json", `{"profile":{"type":"MANUAL"}}`+"\n")
 	stale := env.RunIn(dir, "gateway", "url", "--json")
-	testrig.WantExit(t, stale, contract.ExitFailure)
-	envelope := testrig.Envelope(t, stale.Stdout)
-	testrig.WantCode(t, envelope, contract.CodeSetupStale)
-	if !strings.Contains(envelope.Message, "project seed") {
-		t.Errorf("the stale reason does not name the seed: %q", envelope.Message)
+	testrig.WantExit(t, stale, contract.ExitOK)
+	if !strings.Contains(stale.Stderr, "refreshing the Checkout Setup first") || !strings.Contains(stale.Stderr, "project seed") {
+		t.Errorf("the refresh note does not name the seed:\n%s", stale.Stderr)
+	}
+	if copied, _ := os.ReadFile(filepath.Join(external, "ignition", "tag-provider", "sim", "config.json")); !strings.Contains(string(copied), "MANUAL") {
+		t.Errorf("the refresh did not copy the changed seed: %q", copied)
 	}
 
 	if err := os.RemoveAll(env.Path("repo/tests/seed/ignition/tag-provider/sim")); err != nil {
@@ -55,24 +56,23 @@ func TestSetupMergesTheProjectSeed(t *testing.T) {
 	testrig.WantExit(t, env.RunIn(dir, "gateway", "url"), contract.ExitOK)
 }
 
-// A secret in a tracked seed fails setup with the file and the field named, and
-// writes no Setup Stamp.
-func TestSetupRefusesASecretInTheSeed(t *testing.T) {
+// A secret in a tracked seed is a warning naming the file and the field, never a
+// refusal, and the warning does not repeat the secret (igdev#104).
+func TestSetupWarnsAboutASecretInTheSeed(t *testing.T) {
 	env := testrig.NewEnv(t)
 	dir := env.Project("repo", seededContract)
 	env.Write("repo/tests/seed/ignition/database-connection/hist/config.json", `{"settings":{"password":"hunter2"}}`)
-	res := env.RunIn(dir, "setup", "--accept-eula", "--json")
-	testrig.WantExit(t, res, contract.ExitFailure)
-	envelope := testrig.Envelope(t, res.Stdout)
-	testrig.WantCode(t, envelope, contract.CodeConfigInvalid)
-	if !strings.Contains(envelope.Message, "tests/seed/ignition/database-connection/hist/config.json") ||
-		!strings.Contains(envelope.Message, ".settings.password") {
-		t.Errorf("the refusal does not name the path and field: %q", envelope.Message)
+	res := env.RunIn(dir, "setup", "--json")
+	testrig.WantExit(t, res, contract.ExitOK)
+	if !strings.Contains(res.Stderr, "tests/seed/ignition/database-connection/hist/config.json") ||
+		!strings.Contains(res.Stderr, ".settings.password") {
+		t.Errorf("the warning does not name the path and field:\n%s", res.Stderr)
 	}
 	if strings.Contains(res.Stdout+res.Stderr, "hunter2") {
-		t.Error("the refusal repeats the secret")
+		t.Error("the warning repeats the secret")
 	}
-	if _, err := os.Stat(filepath.Join(dir, project.StateDir, "setup.json")); !os.IsNotExist(err) {
-		t.Errorf("a refused setup wrote the Setup Stamp: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, project.StateDir, "runtime", "seed", "config", "resources", "external",
+		"ignition", "database-connection", "hist", "config.json")); err != nil {
+		t.Errorf("the seeded file is not in the build context: %v", err)
 	}
 }

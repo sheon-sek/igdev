@@ -71,7 +71,7 @@ type gatewayCapacity struct {
 	AvailableMB int  `json:"available_mb"`
 	RequiredMB  int  `json:"required_mb"`
 	HeadroomMB  int  `json:"headroom_mb"`
-	// Forced is true when the gate refused and --force bypassed it.
+	// Forced is true when memory was low and --force was passed.
 	Forced bool `json:"forced"`
 }
 
@@ -195,19 +195,35 @@ func (g *gateway) requireRuntimeFiles() error {
 	return nil
 }
 
+// startingGatewayContext is gatewayContext for a verb that may start a Gateway:
+// running Ignition is governed by its EULA, so these verbs — and only these —
+// stop at the human-required fault until a person has accepted it (ADR 0004,
+// amendment 2). A verb that addresses a Gateway already running needs no check:
+// the Gateway could not be running otherwise.
+func (a *App) startingGatewayContext() (*gateway, error) {
+	g, err := a.gatewayContext()
+	if err != nil {
+		return nil, err
+	}
+	if fault := a.consentLocation().Check(consent.EULA); fault != nil {
+		return nil, fault
+	}
+	return g, nil
+}
+
 // gatewayContext enforces everything every gateway verb requires before it does
-// work: a current Checkout Setup (the Gate) and recorded Consent. A verb can
-// therefore never act on a checkout, or a machine, that has not passed both.
+// work: a current Checkout Setup (the Gate). A verb can therefore never act on a
+// checkout that has not passed it.
 func (a *App) gatewayContext() (*gateway, error) {
 	found, err := project.Discover(a.Dir)
 	if err != nil {
 		return nil, err
 	}
-	res, err := config.Resolve(a.configInput(found))
-	if err != nil {
+	if found, err = a.requireSetup(found); err != nil {
 		return nil, err
 	}
-	if err := gate.Require(a.gateInput(found)); err != nil {
+	res, err := config.Resolve(a.configInput(found))
+	if err != nil {
 		return nil, err
 	}
 	doc, err := project.ParseDoc(found.ContractTOML, found.Contract.Path)
@@ -215,12 +231,6 @@ func (a *App) gatewayContext() (*gateway, error) {
 		return nil, err
 	}
 	doc = doc.Filled(project.DefaultDoc())
-
-	// Running an Ignition Gateway is governed by the EULA, so every verb stops at
-	// the same human-required fault setup does, with the same accept command.
-	if fault := a.consentLocation().Check(consent.EULA); fault != nil {
-		return nil, fault
-	}
 
 	stamp, ok := gate.Decode(found.SetupRaw)
 	if !ok {
@@ -343,41 +353,28 @@ func moduleAcceptance(found project.Found, doc project.Doc, location consent.Loc
 	return strings.Join(ids, ","), nil
 }
 
-// admit applies the Capacity Gate (ADR 0003) and reports the numbers it saw. A
-// gate that could not measure, or that --force bypassed, says so on stderr: a
-// guard that silently did not guard is worse than no guard.
-func (a *App) admit(g *gateway, force bool) (capacity.Decision, *contract.Fault) {
+// admit applies the Capacity Gate (ADR 0003) and reports the numbers it saw. It
+// never refuses (amendment 1): low memory, or memory it could not measure, is a
+// warning on stderr, and the start goes ahead.
+func (a *App) admit(g *gateway, force bool) capacity.Decision {
 	decision, err := capacity.Check(g.doc.Gateway.MemoryMB)
 	switch {
 	case err != nil:
 		fmt.Fprintf(a.Stderr, "[igdev] WARNING the Capacity Gate cannot measure free memory (%v); starting anyway\n", err)
 	case !decision.Meets() && force:
-		fmt.Fprintf(a.Stderr, "[igdev] WARNING the Capacity Gate is bypassed (--force): %s\n", decision.Summary())
+		fmt.Fprintf(a.Stderr, "[igdev] WARNING low memory, starting as asked (--force): %s\n", decision.Summary())
 	case !decision.Meets():
-		return decision, capacityFault(decision)
+		// A warning, not a refusal (ADR 0003, amendment 1): the Gateway is a
+		// disposable development container, and stopping for a person here only
+		// stalls the run. The numbers stay in the report.
+		message := "[igdev] WARNING low memory, starting anyway: " + decision.Summary()
+		if running := docker.Running(); len(running) > 0 {
+			message += "; running igdev instances: " + strings.Join(running, ", ") +
+				" (igdev gateway down in their checkouts gives the memory back)"
+		}
+		fmt.Fprintln(a.Stderr, message)
 	}
-	return decision, nil
-}
-
-// capacityFault is the human-required refusal: a person frees memory or accepts
-// the risk, so the exit level is 3 and the message names what is running.
-func capacityFault(d capacity.Decision) *contract.Fault {
-	message := fmt.Sprintf("the Capacity Gate refused to start a Gateway: %s", d.Summary())
-	if running := docker.Running(); len(running) > 0 {
-		message += "; running igdev instances: " + strings.Join(running, ", ")
-	} else {
-		message += "; no other igdev Gateway is running on this machine"
-	}
-	return contract.NewFault(contract.CodeCapacity, contract.ExitHumanAction, message).
-		WithRemediation(
-			contract.Remediation{
-				Command: "igdev gateway up --force",
-				Why:     "start anyway, accepting the out-of-memory risk",
-			},
-			contract.Remediation{
-				Command: "igdev gateway down --volumes",
-				Why:     "stop this checkout's Gateway and give its memory back",
-			})
+	return decision
 }
 
 // capacityOf renders the decision for the caller.
@@ -407,12 +404,13 @@ func (a *App) newGatewayCmd() *cobra.Command {
 		Long: `gateway drives the Ignition Gateway container the Checkout Setup describes: one
 compose project named igdev-<instance>, one named volume, and the recorded ports.
 
-Every verb passes the Gate (a current Checkout Setup) and the machine's Consent
-record first, and every URL it prints is the recorded one — the port in
-` + "`.igdev/setup.json`" + `, never an assumed 8088 (ADR 0003). ` + "`up`" + ` and ` + "`reset`" + ` also pass the
-Capacity Gate: when the host's free memory is below the requested heap plus 512 MiB
-headroom, starting another Gateway is refused with IGDEV_E_CAPACITY at exit level 3
-until memory is freed or ` + "`--force`" + ` accepts the risk.
+Every verb passes the Gate first — a missing or stale Checkout Setup is refreshed on
+the spot — and every URL it prints is the recorded one: the port in
+` + "`.igdev/setup.json`" + `, never an assumed 8088 (ADR 0003). The verbs that start a Gateway
+(` + "`up`" + `, ` + "`reset`" + `, ` + "`ensure`" + `) also need the machine's EULA acceptance and stop with
+IGDEV_E_CONSENT_REQUIRED at exit level 3 until a person has given it. They measure the
+host's free memory too, and warn on stderr when it is below the requested heap plus
+512 MiB headroom, but start anyway.
 
 The private modules this checkout stages are accepted as part of starting it: their ids
 reach the Gateway as ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS, so a staged
@@ -460,13 +458,13 @@ func (a *App) newGatewayUpCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "up",
 		Short: "Build if needed and start this Instance's Gateway",
-		Long: `up starts the Instance: the Capacity Gate first, then a detached ` + "`docker compose up`" + `
+		Long: `up starts the Instance: the memory measurement first, then a detached ` + "`docker compose up`" + `
 that builds when the image is not current, for this Instance's project, with the
 recorded ports and the generated admin credentials. The Gateway is not waited for —
 use ` + "`igdev gateway wait`" + `, which is also the last step of ` + "`igdev gateway reset`" + `.
 
---force starts the Gateway even when the Capacity Gate refuses, which is the
-escape hatch for a machine where the measurement is wrong or the risk is accepted.
+Low free memory is a warning on stderr, never a refusal; --force is accepted and only
+changes the wording of that warning.
 
 The staged private modules this checkout holds are accepted by their module id —
 ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS — so a staged ` + "`.modl`" + ` that declares a
@@ -479,17 +477,14 @@ without them (ADR 0006).`,
   igdev gateway up --json`,
 		Args: rejectArgs("gateway up"),
 		RunE: func(_ *cobra.Command, _ []string) error {
-			g, err := a.gatewayContext()
+			g, err := a.startingGatewayContext()
 			if err != nil {
 				return err
 			}
 			if err := g.requireRuntimeFiles(); err != nil {
 				return err
 			}
-			decision, fault := a.admit(g, force)
-			if fault != nil {
-				return fault
-			}
+			decision := a.admit(g, force)
 			a.stage("gateway up: starting %s (docker compose up --detach --build %s)",
 				g.stamp.Namespace(), strings.Join(g.compose.UpServices(), " "))
 			if fault := g.compose.Up(); fault != nil {
@@ -501,7 +496,7 @@ without them (ADR 0006).`,
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false,
-		"start the Gateway even when the Capacity Gate refuses (accepts the out-of-memory risk)")
+		"accepted for compatibility: low memory only warns")
 	return cmd
 }
 
@@ -549,14 +544,13 @@ func (a *App) newGatewayResetCmd() *cobra.Command {
 		Long: `reset is ` + "`down --volumes`" + `, then ` + "`up`" + `, then ` + "`wait`" + `: the Gateway's data is
 discarded and a fresh container starts against the same recorded ports.
 
-The Capacity Gate is applied before anything is discarded, so a refusal never
-costs the data that was about to be reset.`,
+Low free memory is a warning on stderr, as for up.`,
 		Example: `  igdev gateway reset
   igdev gateway reset --timeout 300
   igdev gateway reset --json`,
 		Args: rejectArgs("gateway reset"),
 		RunE: func(_ *cobra.Command, _ []string) error {
-			g, err := a.gatewayContext()
+			g, err := a.startingGatewayContext()
 			if err != nil {
 				return err
 			}
@@ -567,10 +561,7 @@ costs the data that was about to be reset.`,
 			if err != nil {
 				return err
 			}
-			decision, fault := a.admit(g, force)
-			if fault != nil {
-				return fault
-			}
+			decision := a.admit(g, force)
 			a.stage("gateway reset: discarding %s (docker compose down --volumes --remove-orphans)",
 				g.stamp.Namespace())
 			if fault := g.compose.Down(true); fault != nil {
@@ -590,7 +581,7 @@ costs the data that was about to be reset.`,
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false,
-		"start the Gateway even when the Capacity Gate refuses (accepts the out-of-memory risk)")
+		"accepted for compatibility: low memory only warns")
 	cmd.Flags().StringVar(&timeoutRaw, "timeout", "",
 		"how long to wait for health: seconds, or a duration like 3m (default 180s)")
 	return cmd
@@ -811,13 +802,12 @@ this is the only URL to script against. To call the Gateway's REST API, use
 func (a *App) newGatewayCredentialsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "credentials",
-		Short: "Read the Gateway admin credentials (the password only as JSON)",
-		Long: `credentials reports the Gateway admin username and the source of the password.
-
-The password itself is printed only with --json, so it never lands in a terminal's
-scrollback, a shell history, or a CI log: this is the one machine-readable way to
-obtain it. The value comes from IGDEV_GATEWAY_ADMIN_PASSWORD when that is set, and
-from the 0600 .igdev/local.toml setup wrote otherwise.
+		Short: "Read the Gateway admin credentials and API token",
+		Long: `credentials reports the Gateway admin username, password and API token, with the
+URL to log in at. They belong to this checkout's disposable development Gateway, so
+human mode prints them too; --json carries the same values. The password comes from
+IGDEV_GATEWAY_ADMIN_PASSWORD when that is set, and from the 0600 .igdev/local.toml
+setup wrote otherwise.
 
 The same envelope carries the Instance's own API token (api_token), the
 X-Ignition-API-Token value that administers this Gateway. setup mints it and the
@@ -829,7 +819,7 @@ password is the backup's, not this one; the API token works on it all the same.
 
 For REST calls use ` + "`igdev gateway api`" + `, which presents the token itself; read the token
 here only to hand it to a tool igdev does not drive, such as a browser test.`,
-		Example: `  igdev gateway credentials --json
+		Example: `  igdev gateway credentials
   igdev gateway credentials --json | jq -r '.data.password'`,
 		Args: rejectArgs("gateway credentials"),
 		RunE: func(_ *cobra.Command, _ []string) error {
@@ -1034,7 +1024,7 @@ func (a *App) printGatewayStart(verb string, data gatewayUpData) {
 	case !data.Capacity.Measured:
 		fmt.Fprint(a.Stdout, "capacity:    not measured\n")
 	case data.Capacity.Forced:
-		fmt.Fprintf(a.Stdout, "capacity:    %d MiB available, %d MiB required (gate bypassed with --force)\n",
+		fmt.Fprintf(a.Stdout, "capacity:    %d MiB available, %d MiB required (low; started with --force)\n",
 			data.Capacity.AvailableMB, data.Capacity.RequiredMB)
 	default:
 		fmt.Fprintf(a.Stdout, "capacity:    %d MiB available, %d MiB required\n",
@@ -1079,8 +1069,12 @@ func (a *App) printSmoke(data gatewaySmokeData) {
 // CI log ever carries it.
 func (a *App) printCredentials(g *gateway) {
 	fmt.Fprintf(a.Stdout, "username: %s\n", g.username)
-	fmt.Fprint(a.Stdout, "password: <not printed; re-run with --json to read it>\n")
+	fmt.Fprintf(a.Stdout, "password: %s\n", g.password)
+	if g.token != "" {
+		fmt.Fprintf(a.Stdout, "token:    %s\n", g.token)
+	}
 	fmt.Fprintf(a.Stdout, "source:   %s\n", g.passwordSource)
+	fmt.Fprintf(a.Stdout, "url:      %s\n", g.url())
 }
 
 // freshLoginName is the user source and identity provider Ignition 8.3 creates

@@ -25,3 +25,21 @@ We decided that a person may carry their own acceptance to a runner, and nothing
 Consequences: the person who exported the file stays the one who accepted; the file is a
 CI secret they own. Rotating or revoking acceptance is deleting the secret. A runner
 never gains consent it was not handed.
+
+## Amendment 2: the EULA gates starting a Gateway, and an environment can carry it (2026-10-08, igdev#101)
+
+Rendering `.igdev/` is not running Ignition, yet `setup` wrote nothing until the EULA was
+accepted, so `check`, `test` and `build` failed on every fresh machine. Every
+`gateway` verb also re-checked the EULA, even `url` and `down`.
+
+- `setup` always materializes the Checkout Setup and says on stderr when the EULA is
+  missing. Only the verbs that start a Gateway — `gateway up`, `reset`, `ensure`,
+  `check --gateway`, `ci-local --with-gateway` — stop with `IGDEV_E_CONSENT_REQUIRED` at
+  exit 3. A verb that addresses a running Gateway needs no check: it could not be
+  running otherwise.
+- `IGDEV_ACCEPT_EULA=Y` (also `yes`, `true`, `1`) counts as the EULA acceptance. A person
+  sets it once where an environment is defined — a cloud environment's variables, a CI
+  secret, a shell profile — the same way the Ignition image reads
+  `ACCEPT_IGNITION_EULA=Y`. igdev never writes a record for it, and agents never set it.
+  The consent fault names it as the second Remediation.
+- The setup Wizard's Consent step reports the record and walks on; it never accepts.

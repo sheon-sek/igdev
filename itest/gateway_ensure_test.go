@@ -129,8 +129,8 @@ func TestGatewayEnsureMinTrial(t *testing.T) {
 	testrig.WantExit(t, env.RunIn(dir, "gateway", "down", "--volumes"), contract.ExitOK)
 }
 
-// A refused Capacity Gate discards nothing: ensure --fresh never reaches down.
-func TestGatewayEnsureRefusalDiscardsNothing(t *testing.T) {
+// Low memory does not stop ensure --fresh: it warns and resets (igdev#105).
+func TestGatewayEnsureLowMemoryWarnsAndResets(t *testing.T) {
 	env := testrig.NewEnv(t)
 	env.ShimDocker()
 	env.ShimMeminfo(65536)
@@ -140,10 +140,12 @@ func TestGatewayEnsureRefusalDiscardsNothing(t *testing.T) {
 
 	env.ShimMeminfo(1024)
 	res := env.RunIn(dir, "gateway", "ensure", "--fresh", "--json")
-	testrig.WantExit(t, res, contract.ExitHumanAction)
-	testrig.WantCode(t, testrig.Envelope(t, res.Stdout), contract.CodeCapacity)
-	if slices.Contains(gatewayVerbs(t, env), stamp.Namespace()+":down") {
-		t.Errorf("a refused ensure still discarded the volume: %v", gatewayVerbs(t, env))
+	testrig.WantExit(t, res, contract.ExitOK)
+	if !strings.Contains(res.Stderr, "low memory, starting anyway") {
+		t.Errorf("ensure did not warn about memory:\n%s", res.Stderr)
+	}
+	if !slices.Contains(gatewayVerbs(t, env), stamp.Namespace()+":down") {
+		t.Errorf("ensure --fresh did not reset: %v", gatewayVerbs(t, env))
 	}
 	testrig.WantExit(t, env.RunIn(dir, "gateway", "down", "--volumes"), contract.ExitOK)
 }

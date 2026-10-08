@@ -9,7 +9,6 @@ import (
 
 	"github.com/sheon-sek/igdev/internal/baseline"
 	"github.com/sheon-sek/igdev/internal/config"
-	"github.com/sheon-sek/igdev/internal/gate"
 	"github.com/sheon-sek/igdev/internal/project"
 )
 
@@ -74,8 +73,13 @@ func (a *App) requireBaselineGate() (project.Found, *config.Resolution, error) {
 	if err != nil {
 		return found, res, err
 	}
-	if err := gate.Require(a.gateInput(found)); err != nil {
-		return found, res, err
+	refreshed, err := a.requireSetup(found)
+	if err != nil {
+		return refreshed, res, err
+	}
+	if string(refreshed.SetupRaw) != string(found.SetupRaw) {
+		// setup ran: resolve again, since it may have written the local tier.
+		return a.gate()
 	}
 	return found, res, nil
 }

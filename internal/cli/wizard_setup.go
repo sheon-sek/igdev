@@ -36,17 +36,15 @@ type setupWizard struct {
 }
 
 // setupNeedsWizard reports whether setup has something only a person can settle:
-// a Checkout Setup that was never materialized, an admin password no checkout
-// has generated yet, or a Consent term this machine has not accepted. Everything
-// else is already on record, so a terminal gets the silent path.
+// a Checkout Setup that was never materialized, or an admin password no checkout
+// has generated yet. Everything else is already on record, so a terminal gets the
+// silent path.
 func (a *App) setupNeedsWizard(found project.Found) bool {
 	if !found.Setup || len(found.SetupRaw) == 0 {
 		return true
 	}
-	if creds, err := localconfig.Load(found.LocalConfigTOML); err != nil || creds.Password == "" {
-		return true
-	}
-	return a.consentLocation().Check(consent.EULA) != nil
+	creds, err := localconfig.Load(found.LocalConfigTOML)
+	return err != nil || creds.Password == ""
 }
 
 // runSetupWizard is setup's value source: the Consent gate, the heap, the admin
@@ -60,9 +58,8 @@ func (a *App) runSetupWizard(cmd *cobra.Command, found project.Found, run wizard
 	}
 	wizard := &setupWizard{heapMB: doc.Gateway.MemoryMB, timezone: doc.Gateway.Timezone}
 
-	// Step 1: the Consent gate. igdev never accepts a legal term for a person
-	// (ADR 0004), so this step shows the command that does and stops with the
-	// same exit-3 fault Silent Mode returns until the record says otherwise.
+	// Step 1: the Consent record. igdev never accepts a legal term for a person
+	// (ADR 0004), so this step only reports it and names the command that does.
 	a.wizardBanner("setup", 1, setupWizardSteps, "the Consent gate")
 	if err := a.setupConsentStep(); err != nil {
 		return nil, err
@@ -127,37 +124,21 @@ func (a *App) runSetupWizard(cmd *cobra.Command, found project.Found, run wizard
 	return wizard, nil
 }
 
-// setupConsentStep gates the Wizard on the machine Consent record. A missing
-// term never becomes an acceptance: the step shows the exact command a person
-// runs, and the run stops with the frozen IGDEV_E_CONSENT_REQUIRED fault at exit
-// level 3 until the record itself says the term is accepted.
+// setupConsentStep reports the machine Consent record. A missing term never
+// becomes an acceptance and no longer stops the Wizard: setup materializes either
+// way, and the verbs that start a Gateway are the ones that wait for a person
+// (ADR 0004, amendment 2).
 func (a *App) setupConsentStep() error {
 	location := a.consentLocation()
-	if fault := location.Check(consent.EULA); fault == nil {
-		if record, err := location.Load(); err == nil {
-			if accepted, ok := record.Accepted(consent.EULA); ok {
-				a.wizardNote("the Ignition EULA is accepted on this machine (accepted %s)", accepted.AcceptedAt)
-			}
+	if record, err := location.Load(); err == nil {
+		if accepted, ok := record.Accepted(consent.EULA); ok {
+			a.wizardNote("the Ignition EULA is accepted on this machine (accepted %s)", accepted.AcceptedAt)
+			return nil
 		}
-		return nil
 	}
-	a.wizardNote("the Ignition EULA is not accepted on this machine yet")
-	a.wizardNote("only a person may accept it: run `igdev setup --accept-eula` in a terminal")
-	var accepted bool
-	form := huh.NewForm(huh.NewGroup(huh.NewConfirm().
-		Title("Has `igdev setup --accept-eula` been run on this machine?").
-		Description("igdev re-reads the Consent record, so only the command itself counts.").
-		Affirmative("Yes, re-read the record").
-		Negative("Stop here").
-		Value(&accepted))).
-		WithInput(a.Stdin).
-		WithOutput(a.Stderr)
-	if err := form.Run(); err != nil && !errors.Is(err, huh.ErrUserAborted) {
-		return wizardFault("setup", err)
-	}
-	// Whatever was answered, the record decides: a Wizard answer is never an
-	// acceptance.
-	return location.Check(consent.EULA)
+	a.wizardNote("the Ignition EULA is not accepted on this machine yet: setup continues, but a Gateway will not start")
+	a.wizardNote("only a person may accept it: run `igdev setup --accept-eula` in a terminal, or set %s=Y", consent.EULAEnv)
+	return nil
 }
 
 // setupPasswordStep asks what to do about the Gateway admin password. Keeping a

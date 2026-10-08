@@ -5,3 +5,13 @@ The old vendored foundation derived instance identity and ports from `cksum(abso
 Explicit port pinning stays machine-local (`.igdev/local.toml`, `IGDEV_*` env); the tracked `igdev.toml` has no port fields, because ports are a property of the machine, not the repository.
 
 Consequences: nothing can assume port 8088, so agents must read `igdev status --json` / `igdev gateway url`; parallel agent worktrees become the design center rather than an edge case.
+
+## Amendment 1: low memory warns instead of refusing (2026-10-08, igdev#105)
+
+The Capacity Gate's exit-3 refusal made a person decide something the machine already
+reports: an agent stopped and waited, although the risk is one disposable container
+running slower or being killed. `up`, `reset`, `ensure` and `check --gateway` still
+measure `MemAvailable` and report `capacity` exactly as before, and print a warning on
+stderr naming the numbers and the running igdev instances, but they start the Gateway.
+`--force` is kept, and only changes the warning's wording. `IGDEV_E_CAPACITY` is retired
+and stays reserved in the code table (ADR 0012).

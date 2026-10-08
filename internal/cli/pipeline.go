@@ -307,7 +307,7 @@ func (a *App) runBuildStages(found project.Found, k *knowledge, data *pipelineDa
 // it running. It is `check --all --gateway`, the runtime half the bash
 // specification gated behind VERIFY_GATEWAY=1.
 func (a *App) runGatewayStages(data *pipelineData) *contract.Fault {
-	g, err := a.gatewayContext()
+	g, err := a.startingGatewayContext()
 	if err != nil {
 		stage := stageResult{Stage: "gateway-up", Status: stageFailed, Message: contract.AsFault(err).Message}
 		data.Stages = append(data.Stages, stage)
@@ -318,11 +318,7 @@ func (a *App) runGatewayStages(data *pipelineData) *contract.Fault {
 		data.Stages = append(data.Stages, stage)
 		return failPipeline(data, stage.Stage, contract.AsFault(err))
 	}
-	if _, fault := a.admit(g, false); fault != nil {
-		stage := stageResult{Stage: "gateway-up", Status: stageFailed, Message: fault.Message}
-		data.Stages = append(data.Stages, stage)
-		return failPipeline(data, stage.Stage, fault)
-	}
+	a.admit(g, false)
 	if fault := g.compose.Up(); fault != nil {
 		stage := stageResult{Stage: "gateway-up", Status: stageFailed, Message: fault.Message}
 		data.Stages = append(data.Stages, stage)

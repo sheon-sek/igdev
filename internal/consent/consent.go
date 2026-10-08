@@ -231,11 +231,7 @@ func Check(path string, required ...Term) *contract.Fault {
 func requiredFault(path string, term Term) *contract.Fault {
 	return contract.NewFault(contract.CodeConsentRequired, contract.ExitHumanAction,
 		fmt.Sprintf("%s has not been accepted on this machine (Consent record: %s)", term.Title, path)).
-		WithRemediation(contract.Remediation{
-			Command: "igdev setup " + term.Flag,
-			Why: "a person must accept " + term.Title + " once per machine: " + term.Why +
-				" (agents may never accept on a human's behalf, ADR 0004)",
-		})
+		WithRemediation(remediationsOf([]Term{term})...)
 }
 
 // CheckAll reports every required term this machine has not accepted as one
@@ -274,6 +270,13 @@ func remediationsOf(terms []Term) []contract.Remediation {
 			Why: "a person must accept " + term.Title + " once per machine: " + term.Why +
 				" (agents may never accept on a human's behalf, ADR 0004)",
 		})
+		if term.ID == EULA.ID {
+			out = append(out, contract.Remediation{
+				Command: "export " + EULAEnv + "=Y",
+				Why: "or a person sets it once in this environment's configuration (a cloud environment, " +
+					"a CI secret, a shell profile); agents never set it themselves",
+			})
+		}
 	}
 	return out
 }
@@ -284,6 +287,19 @@ func remediationsOf(terms []Term) []contract.Remediation {
 // one, and never writes either.
 const FileEnv = "IGDEV_CONSENT_FILE"
 
+// EULAEnv is a person's EULA acceptance carried by an environment's configuration
+// (ADR 0004, amendment 2). A person sets IGDEV_ACCEPT_EULA=Y once where the
+// environment is defined — a cloud environment, a CI secret, a shell profile —
+// the same way the Ignition image reads ACCEPT_IGNITION_EULA=Y. Agents never set it.
+const EULAEnv = "IGDEV_ACCEPT_EULA"
+
+// EnvAcceptedAt and EnvCLIVersion fill the acceptance an environment variable
+// stands for: it has no recorded moment or version of its own.
+const (
+	EnvAcceptedAt = "environment"
+	EnvCLIVersion = EULAEnv
+)
+
 // Location is where this run reads Consent from.
 type Location struct {
 	// Path is the record's path.
@@ -291,15 +307,59 @@ type Location struct {
 	// Exported is true when Path came from IGDEV_CONSENT_FILE: the record is a
 	// person's export, read only, and validated entry by entry.
 	Exported bool
+	// EULAFromEnv is true when IGDEV_ACCEPT_EULA=Y stands for the EULA
+	// acceptance, whatever the record says.
+	EULAFromEnv bool
 }
 
 // Locate resolves the record this run reads: IGDEV_CONSENT_FILE when it is set,
 // otherwise the machine-global record in configDir.
 func Locate(environ map[string]string, configDir string) Location {
+	fromEnv := envAccepts(environ[EULAEnv])
 	if file := strings.TrimSpace(environ[FileEnv]); file != "" {
-		return Location{Path: file, Exported: true}
+		return Location{Path: file, Exported: true, EULAFromEnv: fromEnv}
 	}
-	return Location{Path: Path(configDir)}
+	return Location{Path: Path(configDir), EULAFromEnv: fromEnv}
+}
+
+// envAccepts reads IGDEV_ACCEPT_EULA the way the Ignition image reads its own
+// switch: Y, yes or true, in any case.
+func envAccepts(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "y", "yes", "true", "1":
+		return true
+	}
+	return false
+}
+
+// withEnv adds the EULA acceptance IGDEV_ACCEPT_EULA stands for.
+func (l Location) withEnv(rec Record) Record {
+	if !l.EULAFromEnv {
+		return rec
+	}
+	if _, ok := rec.Terms[EULA.ID]; ok {
+		return rec
+	}
+	terms := make(map[string]Acceptance, len(rec.Terms)+1)
+	for id, a := range rec.Terms {
+		terms[id] = a
+	}
+	terms[EULA.ID] = Acceptance{AcceptedAt: EnvAcceptedAt, CLIVersion: EnvCLIVersion}
+	return Record{Terms: terms}
+}
+
+// without drops the EULA from required when the environment accepted it.
+func (l Location) without(required []Term) []Term {
+	if !l.EULAFromEnv {
+		return required
+	}
+	out := make([]Term, 0, len(required))
+	for _, t := range required {
+		if t.ID != EULA.ID {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // Load reads the record at the location. An exported record keeps only the
@@ -309,9 +369,9 @@ func Locate(environ map[string]string, configDir string) Location {
 func (l Location) Load() (Record, error) {
 	rec, err := Load(l.Path)
 	if err != nil || !l.Exported {
-		return rec, err
+		return l.withEnv(rec), err
 	}
-	return rec.valid(time.Now()), nil
+	return l.withEnv(rec.valid(time.Now())), nil
 }
 
 // valid drops every entry that does not prove an acceptance.
@@ -333,6 +393,7 @@ func (r Record) valid(now time.Time) Record {
 // Check is Check for this location. An exported record that misses a term
 // points at the person who exports it, not at a flag no runner may pass.
 func (l Location) Check(required ...Term) *contract.Fault {
+	required = l.without(required)
 	if !l.Exported {
 		return Check(l.Path, required...)
 	}
@@ -341,6 +402,7 @@ func (l Location) Check(required ...Term) *contract.Fault {
 
 // CheckAll is CheckAll for this location.
 func (l Location) CheckAll(required ...Term) *contract.Fault {
+	required = l.without(required)
 	if !l.Exported {
 		return CheckAll(l.Path, required...)
 	}

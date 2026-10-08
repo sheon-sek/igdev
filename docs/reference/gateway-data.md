@@ -2,18 +2,19 @@
 
 # `igdev gateway data`
 
-data copies one file between the host and the running Gateway's data directory
-(/usr/local/bin/ignition/data). Paths on the Gateway side are relative to that directory:
-an absolute path, a .. segment, or a path that resolves outside it through a symlink
-is refused with IGDEV_E_USAGE. Files are read and written as the Gateway's own user
-(2003:0), so the Gateway can read and delete what put leaves there.
+data copies one file between the host and the running Gateway container. A relative
+path on the Gateway side is relative to its data directory (/usr/local/bin/ignition/data);
+an absolute path names any place in the container, such as
+/usr/local/bin/ignition/user-lib/jdbc for a JDBC driver. Files are read and written as
+the Gateway's own user (2003:0), so the Gateway can read and delete what put leaves
+there; --user root reads and writes as root.
 
 ## Subcommands
 
 | Command | What it does |
 | --- | --- |
-| [`igdev gateway data get`](gateway-data-get.md) | Copy a file out of the Gateway's data directory |
-| [`igdev gateway data put`](gateway-data-put.md) | Copy a host file into the Gateway's data directory |
+| [`igdev gateway data get`](gateway-data-get.md) | Copy a file out of the Gateway container |
+| [`igdev gateway data put`](gateway-data-put.md) | Copy a host file into the Gateway container |
 
 ## Usage
 
@@ -25,6 +26,7 @@ igdev gateway data [flags]
 
 ```text
   igdev gateway data put marker.once engineering-tools/proof/run.once
+  igdev gateway data put postgresql.jar /usr/local/bin/ignition/user-lib/jdbc/postgresql.jar
   igdev gateway data get engineering-tools/proof/report.json report.json
 ```
 
@@ -43,6 +45,7 @@ igdev gateway data [flags]
 
 ## Agent usage
 
-pass --json for the machine contract. Use put and get instead of docker cp:
-paths on the Gateway side are relative to its data directory, and anything that could
-leave it (absolute, .., a symlink out) is IGDEV_E_USAGE before or instead of a copy.
+pass --json for the machine contract. put and get address this Instance's
+container without a compose invocation: a relative Gateway-side path is under the data
+directory, an absolute one anywhere in the container. --user root reads and writes as
+root instead of the Gateway's user.

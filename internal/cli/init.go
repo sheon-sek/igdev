@@ -42,7 +42,7 @@ const (
 var agentsBlock = agentsMarkStart + "\n" +
 	"<!-- managed by igdev; edit outside these markers only -->\n" +
 	"## igdev\n" +
-	"`igdev.toml` declares this repository's Ignition toolchain; run `igdev status` first, and reach the Gateway only through `igdev gateway` verbs, never raw docker or curl.\n" +
+	"`igdev.toml` declares this repository's Ignition toolchain; run `igdev status` first, and prefer `igdev gateway` verbs for the Gateway, and use docker or curl directly when no verb covers the need.\n" +
 	agentsMarkEnd + "\n"
 
 // initFile is what one tracked write did: which file, whether it was created,

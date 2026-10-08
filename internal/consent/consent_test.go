@@ -129,8 +129,9 @@ func TestCheckReportsTheExactHumanCommand(t *testing.T) {
 	if !strings.Contains(fault.Message, EULA.Title) {
 		t.Errorf("message does not name the term: %q", fault.Message)
 	}
-	if len(fault.Remediation) != 1 || fault.Remediation[0].Command != "igdev setup --accept-eula" {
-		t.Errorf("remediation = %+v, want the exact accept command", fault.Remediation)
+	if len(fault.Remediation) != 2 || fault.Remediation[0].Command != "igdev setup --accept-eula" ||
+		fault.Remediation[1].Command != "export IGDEV_ACCEPT_EULA=Y" {
+		t.Errorf("remediation = %+v, want the exact accept command, then the environment switch", fault.Remediation)
 	}
 
 	if _, err := Accept(path, EULA, acceptedAt, "0.1.0"); err != nil {

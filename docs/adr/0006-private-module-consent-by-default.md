@@ -53,3 +53,9 @@ default above already accepts, so the owner decided (issue #87) to flip the defa
 This changes behaviour for an existing checkout whose contract does not mention the key:
 the next `igdev setup` re-renders the runtime with the switch on. The CLI Contract
 Version stays 2, because no verb, flag or `--json` key changes shape.
+
+## Amendment 2: larger module archives (2026-10-08, igdev#104)
+
+The `.modl` reader's total uncompressed bound rises from 64 MiB to 1 GiB, so a large
+third-party module is never refused for its size; the compression-ratio guard against
+decompression bombs stays (ADR 0012).

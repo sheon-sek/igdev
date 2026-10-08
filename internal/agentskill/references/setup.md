@@ -20,29 +20,31 @@ own Gateway is the one holding it, in which case the record keeps the triplet so
 running Gateway's URLs survive a re-setup. Ports never appear in the tracked Project
 Contract (ADR 0003).
 
-Consent is required before anything is written. The record is machine-global
-(~/.config/igdev/accepted.toml, ADR 0004) and only a human-invoked command writes it,
-so an automated run that finds a term missing stops with IGDEV_E_CONSENT_REQUIRED at
-exit level 3 and names the exact command below. Passing --accept-eula records the
-Ignition EULA acceptance for this machine; re-running it once accepted is a no-op.
+Consent governs starting a Gateway, not this materialization: setup writes the
+Checkout Setup whether or not the Ignition EULA is accepted, so check, test and build
+work on any machine, and the verbs that start a Gateway stop with
+IGDEV_E_CONSENT_REQUIRED at exit level 3 until it is. The record is machine-global
+(~/.config/igdev/accepted.toml, ADR 0004) and only a human-invoked command writes it.
+Passing --accept-eula records the Ignition EULA acceptance for this machine; re-running
+it once accepted is a no-op. IGDEV_ACCEPT_EULA=Y, set by a person in an environment's
+configuration, stands for the same acceptance.
 
 The admin password comes from --admin-password, then IGDEV_GATEWAY_ADMIN_PASSWORD, then
 the local config that is already there, and is generated otherwise. It is never printed
 in either dialect: read it with `igdev gateway credentials --json`.
 
-The Capacity Gate (ADR 0003) attaches where a Gateway starts, not here: setup records
-the requested heap, and `igdev gateway up` compares it against the host's
-free memory.
+The memory measurement (ADR 0003) attaches where a Gateway starts, not here: setup
+records the requested heap, and `igdev gateway up` warns when the host's free memory
+is below it.
 
-A terminal gets the setup Wizard when the checkout has not been materialized yet, when
-no admin password is on record, or when this machine has not accepted the Ignition
-EULA. Its steps are the Consent gate, the requested heap, the admin password, an
+A terminal gets the setup Wizard when the checkout has not been materialized yet, or
+when no admin password is on record. Its steps are the Consent gate, the requested heap, the admin password, an
 optional Baseline and custom module, an optional port pin, the materialization, and the
 summary.
 --interactive runs it even when everything is already on record; --yes takes the same
 defaults without asking; --json never prompts, whatever the terminal is. The Consent
-step only shows `igdev setup --accept-eula`: a Wizard answer is never an acceptance,
-and the run stops at exit level 3 until the machine record itself says otherwise.
+step only reports the record and shows `igdev setup --accept-eula`: a Wizard answer is
+never an acceptance.
 
 --gateway-port pins the Instance's HTTP port machine-locally: the pin is recorded in
 `.igdev/local.toml` and re-used by the next setup, and the tracked Project Contract
@@ -100,7 +102,9 @@ igdev setup [flags]
 pass --json for the machine contract. data carries instance_id, namespace,
 ports, setup_path, files (each rendered runtime path with kind, action, and mode),
 credentials (path, source, username — never the password), and consent_accepted. setup
-is the repair path for IGDEV_E_SETUP_REQUIRED and IGDEV_E_SETUP_STALE, which every
-dependent verb reports with a Remediation naming it. IGDEV_E_CONSENT_REQUIRED at exit 3
-is the human handoff: a person runs igdev setup --accept-eula, then the automated run
-repeats. Read the admin password only through igdev gateway credentials --json.
+materializes whether or not the EULA is accepted, and every project command runs it
+on its own when the Checkout Setup is missing or stale, so calling it by hand is only
+needed after a manual change under .igdev/. IGDEV_E_CONSENT_REQUIRED at exit 3 comes
+from the verbs that start a Gateway: a person runs igdev setup --accept-eula, or sets
+IGDEV_ACCEPT_EULA=Y in the environment's configuration, then the automated run repeats.
+Read the admin password through igdev gateway credentials.

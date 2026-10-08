@@ -1,6 +1,10 @@
 package docker
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+)
 
 // Both wordings the docker CLI has used for a daemon it cannot reach are a
 // stopped daemon; an engine that received the call and refused it is not.
@@ -21,5 +25,18 @@ func TestDaemonDownMatchesEveryCLIWording(t *testing.T) {
 		if DaemonDown(output) {
 			t.Errorf("DaemonDown(%q) = true", output)
 		}
+	}
+}
+
+// A socket that refuses this user is its own fault, with the docker-group fix,
+// not a stopped daemon (igdev#106).
+func TestFaultNamesASocketThatRefusesTheUser(t *testing.T) {
+	output := "permission denied while trying to connect to the docker API at unix:///var/run/docker.sock"
+	if !SocketDenied(output) || DaemonDown(output) {
+		t.Fatalf("SocketDenied = %v, DaemonDown = %v; want true, false", SocketDenied(output), DaemonDown(output))
+	}
+	fault := Fault("docker compose ps", output, errors.New("exit status 1"))
+	if len(fault.Remediation) == 0 || !strings.Contains(fault.Remediation[0].Command, "usermod -aG docker") {
+		t.Errorf("remediation = %+v, want the docker-group fix first", fault.Remediation)
 	}
 }

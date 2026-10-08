@@ -2,15 +2,19 @@
   "ok": false,
   "contract": "2",
   "code": "IGDEV_E_ACT_MISSING",
-  "message": "act is not on PATH: igdev ci-local runs this project's GitHub Actions workflows through it",
+  "message": "act is not on PATH and igdev could not fetch it: igdev ci-local runs this project's GitHub Actions workflows through it",
   "remediation": [
     {
-      "command": "pipx install act",
-      "why": "install act (nektos/act)"
+      "command": "go install github.com/nektos/act@v0.2.89",
+      "why": "build act (nektos/act) with a Go toolchain"
     },
     {
       "command": "brew install act",
-      "why": "install act (nektos/act) on macOS"
+      "why": "install act on macOS or Linux with Homebrew"
+    },
+    {
+      "command": "curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash",
+      "why": "install act with its official installer"
     }
   ],
   "data": {}

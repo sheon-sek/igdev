@@ -1,6 +1,7 @@
 package itest
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -346,7 +347,7 @@ func TestCILocalWithoutActIsANamedFault(t *testing.T) {
 	if !strings.Contains(envelope.Message, "act is not on PATH") {
 		t.Errorf("the message does not name the missing tool: %q", envelope.Message)
 	}
-	testrig.WantRemediation(t, envelope, "pipx install act")
+	testrig.WantRemediation(t, envelope, "go install github.com/nektos/act@v0.2.89")
 	testrig.WantRemediation(t, envelope, "brew install act")
 	if calls := env.ActCalls(t); len(calls) != 0 {
 		t.Errorf("act was invoked without being on PATH: %+v", calls)
@@ -360,7 +361,7 @@ func TestCILocalWithoutActIsANamedFault(t *testing.T) {
 	})
 	testrig.WantExit(t, human, contract.ExitFailure)
 	if !strings.Contains(human.Stderr, string(contract.CodeActMissing)) ||
-		!strings.Contains(human.Stderr, "pipx install act") {
+		!strings.Contains(human.Stderr, "go install github.com/nektos/act") {
 		t.Errorf("the human report does not name the code and the fix:\n%s", human.Stderr)
 	}
 	res.AssertNoLeaks(t)
@@ -377,11 +378,14 @@ func TestCILocalNeedsACurrentSetupButNotConsent(t *testing.T) {
 	testrig.WantExit(t, outside, contract.ExitFailure)
 	testrig.WantCode(t, testrig.Envelope(t, outside.Stdout), contract.CodeNotInitialized)
 
-	// A contract with no Checkout Setup: the checkout has not been materialized.
+	// A contract with no Checkout Setup is materialized first, then run
+	// (igdev#102).
 	unsetup := env.Project("unsetup", testrig.MinimalContract)
 	notSetup := env.RunIn(unsetup, "ci-local", "--job", "foundation", "--json")
-	testrig.WantExit(t, notSetup, contract.ExitFailure)
-	testrig.WantCode(t, testrig.Envelope(t, notSetup.Stdout), contract.CodeSetupRequired)
+	testrig.WantExit(t, notSetup, contract.ExitOK)
+	if _, err := os.Stat(filepath.Join(unsetup, ".igdev", "setup.json")); err != nil {
+		t.Errorf("ci-local did not materialize the checkout: %v", err)
+	}
 
 	// A current Checkout Setup with no Consent recorded is enough: the run is
 	// materialized state, not a legal ritual.
@@ -389,17 +393,19 @@ func TestCILocalNeedsACurrentSetupButNotConsent(t *testing.T) {
 	env.SetupStamp(dir, filepath.Join(dir, "igdev.toml"))
 	res := env.RunIn(dir, "ci-local", "--job", "foundation", "--json")
 	testrig.WantExit(t, res, contract.ExitOK)
-	argvEquals(t, onlyCall(t, env), []string{"pull_request", "-j", "foundation"})
+	calls := env.ActCalls(t)
+	argvEquals(t, calls[len(calls)-1], []string{"pull_request", "-j", "foundation"})
 
-	// A contract edited after setup is stale: the workflows belong to the
-	// materialized checkout.
+	// A contract edited after setup is stale: the setup is refreshed, then run.
 	env.Write("repo/igdev.toml", testrig.MinimalContract+"\n[ignition]\nversion = \"8.3.8\"\n")
 	stale := env.RunIn(dir, "ci-local", "--job", "foundation", "--json")
-	testrig.WantExit(t, stale, contract.ExitFailure)
-	testrig.WantCode(t, testrig.Envelope(t, stale.Stdout), contract.CodeSetupStale)
+	testrig.WantExit(t, stale, contract.ExitOK)
+	if !strings.Contains(stale.Stderr, "refreshing the Checkout Setup first") {
+		t.Errorf("stderr does not say the setup was refreshed:\n%s", stale.Stderr)
+	}
 
-	if calls := env.ActCalls(t); len(calls) != 1 {
-		t.Errorf("act was invoked %d times, want only for the materialized checkout", len(calls))
+	if calls := env.ActCalls(t); len(calls) != 3 {
+		t.Errorf("act was invoked %d times, want once per run", len(calls))
 	}
 	env.AssertNoDockerCalls(t)
 }

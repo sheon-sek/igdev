@@ -115,6 +115,55 @@ func (a *App) gate() (project.Found, *config.Resolution, error) {
 	return found, res, nil
 }
 
+// requireSetup is the Gate's Setup Stamp stage as project commands consume it.
+// A missing or stale Checkout Setup is not a refusal: setup only re-renders
+// disposable state under .igdev/, so the Gate runs it, says so on stderr, and
+// hands back the checkout as it now stands. Every other fault — no contract, an
+// unsupported schema, an invalid contract, a newer igdev required — still stops
+// the command, because setup cannot repair it.
+func (a *App) requireSetup(found project.Found) (project.Found, error) {
+	_, fault := gate.Evaluate(a.gateInput(found))
+	if fault == nil {
+		return found, nil
+	}
+	if !repairableBySetup(fault) {
+		return found, fault
+	}
+	a.stage("refreshing the Checkout Setup first: %s", fault.Message)
+	if err := a.refreshSetup(); err != nil {
+		return found, err
+	}
+	refreshed, err := project.Discover(a.Dir)
+	if err != nil {
+		return found, err
+	}
+	if _, fault := gate.Evaluate(a.gateInput(refreshed)); fault != nil {
+		return refreshed, fault
+	}
+	return refreshed, nil
+}
+
+// refreshSetup runs `igdev setup` in Silent Mode inside this invocation. Its
+// envelope is discarded — stdout belongs to the command that asked — and its
+// progress goes to stderr like every other stage.
+func (a *App) refreshSetup() error {
+	sub := &App{Stdout: io.Discard, Stderr: a.Stderr, Environ: a.Environ, Dir: a.Dir,
+		configFlag: a.configFlag, actOffline: a.actOffline}
+	root := sub.newRoot()
+	root.SetArgs([]string{"setup", "--json"})
+	root.SetOut(io.Discard)
+	root.SetErr(a.Stderr)
+	if _, err := root.ExecuteC(); err != nil {
+		var f *contract.Fault
+		if errors.As(err, &f) {
+			return f
+		}
+		return contract.NewFault(contract.CodeInternal, contract.ExitFailure,
+			"refreshing the Checkout Setup failed: "+err.Error()).WithCause(err)
+	}
+	return nil
+}
+
 // configInput collects the raw tiers of one resolution.
 func (a *App) configInput(found project.Found) config.Input {
 	in := config.Input{Flags: a.flagTier(), Environ: a.Environ}

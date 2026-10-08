@@ -36,21 +36,16 @@ const (
 	// own user and the group its data directory belongs to, so the Gateway can
 	// read and delete what igdev puts there.
 	dataOwner = "2003:0"
-	// exitOutsideData and exitNotAFile are how the in-container scripts report a
-	// refused path; any other non-zero exit is the command's own failure.
-	exitOutsideData = 97
-	exitNotAFile    = 98
+	// exitNotAFile is how the get script reports a path with no regular file;
+	// any other non-zero exit is the command's own failure.
+	exitNotAFile = 98
 )
 
-// containScript resolves $1 inside the container, symlinks included, and refuses
-// anything that lands outside the data directory. The rest of each data script
-// works on $target.
+// containScript resolves $1 inside the container, symlinks included. The rest of
+// each data script works on $target. The Gateway container is disposable, so any
+// path in it is fair game (igdev#103).
 const containScript = `set -eu
 target=$(realpath -m -- "$1")
-case "$target" in
-  ` + GatewayDataDir + `/*) ;;
-  *) echo "$1 resolves outside the Gateway data directory" >&2; exit 97 ;;
-esac
 `
 
 const (
@@ -174,13 +169,15 @@ running is IGDEV_E_GATEWAY_UNHEALTHY.`,
 func (a *App) newGatewayDataCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "data",
-		Short: "Move files into and out of the Gateway's data directory",
-		Long: `data copies one file between the host and the running Gateway's data directory
-(` + GatewayDataDir + `). Paths on the Gateway side are relative to that directory:
-an absolute path, a .. segment, or a path that resolves outside it through a symlink
-is refused with IGDEV_E_USAGE. Files are read and written as the Gateway's own user
-(2003:0), so the Gateway can read and delete what put leaves there.`,
+		Short: "Move files into and out of the Gateway container",
+		Long: `data copies one file between the host and the running Gateway container. A relative
+path on the Gateway side is relative to its data directory (` + GatewayDataDir + `);
+an absolute path names any place in the container, such as
+/usr/local/bin/ignition/user-lib/jdbc for a JDBC driver. Files are read and written as
+the Gateway's own user (2003:0), so the Gateway can read and delete what put leaves
+there; --user root reads and writes as root.`,
 		Example: `  igdev gateway data put marker.once engineering-tools/proof/run.once
+  igdev gateway data put postgresql.jar /usr/local/bin/ignition/user-lib/jdbc/postgresql.jar
   igdev gateway data get engineering-tools/proof/report.json report.json`,
 		Args: rejectUnknownCommand,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
@@ -190,16 +187,19 @@ is refused with IGDEV_E_USAGE. Files are read and written as the Gateway's own u
 }
 
 func (a *App) newGatewayDataPutCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "put <local> <data-relative-path>",
-		Short: "Copy a host file into the Gateway's data directory",
-		Long: `put copies one host file to a path under the Gateway's data directory, creating the
-parent directories it needs. The file ends up owned by the Gateway's user (2003:0).
+	var user string
+	cmd := &cobra.Command{
+		Use:   "put <local> <gateway-path>",
+		Short: "Copy a host file into the Gateway container",
+		Long: `put copies one host file into the Gateway container, creating the parent
+directories it needs. A relative <gateway-path> is under the data directory; an
+absolute one is anywhere in the container. The file ends up owned by the Gateway's
+user (2003:0), or by root with --user root.
 --json reports {path, container_path, local, bytes, sha256}.`,
 		Example: `  igdev gateway data put run.once engineering-tools/proof/run-udt-sdk-proof.once`,
 		RunE: func(_ *cobra.Command, args []string) error {
 			if len(args) < 2 {
-				return missingArgument("gateway data put", "data-relative-path",
+				return missingArgument("gateway data put", "gateway-path",
 					"igdev gateway data put run.once engineering-tools/proof/run.once", "name the host file and where it goes under the data directory")
 			}
 			if len(args) > 2 {
@@ -207,6 +207,10 @@ parent directories it needs. The file ends up owned by the Gateway's user (2003:
 			}
 			local, rel := args[0], args[1]
 			target, fault := dataPath(rel)
+			if fault != nil {
+				return fault
+			}
+			owner, fault := dataUser(user)
 			if fault != nil {
 				return fault
 			}
@@ -232,7 +236,7 @@ parent directories it needs. The file ends up owned by the Gateway's user (2003:
 			counter := &countWriter{}
 			var stderr bytes.Buffer
 			code, runErr := g.compose.Exec(docker.ExecRequest{
-				User:   dataOwner,
+				User:   owner,
 				Argv:   []string{"sh", "-c", putScript, "igdev-data-put", target},
 				Stdin:  io.TeeReader(handle, io.MultiWriter(sum, counter)),
 				Stdout: io.Discard, Stderr: &stderr,
@@ -250,13 +254,17 @@ parent directories it needs. The file ends up owned by the Gateway's user (2003:
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&user, "user", "ignition", "the container user: ignition (2003:0) or root")
+	return cmd
 }
 
 func (a *App) newGatewayDataGetCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "get <data-relative-path> [<local>]",
-		Short: "Copy a file out of the Gateway's data directory",
-		Long: `get copies one file from under the Gateway's data directory. With <local> it is
+	var user string
+	cmd := &cobra.Command{
+		Use:   "get <gateway-path> [<local>]",
+		Short: "Copy a file out of the Gateway container",
+		Long: `get copies one file out of the Gateway container: a relative <gateway-path> is
+under the data directory, an absolute one anywhere in the container. With <local> it is
 written there (atomically: a failed copy leaves nothing behind); without it the bytes
 go to stdout, or with --json into data.content_base64, up to 1 MiB — a larger file
 needs <local>. --json reports {path, container_path, local, bytes, sha256}.`,
@@ -264,7 +272,7 @@ needs <local>. --json reports {path, container_path, local, bytes, sha256}.`,
   igdev gateway data get engineering-tools/proof/udt-sdk-proof-latest.json --json`,
 		RunE: func(_ *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return missingArgument("gateway data get", "data-relative-path",
+				return missingArgument("gateway data get", "gateway-path",
 					"igdev gateway data get engineering-tools/proof/report.json report.json", "name the file under the data directory")
 			}
 			if len(args) > 2 {
@@ -272,6 +280,10 @@ needs <local>. --json reports {path, container_path, local, bytes, sha256}.`,
 			}
 			rel := args[0]
 			target, fault := dataPath(rel)
+			if fault != nil {
+				return fault
+			}
+			owner, fault := dataUser(user)
 			if fault != nil {
 				return fault
 			}
@@ -288,7 +300,7 @@ needs <local>. --json reports {path, container_path, local, bytes, sha256}.`,
 			var stderr bytes.Buffer
 			fetch := func(w io.Writer) (int, error) {
 				return g.compose.Exec(docker.ExecRequest{
-					User:   dataOwner,
+					User:   owner,
 					Argv:   []string{"sh", "-c", getScript, "igdev-data-get", target},
 					Stdout: io.MultiWriter(w, sum, counter), Stderr: &stderr,
 				})
@@ -340,35 +352,38 @@ needs <local>. --json reports {path, container_path, local, bytes, sha256}.`,
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&user, "user", "ignition", "the container user: ignition (2003:0) or root")
+	return cmd
+}
+
+// dataUser maps --user onto the uid:gid the data scripts run as.
+func dataUser(user string) (string, *contract.Fault) {
+	switch user {
+	case "ignition":
+		return dataOwner, nil
+	case "root":
+		return "root", nil
+	}
+	return "", contract.UsageFault(fmt.Sprintf("--user must be ignition or root, got %q", user),
+		contract.Remediation{Command: "igdev help gateway data", Why: "show the users data runs as"})
 }
 
 // errExecFailed tells atomicfile.Fill to discard what a failed get wrote.
 var errExecFailed = errors.New("the container command failed")
 
-// dataPath resolves a data-relative path to its place in the container, refusing
-// what could leave the data directory before anything runs: an absolute path, a
-// .. segment, or nothing at all. Symlinks are resolved in the container itself.
+// dataPath resolves a Gateway-side path to its place in the container: an
+// absolute path as given, a relative one under the data directory. Only an empty
+// path is refused. Symlinks are resolved in the container itself.
 func dataPath(rel string) (string, *contract.Fault) {
-	refuse := func(why string) (string, *contract.Fault) {
-		return "", contract.UsageFault(fmt.Sprintf("%q %s: gateway data paths are relative to %s", rel, why, GatewayDataDir),
+	if strings.TrimSpace(rel) == "" {
+		return "", contract.UsageFault("the Gateway-side path is empty",
 			contract.Remediation{Command: "igdev help gateway data", Why: "show how data paths are written"})
 	}
-	if strings.TrimSpace(rel) == "" {
-		return refuse("is empty")
+	slashed := filepath.ToSlash(rel)
+	if strings.HasPrefix(slashed, "/") {
+		return path.Clean(slashed), nil
 	}
-	if strings.HasPrefix(rel, "/") || filepath.IsAbs(rel) {
-		return refuse("is absolute")
-	}
-	for _, segment := range strings.Split(filepath.ToSlash(rel), "/") {
-		if segment == ".." {
-			return refuse("has a .. segment")
-		}
-	}
-	clean := path.Clean(filepath.ToSlash(rel))
-	if clean == "." {
-		return refuse("names the data directory itself")
-	}
-	return path.Join(GatewayDataDir, clean), nil
+	return path.Join(GatewayDataDir, slashed), nil
 }
 
 // dataFault maps the in-container script's result onto the contract.
@@ -379,9 +394,6 @@ func dataFault(verb, rel string, code int, runErr error, stderr string) *contrac
 		return docker.Fault("docker compose exec", stderr, runErr)
 	case code == 0:
 		return nil
-	case code == exitOutsideData:
-		return contract.UsageFault(fmt.Sprintf("%q resolves outside %s", rel, GatewayDataDir),
-			contract.Remediation{Command: "igdev help gateway data", Why: "show how data paths are written"})
 	case code == exitNotAFile:
 		return contract.NewFault(contract.CodeExecFailed, contract.ExitFailure,
 			fmt.Sprintf("gateway data %s: no regular file at %s", verb, rel))

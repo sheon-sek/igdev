@@ -149,7 +149,7 @@ func (a *App) newLookupCmd() *cobra.Command {
 		refresh bool
 	)
 	cmd := &cobra.Command{
-		Use:   `lookup ["<query>"]`,
+		Use:   `lookup [<query>...]`,
 		Short: "Find a system.* function or a Gateway REST endpoint from one sentence",
 		Long: `lookup searches two local indexes with an offline keyword search and says how to
 use each result in this checkout.
@@ -190,12 +190,10 @@ leaves module_enabled out.`,
   igdev lookup --name "POST /data/api/v1/projects/import/{name}"
   igdev lookup --refresh`,
 		RunE: func(_ *cobra.Command, args []string) error {
-			if len(args) > 1 {
-				return extraArguments("lookup", 1, args)
-			}
 			query := ""
-			if len(args) == 1 {
-				query = strings.TrimSpace(args[0])
+			if len(args) > 0 {
+				// Several words are one query: quoting it is not required.
+				query = strings.TrimSpace(strings.Join(args, " "))
 			}
 			if query != "" && name != "" {
 				return contract.UsageFault("igdev lookup takes a <query> or --name, not both",

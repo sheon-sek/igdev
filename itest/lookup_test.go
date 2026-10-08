@@ -226,7 +226,6 @@ func TestLookupUsage(t *testing.T) {
 		{"lookup", "x", "--name", "system.tag.readBlocking"},
 		{"lookup", "x", "--kind", "table"},
 		{"lookup", "x", "--limit", "0"},
-		{"lookup", "x", "y"},
 	} {
 		res := env.RunIn(dir, append(args, "--json")...)
 		testrig.WantExit(t, res, contract.ExitUsage)

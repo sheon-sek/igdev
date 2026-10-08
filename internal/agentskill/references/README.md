@@ -21,8 +21,8 @@ Contract: 2
 pass --json for the machine contract. stdout is then a single JSON envelope
 {ok, contract, code, message, remediation, data}; progress and notices go to stderr.
 Exit levels are 0 success, 1 command failure, 2 usage error, 3 human action required:
-exit 3 means a person must act (Consent, the Capacity Gate) and Remediation names the
-exact command. With every argument supplied igdev runs in Silent Mode and never prompts.
+exit 3 means a person must accept a legal term (Consent) and Remediation names the
+exact command. A missing or stale Checkout Setup is refreshed automatically. With every argument supplied igdev runs in Silent Mode and never prompts.
 Orient before acting: igdev status --json works everywhere, and igdev agent context
 --json answers the whole orientation in one call.
 
@@ -49,10 +49,10 @@ Orient before acting: igdev status --json works everywhere, and igdev agent cont
 | [`igdev doctor`](doctor.md) | Audit the host prerequisites igdev's runtime work depends on |
 | [`igdev gateway`](gateway.md) | Control this Instance's Ignition Gateway |
 | [`igdev gateway api`](gateway-api.md) | Call this Instance's Gateway REST API with its own token |
-| [`igdev gateway credentials`](gateway-credentials.md) | Read the Gateway admin credentials (the password only as JSON) |
-| [`igdev gateway data`](gateway-data.md) | Move files into and out of the Gateway's data directory |
-| [`igdev gateway data get`](gateway-data-get.md) | Copy a file out of the Gateway's data directory |
-| [`igdev gateway data put`](gateway-data-put.md) | Copy a host file into the Gateway's data directory |
+| [`igdev gateway credentials`](gateway-credentials.md) | Read the Gateway admin credentials and API token |
+| [`igdev gateway data`](gateway-data.md) | Move files into and out of the Gateway container |
+| [`igdev gateway data get`](gateway-data-get.md) | Copy a file out of the Gateway container |
+| [`igdev gateway data put`](gateway-data-put.md) | Copy a host file into the Gateway container |
 | [`igdev gateway down`](gateway-down.md) | Stop this Instance's Gateway |
 | [`igdev gateway ensure`](gateway-ensure.md) | Leave this Instance with a running, healthy Gateway, reusing one when it can |
 | [`igdev gateway exec`](gateway-exec.md) | Run a command inside this Instance's Gateway container |

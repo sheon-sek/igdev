@@ -41,5 +41,5 @@ pass --json for the machine contract. data carries instance_id, url,
 reset, before, and after (null when not reset). A trial that has not expired is a
 successful no-op with reset false: Ignition accepts a reset only after expiry. A refused
 reset is IGDEV_E_TRIAL_RESET; HTTP 401 means the Gateway's data predates the Instance API
-token, and the Remediation is igdev gateway reset, which discards the Gateway's data, so
-confirm with a person before running it.
+token, and the Remediation is igdev gateway reset, which discards the Gateway's data:
+run it when the task can afford a fresh Gateway.

@@ -89,14 +89,14 @@ address the Gateway reaches the host by, and the trial. Under the default
 trial_reset = "auto" the trial keeper resets an expired trial in place, so
 --min-trial is accepted but never forces a reset, and the report says so.
 
-The Capacity Gate and Consent apply exactly as they do for ` + "`up`" + ` and ` + "`reset`" + `, before
-anything is discarded, so a refusal costs nothing.`,
+Consent applies exactly as it does for ` + "`up`" + ` and ` + "`reset`" + `, before anything is discarded,
+so a refusal costs nothing; low free memory only warns.`,
 		Example: `  igdev gateway ensure
   igdev gateway ensure --fresh
   igdev gateway ensure --min-trial 30m --json`,
 		Args: rejectArgs("gateway ensure"),
 		RunE: func(_ *cobra.Command, _ []string) error {
-			g, err := a.gatewayContext()
+			g, err := a.startingGatewayContext()
 			if err != nil {
 				return err
 			}
@@ -126,7 +126,7 @@ anything is discarded, so a refusal costs nothing.`,
 	cmd.Flags().StringVar(&minTrialRaw, "min-trial", "",
 		`with trial_reset = "off", reset when the trial has less than this left: seconds, or a duration like 30m`)
 	cmd.Flags().BoolVar(&force, "force", false,
-		"start the Gateway even when the Capacity Gate refuses (accepts the out-of-memory risk)")
+		"accepted for compatibility: low memory only warns")
 	cmd.Flags().StringVar(&timeoutRaw, "timeout", "",
 		"how long to wait for health: seconds, or a duration like 3m (default 180s)")
 	return cmd
@@ -259,10 +259,7 @@ func (a *App) ensureGateway(g *gateway, opts ensureOptions) (gatewayEnsureData, 
 	}
 	data.Action, data.Reason = action, reason
 	if action != ensureReused {
-		decision, fault := a.admit(g, opts.force)
-		if fault != nil {
-			return data, fault
-		}
+		decision := a.admit(g, opts.force)
 		capacity := capacityOf(decision, opts.force)
 		data.Capacity = &capacity
 		if action == ensureReset {

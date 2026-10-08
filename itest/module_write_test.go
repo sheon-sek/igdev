@@ -215,8 +215,8 @@ func TestModuleEnableWritesTheContract(t *testing.T) {
 		t.Error("the contract is byte-identical after enable")
 	}
 
-	// The write moved the Contract Digest, so the Gate now refuses the checkout
-	// until setup re-materializes it (acceptance criterion 1).
+	// The write moved the Contract Digest, so the checkout is stale until the
+	// next project command refreshes it (igdev#102).
 	moved := testrig.Status(t, env.RunIn(dir, "status", "--json").Stdout)
 	if moved.Setup.StampState != "stale" {
 		t.Errorf("stamp_state = %q, want stale", moved.Setup.StampState)
@@ -224,12 +224,13 @@ func TestModuleEnableWritesTheContract(t *testing.T) {
 	if moved.Contract.Digest == before.Contract.Digest {
 		t.Errorf("contract digest did not move: %s", moved.Contract.Digest)
 	}
-	refused := env.RunIn(dir, "module", "clear", "--json")
-	testrig.WantExit(t, refused, contract.ExitFailure)
-	testrig.WantCode(t, testrig.Envelope(t, refused.Stdout), contract.CodeSetupStale)
+	refreshed := env.RunIn(dir, "module", "clear", "--json")
+	testrig.WantExit(t, refreshed, contract.ExitOK)
+	if !strings.Contains(refreshed.Stderr, "refreshing the Checkout Setup first") {
+		t.Errorf("module clear did not refresh the stale setup:\n%s", refreshed.Stderr)
+	}
 
-	// Re-setup clears the staleness, and the whitelist is what the image gets.
-	testrig.WantExit(t, env.RunIn(dir, "setup", "--json"), contract.ExitOK)
+	// The refresh cleared the staleness, and the whitelist is what the image gets.
 	if after := testrig.Status(t, env.RunIn(dir, "status", "--json").Stdout); after.Setup.StampState != "current" {
 		t.Errorf("stamp_state after re-setup = %q, want current", after.Setup.StampState)
 	}
@@ -623,8 +624,8 @@ func TestModuleAddRejectsBadArchives(t *testing.T) {
 	env.AssertNoDockerCalls(t)
 }
 
-// The write verbs pass the Gate: without a Checkout Setup there is nothing to
-// stage into, and outside a Project Root there is no contract to write.
+// The write verbs pass the Gate: outside a Project Root there is no contract to
+// write, and a missing Checkout Setup is refreshed before the write.
 func TestModuleWriteGateAndUsage(t *testing.T) {
 	env := testrig.NewEnv(t)
 	uninitialized := env.Project("bare", "")
@@ -632,20 +633,18 @@ func TestModuleWriteGateAndUsage(t *testing.T) {
 	testrig.WantExit(t, res, contract.ExitFailure)
 	testrig.WantCode(t, testrig.Envelope(t, res.Stdout), contract.CodeNotInitialized)
 
-	// A contract without a setup: the repair is named, and nothing is written.
+	// A contract without a setup is materialized first, then written
+	// (igdev#102).
 	dir := env.Project("repo", moduleContract("com.inductiveautomation.perspective"))
 	before := readFile(t, filepath.Join(dir, project.ContractFile))
 	unset := env.RunIn(dir, "module", "enable", "com.inductiveautomation.opcua", "--json")
-	testrig.WantExit(t, unset, contract.ExitFailure)
-	envelope := testrig.Envelope(t, unset.Stdout)
-	testrig.WantCode(t, envelope, contract.CodeSetupRequired)
-	testrig.WantRemediation(t, envelope, "igdev setup")
-	if after := readFile(t, filepath.Join(dir, project.ContractFile)); after != before {
-		t.Error("a refused enable wrote the contract")
+	testrig.WantExit(t, unset, contract.ExitOK)
+	if after := readFile(t, filepath.Join(dir, project.ContractFile)); after == before {
+		t.Error("enable on a checkout that was never set up did not write the contract")
 	}
 	add := env.RunIn(dir, "module", "add", "/tmp/nothing.modl", "--json")
 	testrig.WantExit(t, add, contract.ExitFailure)
-	testrig.WantCode(t, testrig.Envelope(t, add.Stdout), contract.CodeSetupRequired)
+	testrig.WantCode(t, testrig.Envelope(t, add.Stdout), contract.CodeModuleArchiveInvalid)
 
 	for _, tc := range []struct {
 		args []string

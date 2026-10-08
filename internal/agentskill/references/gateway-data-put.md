@@ -2,14 +2,16 @@
 
 # `igdev gateway data put`
 
-put copies one host file to a path under the Gateway's data directory, creating the
-parent directories it needs. The file ends up owned by the Gateway's user (2003:0).
+put copies one host file into the Gateway container, creating the parent
+directories it needs. A relative <gateway-path> is under the data directory; an
+absolute one is anywhere in the container. The file ends up owned by the Gateway's
+user (2003:0), or by root with --user root.
 --json reports {path, container_path, local, bytes, sha256}.
 
 ## Usage
 
 ```text
-igdev gateway data put <local> <data-relative-path> [flags]
+igdev gateway data put <local> <gateway-path> [flags]
 ```
 
 ## Examples
@@ -21,7 +23,8 @@ igdev gateway data put <local> <data-relative-path> [flags]
 ## Options
 
 ```text
-  -h, --help   help for put
+  -h, --help          help for put
+      --user string   the container user: ignition (2003:0) or root (default "ignition")
 ```
 
 ## Global options
@@ -35,5 +38,5 @@ igdev gateway data put <local> <data-relative-path> [flags]
 
 pass --json for the machine contract. data carries instance_id, path,
 container_path, local, bytes, and sha256 of what was written. Parent directories are
-created, and the file is owned by the Gateway's user (2003:0). A path outside the data
-directory is IGDEV_E_USAGE; a container-side failure is IGDEV_E_EXEC_FAILED.
+created, and the file is owned by the Gateway's user (2003:0), or by root with --user
+root. A container-side failure is IGDEV_E_EXEC_FAILED.
