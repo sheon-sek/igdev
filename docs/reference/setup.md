@@ -37,7 +37,8 @@ free memory.
 A terminal gets the setup Wizard when the checkout has not been materialized yet, when
 no admin password is on record, or when this machine has not accepted the Ignition
 EULA. Its steps are the Consent gate, the requested heap, the admin password, an
-optional Baseline, an optional port pin, the materialization, and the summary.
+optional Baseline and custom module, an optional port pin, the materialization, and the
+summary.
 --interactive runs it even when everything is already on record; --yes takes the same
 defaults without asking; --json never prompts, whatever the terminal is. The Consent
 step only shows `igdev setup --accept-eula`: a Wizard answer is never an acceptance,
@@ -47,6 +48,13 @@ and the run stops at exit level 3 until the machine record itself says otherwise
 `.igdev/local.toml` and re-used by the next setup, and the tracked Project Contract
 never carries a port (ADR 0003). --baseline stages a .gwbk as the Baseline the
 next fresh launch restores from, which is what `igdev gateway reset` applies.
+
+--module stages an external `.modl` — a licensed, early-access, or prebuilt module the
+repository does not build — exactly as `igdev module add` does; repeat it for more than
+one. The artifacts are checkout-local state under `.igdev/modules/` and never tracked,
+and a module staged before the first `igdev gateway ensure` loads on the fresh volume.
+Every file is validated before anything is written. The setup Wizard asks for one in its
+Baseline step.
 
 ## Usage
 
@@ -59,6 +67,7 @@ igdev setup [flags]
 ```text
   igdev setup
   igdev setup --accept-eula
+  igdev setup --module ~/Downloads/com.acme.vision.modl
   igdev setup --json
   IGDEV_GATEWAY_ADMIN_PASSWORD=... igdev setup
 ```
@@ -75,6 +84,7 @@ igdev setup [flags]
       --gateway-port int            pin the Gateway HTTP port for this checkout, recorded machine-locally in local.toml
   -h, --help                        help for setup
   -i, --interactive                 run the Wizard even when every value is already supplied
+      --module stringArray          stage an external .modl in this checkout, as igdev module add does; repeatable
   -y, --yes                         take the Wizard's defaults and never prompt
 ```
 

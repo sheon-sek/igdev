@@ -222,8 +222,9 @@ the file leaves out fall back to the embedded defaults, so a minimal `schema = 1
 contract is valid. Six keys are optional and omitted from the rendered contract while
 they hold the schema default: `smoke_endpoints` (a checkout that does not state it smokes
 the root document alone), `modules.artifacts` (a contract that does not state it has
-`igdev build` stage nothing on its own), `gateway.allow_unsigned_modules` (default false:
-the Gateway loads only signed module artifacts), and
+`igdev build` stage nothing on its own), `gateway.allow_unsigned_modules` (default true:
+a development Gateway loads unsigned module artifacts; only `false` is written, ADR 0006
+amendment 1), and
 `modules.require_private_module_consent` (default false: the private modules the checkout
 staged are accepted as part of starting the Gateway, ADR 0006), and `gateway.trial_reset`
 (default `"auto"`: a trial keeper resets an expired trial in place; `"off"` renders none,
@@ -342,9 +343,8 @@ environment: `[gateway] allow_unsigned_modules` becomes `IGNITION_ALLOW_UNSIGNED
 which the rendered Compose file passes to the Gateway as
 `-Dignition.allowunsignedmodules`. It is the switch a module repository that builds
 unsigned artifacts needs — a `.modl` with no valid signature otherwise never loads. The
-rendered value is `false` unless a contract asks for `true`, so the file a checkout
-materializes without the key is byte-identical to the one it materialized before the key
-existed.
+rendered value is `true` unless a contract states `false` (ADR 0006, amendment 1), so a
+development Gateway loads the unsigned builds a module repository produces.
 
 **Consent.** The record is machine-global: `~/.config/igdev/accepted.toml`, keyed by
 term (`ignition-eula`, `module-license`, `module-cert`) and holding when each was
@@ -748,6 +748,13 @@ replaces it, which is how a newer build of one module is staged. There is no
 "also enable it" step and no `--enable` flag: a staged private module is enabled by
 being staged (see below), so that write could only ever put a local artifact's id into
 the tracked contract.
+`igdev setup --module <file.modl>` (repeatable) stages external artifacts — licensed,
+early-access, or prebuilt modules the repository does not build — exactly the same way
+while it materializes the checkout, so one setup prepares a Gateway whose first
+`gateway ensure` loads them on the fresh volume. Every named file is validated before
+setup writes anything; the setup Wizard asks for one in its Baseline step. A module the
+repository builds itself is declared instead with `[modules].artifacts`, which the init
+Wizard asks for on a Gradle or Maven layout and `igdev build` stages after each build.
 
 Staging is not a contract change, so the Setup Stamp stays current: what moved is what
 is staged, not what the contract asked for. Staging a private module is also what
@@ -1241,9 +1248,11 @@ the generated `docs/reference/agent-context.md`, which is rendered from the
 `AgentContextFields` table in `internal/cli/agent.go` (a test checks that table against
 the envelope's own struct tags). `agent skill-install` writes the embedded Agent Skill
 (`internal/agentskill/SKILL.md`,
-frontmatter carrying the CLI Contract Version) globally at `~/.agents/skills/igdev/` by
-default, or into the repository's `.agents/skills/igdev/` with `--scope repo`; it is
-idempotent and updates an install left by an older binary in place. `init` now also
+frontmatter carrying the CLI Contract Version) globally by default, or into the
+repository with `--scope repo`. Since Phase 9 (issue #88) it writes both skills roots,
+`.claude/skills/igdev/` for Claude Code and `.agents/skills/igdev/` for Codex and other
+Agent Skills harnesses; `--harness claude|agents` picks one, and the envelope lists one
+entry per target in `data.targets`. It is idempotent and updates an install left by an older binary in place. `init` now also
 maintains a minimal, version-free managed block in `AGENTS.md`: created when absent,
 replaced in place when present, never duplicated, and reported with the same diff as its
 other tracked writes. Neither agent verb ever prompts.

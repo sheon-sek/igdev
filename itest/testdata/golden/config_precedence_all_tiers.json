@@ -24,7 +24,7 @@
       "ports": null
     },
     "gateway": {
-      "allow_unsigned_modules": false
+      "allow_unsigned_modules": true
     },
     "modules": {
       "dir": "<ROOT>/repo/.igdev/modules",

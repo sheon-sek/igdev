@@ -26,7 +26,8 @@ it is named in the remediation of every command that needs it (ADR 0004).
 
 gateway reports the Gateway option the contract states: allow_unsigned_modules, which
 is the effective value `igdev setup` renders as IGNITION_ALLOW_UNSIGNED_MODULES. It
-is false unless a contract asks for it, which is the schema default.
+is true unless a contract states allow_unsigned_modules = false: an igdev Gateway is a
+development Gateway, and module repositories build unsigned artifacts (ADR 0006).
 
 The config block shows every key igdev resolves, its value, and the tier that won:
 flag > IGDEV_* environment > .igdev/local.toml > igdev.toml > embedded defaults.

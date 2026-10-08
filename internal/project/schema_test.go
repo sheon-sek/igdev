@@ -35,36 +35,45 @@ func TestRenderRoundTrips(t *testing.T) {
 	}
 }
 
-// [gateway] allow_unsigned_modules is additive to schema v1: a contract that does
-// not state it reports the default, renders byte-identically to a contract written
-// before the key existed (no key at all), and survives a round trip when stated.
-func TestAllowUnsignedModulesIsAdditive(t *testing.T) {
+// [gateway] allow_unsigned_modules is additive to schema v1 and defaults to true
+// (ADR 0006, amendment 1): a contract that does not state it allows unsigned
+// modules and renders no key, a stated true renders no key either, and only a
+// stated false is rendered and survives a round trip.
+func TestAllowUnsignedModulesDefaultsToTrue(t *testing.T) {
 	absent, err := ParseDoc([]byte("schema = 1\n\n[gateway]\nmemory_mb = 2048\ntimezone = \"UTC\"\n"), "igdev.toml")
 	if err != nil {
 		t.Fatalf("ParseDoc without the key: %v", err)
 	}
-	if absent.Gateway.AllowUnsignedModules {
-		t.Error("a contract that does not state the key reports the Gateway loading unsigned modules")
+	if !absent.Gateway.UnsignedModulesAllowed() {
+		t.Error("a contract that does not state the key refuses unsigned modules")
 	}
 	if rendered := string(absent.Render()); strings.Contains(rendered, "allow_unsigned_modules") {
 		t.Errorf("render emitted the key at its default:\n%s", rendered)
 	}
 
-	stated, err := ParseDoc([]byte("schema = 1\n\n[gateway]\nmemory_mb = 2048\ntimezone = \"UTC\"\nallow_unsigned_modules = true\n"), "igdev.toml")
+	on, err := ParseDoc([]byte("schema = 1\n\n[gateway]\nallow_unsigned_modules = true\n"), "igdev.toml")
+	if err != nil || !on.Gateway.UnsignedModulesAllowed() {
+		t.Fatalf("the stated true did not parse: %v", err)
+	}
+	if rendered := string(on.Render()); strings.Contains(rendered, "allow_unsigned_modules") {
+		t.Errorf("render emitted a stated default:\n%s", rendered)
+	}
+
+	off, err := ParseDoc([]byte("schema = 1\n\n[gateway]\nmemory_mb = 2048\ntimezone = \"UTC\"\nallow_unsigned_modules = false\n"), "igdev.toml")
 	if err != nil {
 		t.Fatalf("ParseDoc with the key: %v", err)
 	}
-	if !stated.Gateway.AllowUnsignedModules {
-		t.Error("the stated true did not parse")
+	if off.Gateway.UnsignedModulesAllowed() {
+		t.Error("the stated false did not parse")
 	}
-	rendered := string(stated.Render())
-	if !strings.Contains(rendered, "allow_unsigned_modules = true") {
-		t.Errorf("render dropped the stated key:\n%s", rendered)
+	rendered := string(off.Render())
+	if !strings.Contains(rendered, "allow_unsigned_modules = false") {
+		t.Errorf("render dropped the stated false:\n%s", rendered)
 	}
-	if !strings.Contains(string(stated.Filled(DefaultDoc()).Render()), "allow_unsigned_modules = true") {
-		t.Error("Filled cleared the stated key")
+	if !strings.Contains(string(off.Filled(DefaultDoc()).Render()), "allow_unsigned_modules = false") {
+		t.Error("Filled cleared the stated false")
 	}
-	if again, err := ParseDoc([]byte(rendered), "igdev.toml"); err != nil || !again.Gateway.AllowUnsignedModules {
+	if again, err := ParseDoc([]byte(rendered), "igdev.toml"); err != nil || again.Gateway.UnsignedModulesAllowed() {
 		t.Errorf("round trip lost the key: %v", err)
 	}
 }

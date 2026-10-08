@@ -60,7 +60,7 @@ services:
       -s 8043
       ${GATEWAY_RESTORE_ARGS:-}
       --
-      -Dignition.allowunsignedmodules=${IGNITION_ALLOW_UNSIGNED_MODULES:-false}
+      -Dignition.allowunsignedmodules=${IGNITION_ALLOW_UNSIGNED_MODULES:-true}
     # The Gateway reaches services on the host, a simulator's OPC UA server for
     # one, at {{ .HostAddress }}.
     extra_hosts:

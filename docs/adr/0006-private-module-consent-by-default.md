@@ -33,3 +33,23 @@ certificate; the module write verbs still do not verify signatures or licenses, 
 Gateway load what the developer staged, not about trusting it; and the Consent record
 keeps a term per legal statement, so an operator who needs the strict gate has one
 contract key to set.
+
+## Amendment 1: unsigned modules load by default (2026-10-07)
+
+`[gateway] allow_unsigned_modules` decides whether the Gateway loads a `.modl` that
+carries no valid signature. It defaulted to false, so the first build of a module
+repository was quarantined with "module is unsigned and developer mode not enabled", a
+reason that appears only in the Gateway log (measured 2026-10-07 on 8.3.8). An igdev
+Gateway is a development Gateway, and the artifacts a developer stages are the ones the
+default above already accepts, so the owner decided (issue #87) to flip the default:
+
+- A contract that does not state the key now renders
+  `IGNITION_ALLOW_UNSIGNED_MODULES=true`, and the Compose file passes
+  `-Dignition.allowunsignedmodules=true`.
+- `allow_unsigned_modules = false` turns it off. `igdev init` writes the key only when it
+  is false, and the init Wizard's "Allow unsigned modules" step defaults to yes.
+- `status` and `agent context` report the effective value.
+
+This changes behaviour for an existing checkout whose contract does not mention the key:
+the next `igdev setup` re-renders the runtime with the switch on. The CLI Contract
+Version stays 2, because no verb, flag or `--json` key changes shape.
