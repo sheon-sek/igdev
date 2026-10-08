@@ -6,7 +6,7 @@ skill-install writes the Agent Skill embedded in this binary. Its entry,
 SKILL.md, says when the skill applies and the steps an agent follows in an igdev
 repository. Beside it, references/ holds the command reference, the error-code
 reference, and in references/guides/ the scenario guides (SDK module, MCP Tools,
-AI agent) and the lookup guide, which an agent reads only when a task needs them. It is installed globally by
+AI agent) and the lookup and cleanup guides, which an agent reads only when a task needs them. It is installed globally by
 default, so one install covers every repository, and into both skills roots:
 `~/.claude/skills/igdev/`, which Claude Code reads, and `~/.agents/skills/igdev/`,
 which Codex and other Agent Skills harnesses read. `--harness claude` or

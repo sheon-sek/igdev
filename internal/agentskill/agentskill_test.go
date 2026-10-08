@@ -125,6 +125,7 @@ func TestBodyTeachesTheGatewayVerbs(t *testing.T) {
 	for _, want := range []string{
 		"igdev gateway ensure", "igdev gateway api", "igdev gateway exec", "igdev gateway data",
 		"igdev module install", "igdev restart", "igdev project import", "igdev lookup", "igdev check",
+		"igdev cleanup",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("SKILL.md does not teach %q", want)
@@ -167,7 +168,7 @@ func TestEntryRoutesToEmbeddedReferences(t *testing.T) {
 	for _, want := range []string{
 		FileName, "references/README.md", "references/errors.md", "references/gateway-up.md",
 		"references/guides/scenario-sdk-module.md", "references/guides/scenario-mcp-tools.md",
-		"references/guides/scenario-ai-agent.md", "references/guides/lookup.md",
+		"references/guides/scenario-ai-agent.md", "references/guides/lookup.md", "references/guides/cleanup.md",
 	} {
 		if _, ok := installed[want]; !ok {
 			t.Errorf("the skill does not embed %s", want)
@@ -211,8 +212,8 @@ func TestGuidesAreHandWrittenStepsWithCompletionCriteria(t *testing.T) {
 			}
 		}
 	}
-	if guides != 4 {
-		t.Errorf("the skill embeds %d guides, want 4 (three scenarios and lookup)", guides)
+	if guides != 5 {
+		t.Errorf("the skill embeds %d guides, want 5 (three scenarios, lookup and cleanup)", guides)
 	}
 }
 

@@ -18,7 +18,7 @@ Pass `--json` to every command and act on the envelope. A failure names a `code`
 
 | Layer | Reach for first |
 | --- | --- |
-| Environment | `igdev init`, `igdev setup`, `igdev gateway ensure`, `igdev gateway down` |
+| Environment | `igdev init`, `igdev setup`, `igdev gateway ensure`, `igdev gateway down`, `igdev cleanup` |
 | Operations on the Gateway | `igdev gateway api`, `igdev gateway exec`, `igdev gateway data`, `igdev module install`, `igdev restart`, `igdev project import` / `export` |
 | Knowledge and checks | `igdev lookup`, `igdev check` |
 
@@ -40,7 +40,8 @@ Pass `--json` to every command and act on the envelope. A failure names a `code`
    the operations layer: `igdev gateway api` presents the API token itself, and
    `igdev gateway exec` and `igdev gateway data put|get` reach inside the container.
 5. **Finish.** Run `igdev gateway down --volumes`, or keep the Gateway for the next run
-   and say so. Done when your report states which.
+   and say so. Done when your report states which. When the whole project is finished,
+   remove what igdev created with `igdev cleanup` instead; read its guide first.
 
 Change the contract (versions, modules, commands) with `igdev init --json <flags>`: it
 prints the diff for review, and the next command picks the change up.
@@ -65,6 +66,7 @@ Read the guide that matches the task before its first step:
 - `references/guides/scenario-mcp-tools.md`: writing Tools for the Ignition MCP Module.
 - `references/guides/scenario-ai-agent.md`: preparing a Gateway and data for an AI agent.
 - `references/guides/lookup.md`: when `lookup` finds nothing or reports `embedded`.
+- `references/guides/cleanup.md`: before any `igdev cleanup`, to pick its scope.
 
 A command's flags are in `references/<command path with dashes>.md`, for example
 `references/gateway-api.md`; `references/README.md` lists every command.
