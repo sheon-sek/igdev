@@ -51,6 +51,8 @@ igdev check                      # 固定顺序的预检查流水线
 igdev test / igdev build         # 派发 contract 里声明的项目命令
 igdev check --all --gateway      # 全套，外加运行时冒烟
 
+igdev lookup "read tag values"                     # 一句话查 system.* 函数或 REST endpoint
+igdev lookup --name system.tag.readBlocking        # 一条的完整说明
 igdev module require system.report.executeReport   # 能力预检查
 igdev jython check src/main/python                 # 单次 JVM 批量编译
 

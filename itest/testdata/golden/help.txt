@@ -34,6 +34,7 @@ Available Commands:
   help        Show help for a command
   init        Create or edit the Project Contract (igdev.toml)
   jython      Compile project code with the pinned Jython compatibility checker
+  lookup      Find a system.* function or a Gateway REST endpoint from one sentence
   module      List modules and check what project code requires
   setup       Materialize this checkout: Instance identity, ports, runtime files
   status      Report project, setup, and effective config state

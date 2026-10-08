@@ -374,3 +374,17 @@ func methodRank(method string) int {
 	}
 	return len(Methods)
 }
+
+// Functions lists the native function rows, core rows first, each in file order.
+func (e *Effective) Functions() []NativeFunction {
+	out := make([]NativeFunction, 0, len(e.core.Functions)+len(e.overlay.Functions))
+	out = append(out, e.core.Functions...)
+	return append(out, e.overlay.Functions...)
+}
+
+// RESTOperations lists the REST rows, core rows first, each in file order.
+func (e *Effective) RESTOperations() []RestOperation {
+	out := make([]RestOperation, 0, len(e.core.REST)+len(e.overlay.REST))
+	out = append(out, e.core.REST...)
+	return append(out, e.overlay.REST...)
+}

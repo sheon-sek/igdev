@@ -1,0 +1,66 @@
+# Scripting documentation bundle -> system.* namespace.
+# A bundle names a Java class, not the namespace its functions are registered
+# under, and 65 function names repeat across bundles, so the namespace comes from
+# this table. A bundle the table does not name is mapped by majority vote of its
+# function names against the Effective Catalog; one with no clear majority is left
+# out of the index (platform and built-in modules) or kept under its class name
+# (a staged private module).
+# Format: bundle_class<TAB>namespace, or bundle_class.function<TAB>full name for a
+# function that is also registered under a second name.
+AbstractAlarmUtilities	system.alarm
+AbstractDBUtilities	system.db
+AbstractIALabsDatasourceFunctions	system.db
+AbstractIALabsOPCFunctions	system.opc
+AbstractNetUtilities	system.net
+AbstractOPCUtilities	system.opc
+AbstractTagUtilities	system.tag
+AbstractUserUtilities	system.user
+DatasetUtilities	system.dataset
+DateUtilities	system.date
+FileUtilities	system.file
+GlobalMapScriptAccess	system.util
+MathUtilities	system.math
+PrintUtilities	system.print
+SecretsUtilities	system.secrets
+SerialUtilities	system.serial
+SystemUtilities	system.util
+ClientAlarmUtilities	system.alarm
+ClientDBUtilities	system.db
+ClientProjectUtilities	system.project
+ClientSecurityUtilities	system.security
+DesignerSystemUtilities	system.util
+GatewayAlarmUtilities	system.alarm
+GatewayConfigUtilities	system.config
+GatewayDBUtilities	system.db
+GatewayProjectUtilities	system.project
+GatewaySecurityUtilities	system.security
+GatewaySystemUtilities	system.util
+RosterScriptModule	system.roster
+AbstractAlarmScriptModule	system.roster
+BacnetScriptingFunctions	system.bacnet
+Dnp3ScriptModule	system.dnp
+LegacyDnp3CommonScriptModule	system.dnp3
+EAMScriptingFunctions	system.eam
+GatewayEventStreamUtilities	system.eventstream
+AbstractHistorianFunctions	system.historian
+AbstractPointTypeFunctions	system.historian.types
+Iec61850ScriptingFunctions	system.iec61850
+KafkaCommonScriptingFunctions	system.kafka
+opc-designer	system.device
+IALabsGatewayScriptingFunctions	system.device
+OpcUaGatewayScriptingFunctions	system.opcua
+ReportScriptingFunctionsPyWrapper	system.report
+SfcScriptingFunctionsPyWrapper	system.sfc
+GroupScriptingUtilsGW	system.groups
+ClientPrintUtilities	system.print
+ClientSystemUtilities	system.util
+FPMIDBUtilities	system.db
+FPMIFileUtilities	system.file
+FPMITagUtilities	system.tag
+NavUtilities	system.nav
+SecurityUtilities	system.security
+VisionNetUtilities	system.net
+VisionUtilities	system.vision
+WindowUtilities	system.gui
+AbstractAlarmScriptModule.createRoster	system.alarm.createRoster
+AbstractAlarmScriptModule.getRosters	system.alarm.getRosters
