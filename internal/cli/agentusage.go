@@ -183,7 +183,8 @@ origin headers cannot be overridden. A 4xx or 5xx answer is IGDEV_E_GATEWAY_API 
 same data; no answer is IGDEV_E_GATEWAY_UNHEALTHY, fixed with igdev gateway ensure.
 With --output <file> the whole body goes to the file, with no cap, and data carries
 method, path, url, status, headers, output (the absolute path), and body_bytes instead of
-body: use it for /openapi.json and any other answer over 4 MiB.`,
+body: use it for /openapi.json and any other answer over 4 MiB. --output alone writes
+the path's last segment (GET /openapi.json --output writes openapi.json).`,
 	"igdev gateway ensure": `pass --json for the machine contract. data carries action
 (reused, started, reset), reason (healthy, not_running, fresh, faulted, token_rejected,
 trial_short), instance_id, namespace, url, ports, container, host_address, trial (or

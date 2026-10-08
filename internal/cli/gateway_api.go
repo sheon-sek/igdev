@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -89,12 +90,17 @@ full size rather than cut silently.
 and replaces the file in one rename once the body has arrived, so a failed or
 refused call leaves no partial file. --json then reports {method, path, url,
 status, headers, output, body_bytes} without the body. Use it for anything larger
-than 4 MiB, such as the Gateway's own OpenAPI document.`,
+than 4 MiB, such as the Gateway's own OpenAPI document. --output alone names the
+file after the path's last segment: GET /openapi.json --output writes openapi.json.`,
 		Example: `  igdev gateway api GET /data/api/v1/gateway-info
   igdev gateway api GET /data/api/v1/resources/names/ignition/tag-provider --json
   igdev gateway api PUT /data/api/v1/resources/ignition/tag-provider --data @provider.json
-  igdev gateway api GET /openapi.json --output openapi.json`,
+  igdev gateway api GET /openapi.json --output openapi.json
+  igdev gateway api GET /openapi.json --output`,
 		RunE: func(_ *cobra.Command, args []string) error {
+			if output == outputFromPath {
+				output, args = apiOutputFile(args)
+			}
 			if len(args) < 2 {
 				return missingArgument("gateway api", "path",
 					"igdev gateway api GET /data/api/v1/gateway-info", "name the method and the Gateway path")
@@ -103,6 +109,9 @@ than 4 MiB, such as the Gateway's own OpenAPI document.`,
 				return extraArguments("gateway api", 2, args)
 			}
 			method, path := strings.ToUpper(args[0]), args[1]
+			if output == outputFromPath {
+				output = apiDefaultOutput(path)
+			}
 			if !validMethod(method) {
 				return contract.UsageFault(fmt.Sprintf("%q is not an HTTP method", args[0]),
 					contract.Remediation{Command: "igdev help gateway api", Why: "use GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS"})
@@ -163,8 +172,39 @@ than 4 MiB, such as the Gateway's own OpenAPI document.`,
 	}
 	cmd.Flags().StringVar(&data, "data", "", "request body: @file, - for stdin, or the body itself")
 	cmd.Flags().StringArrayVar(&headers, "header", nil, "extra request header, Name: value (repeatable)")
-	cmd.Flags().StringVar(&output, "output", "", "write the whole response body to this file instead of printing it")
+	cmd.Flags().StringVar(&output, "output", "", "write the whole response body to this file instead of printing it (alone: the path's last segment)")
+	cmd.Flags().Lookup("output").NoOptDefVal = outputFromPath
 	return cmd
+}
+
+// outputFromPath is --output given without a value. pflag then leaves a
+// space-separated file name among the arguments, so apiOutputFile takes it back.
+const outputFromPath = "{basename}"
+
+// apiOutputFile resolves a bare --output: with three arguments, the one that is
+// not <METHOD> <path> is the file (--output openapi.json); otherwise the file
+// is named after the path once it is known.
+func apiOutputFile(args []string) (string, []string) {
+	if len(args) != 3 {
+		return outputFromPath, args
+	}
+	if validMethod(strings.ToUpper(args[0])) {
+		return args[2], args[:2]
+	}
+	return args[0], args[1:]
+}
+
+// apiDefaultOutput is the file a bare --output writes: the path's last segment
+// without its query, or response.body when the path has none.
+func apiDefaultOutput(p string) string {
+	if i := strings.IndexAny(p, "?#"); i >= 0 {
+		p = p[:i]
+	}
+	name := pathpkg.Base(p)
+	if name == "" || name == "/" || name == "." || name == ".." {
+		return "response.body"
+	}
+	return name
 }
 
 // sendAPI sends one request to the Instance's Gateway with its token, and

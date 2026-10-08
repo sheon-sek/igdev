@@ -125,6 +125,22 @@ func TestGatewayAPIOutputWritesTheWholeAnswer(t *testing.T) {
 		t.Error("the body was printed as well as written")
 	}
 
+	// --output alone names the file after the path; --output=<file> and a file
+	// before <METHOD> still work.
+	for _, args := range [][]string{
+		{"gateway", "api", "GET", "/big?x=1", "--output", "--json"},
+		{"gateway", "api", "--output", "GET", "/big", "--json"},
+		{"gateway", "api", "GET", "/big", "--output=other.json", "--json"},
+		{"gateway", "api", "--output", "third.json", "GET", "/big", "--json"},
+	} {
+		testrig.WantExit(t, env.RunIn(dir, args...), contract.ExitOK)
+	}
+	for _, name := range []string{"big", "other.json", "third.json"} {
+		if written, err := os.ReadFile(filepath.Join(dir, name)); err != nil || string(written) != body {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+
 	// A refused call writes no file.
 	failed := env.RunIn(dir, "gateway", "api", "GET", "/missing", "--output", "missing.json", "--json")
 	testrig.WantExit(t, failed, contract.ExitFailure)
