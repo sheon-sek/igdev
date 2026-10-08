@@ -48,7 +48,7 @@ func (a *App) newRoot() *cobra.Command {
 	// envelope: the rendered text becomes data instead of escaping the contract.
 	root.SetHelpFunc(a.printHelp)
 
-	root.AddCommand(a.newInitCmd(), a.newSetupCmd(), a.newStatusCmd(), a.newDoctorCmd(), a.newVersionCmd(), a.newGatewayCmd(), a.newBaselineCmd(), a.newModuleCmd(), a.newCatalogCmd())
+	root.AddCommand(a.newInitCmd(), a.newSetupCmd(), a.newStatusCmd(), a.newDoctorCmd(), a.newVersionCmd(), a.newGatewayCmd(), a.newBaselineCmd(), a.newModuleCmd(), a.newCatalogCmd(), a.newLookupCmd())
 	root.AddCommand(a.newCheckCmd(), a.newTestCmd(), a.newBuildCmd(), a.newJythonCmd())
 	root.AddCommand(a.newRestartCmd(), a.newProjectCmd())
 	root.AddCommand(a.newCILocalCmd())

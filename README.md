@@ -89,6 +89,8 @@ igdev test
 igdev build                           # re-stages the modules the Gateway mounts
 igdev check --all --gateway           # everything, plus the runtime half
 
+igdev lookup "read tag values"                     # find a system.* function or REST endpoint
+igdev lookup --name system.tag.readBlocking        # one entry in full
 igdev module require system.report.executeReport   # capability preflight
 igdev jython check src/main/python
 
@@ -141,8 +143,10 @@ is running, the staged modules, the catalog digests, and which project verbs are
 available. It works before `init` and `setup`. Its fields are documented in
 [`docs/reference/agent-context.md`](docs/reference/agent-context.md).
 
-`igdev agent skill-install` writes the workflow skill this binary ships (globally by
-default, `--scope repo` into the repository), with the CLI Contract Version in its
+`igdev agent skill-install` writes the workflow skill this binary ships into both
+`~/.claude/skills/igdev` (Claude Code) and `~/.agents/skills/igdev` (Codex and other
+Agent Skills harnesses); `--harness` picks one and `--scope repo` installs into the
+repository instead. The skill carries the CLI Contract Version in its
 frontmatter so the guidance can never contradict the tool.
 
 To reproduce a CI job locally, `igdev ci-local --job <name>` runs it through `act`;

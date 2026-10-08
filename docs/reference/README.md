@@ -69,6 +69,7 @@ Orient before acting: igdev status --json works everywhere, and igdev agent cont
 | [`igdev init`](init.md) | Create or edit the Project Contract (igdev.toml) |
 | [`igdev jython`](jython.md) | Compile project code with the pinned Jython compatibility checker |
 | [`igdev jython check`](jython-check.md) | Compile every .py file under the given paths in one JVM |
+| [`igdev lookup`](lookup.md) | Find a system.* function or a Gateway REST endpoint from one sentence |
 | [`igdev module`](module.md) | List modules and check what project code requires |
 | [`igdev module add`](module-add.md) | Stage a private module artifact in the checkout |
 | [`igdev module clear`](module-clear.md) | Remove the private modules this checkout stages |

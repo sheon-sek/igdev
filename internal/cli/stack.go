@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/sheon-sek/igdev/internal/project"
 )
@@ -50,6 +51,21 @@ var stackCommands = map[Stack]project.Commands{
 	StackPython: {Test: "pytest"},
 }
 
+// stackArtifacts are the module artifacts a stack's build writes, as the
+// `[modules].artifacts` glob the init Wizard offers: the Ignition SDK's Gradle
+// plugin writes the signed and unsigned .modl under build/, and the Maven plugin
+// under target/.
+var stackArtifacts = map[Stack]string{
+	StackGradle: "build/*.modl",
+	StackMaven:  "target/*.modl",
+}
+
+// modulePluginMarkers are the build-file strings that say the build produces an
+// Ignition module: the SDK's Gradle plugin id and the Maven plugin's artifact id.
+// Only a build that declares one gets the artifact glob pre-filled, because a
+// glob that matches nothing fails `igdev build`.
+var modulePluginMarkers = []string{"io.ia.sdk.modl", "ignition-maven-plugin"}
+
 // scanCandidates are the directories the Wizard offers as scan roots, after the
 // schema default: an Ignition repository keeps its Jython under `project/`, and
 // a hand-rolled one often under `python/`.
@@ -62,6 +78,9 @@ type detection struct {
 	Stack    Stack
 	Marker   string
 	Commands project.Commands
+	// BuildsModules reports that a build file declares an Ignition module
+	// plugin, so the layout's artifact glob is a safe default.
+	BuildsModules bool
 	// Scan is never empty: a repository with none of the candidate directories
 	// keeps the schema default rather than writing a scan root it does not have.
 	Scan []string
@@ -79,10 +98,28 @@ func detectStack(root string) detection {
 			out.Stack = candidate.stack
 			out.Marker = name
 			out.Commands = stackCommands[candidate.stack]
+			out.BuildsModules = declaresModulePlugin(root, candidate.files)
 			return out
 		}
 	}
 	return out
+}
+
+// declaresModulePlugin reads the stack's build files that exist and reports
+// whether any of them names an Ignition module plugin.
+func declaresModulePlugin(root string, files []string) bool {
+	for _, name := range files {
+		raw, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			continue
+		}
+		for _, marker := range modulePluginMarkers {
+			if strings.Contains(string(raw), marker) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // existingScanRoots keeps the candidate directories that are there, falling back

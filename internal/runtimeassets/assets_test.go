@@ -150,9 +150,8 @@ func TestComposeEnvCarriesTheRuntimeSettings(t *testing.T) {
 	}
 }
 
-// The unsigned-modules switch is rendered from the contract: false is what a
-// checkout materialized before the key existed carried, and true is what a module
-// repository that builds unsigned artifacts asks for.
+// The unsigned-modules switch is rendered from the contract's effective value:
+// true unless the contract states false (ADR 0006, amendment 1).
 func TestComposeEnvRendersTheUnsignedModulesSwitch(t *testing.T) {
 	off, err := ComposeEnv(sampleInput())
 	if err != nil {

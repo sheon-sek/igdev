@@ -156,12 +156,13 @@ type Gateway struct {
 	SmokeEndpoints []string `toml:"smoke_endpoints"`
 	// AllowUnsignedModules lets the Gateway load a module whose artifact carries
 	// no valid signature: the value `igdev setup` renders as
-	// IGNITION_ALLOW_UNSIGNED_MODULES. A module repository that builds unsigned
-	// artifacts states it. The key is additive to schema v1 and optional: it is
-	// omitted from the rendered contract while it holds the default false, so a
-	// contract written before this key existed renders byte-identically to one
-	// written after it, and the rendered runtime is unchanged too.
-	AllowUnsignedModules bool `toml:"allow_unsigned_modules"`
+	// IGNITION_ALLOW_UNSIGNED_MODULES. An igdev Gateway is a development Gateway
+	// and module repositories build unsigned artifacts, so the schema default is
+	// true (ADR 0006, amendment 1); nil means the contract does not state the
+	// key. The key is additive to schema v1 and optional: it is rendered only
+	// when a contract turns the switch off with false. Read it through
+	// UnsignedModulesAllowed.
+	AllowUnsignedModules *bool `toml:"allow_unsigned_modules"`
 	// TrialReset is how the Gateway's trial is kept: TrialResetAuto (the default)
 	// or TrialResetOff. The key is additive to schema v1 and optional: it is
 	// omitted from the rendered contract while it holds the default.
@@ -171,6 +172,12 @@ type Gateway struct {
 	// resources exist before the Gateway's first start (ADR 0009). The key is
 	// optional and omitted from the rendered contract while it is empty.
 	Seed []string `toml:"seed"`
+}
+
+// UnsignedModulesAllowed is the effective allow_unsigned_modules: the stated
+// value, or the schema default true when the contract does not state it.
+func (g Gateway) UnsignedModulesAllowed() bool {
+	return g.AllowUnsignedModules == nil || *g.AllowUnsignedModules
 }
 
 // TrialAutoReset reports whether the contract asks for the trial keeper: any
@@ -447,8 +454,8 @@ func (d Doc) Render() []byte {
 	if len(d.Gateway.SmokeEndpoints) > 0 {
 		fmt.Fprintf(&b, "smoke_endpoints = %s\n", tomlStrings(d.Gateway.SmokeEndpoints))
 	}
-	if d.Gateway.AllowUnsignedModules {
-		fmt.Fprintf(&b, "allow_unsigned_modules = %t\n", d.Gateway.AllowUnsignedModules)
+	if !d.Gateway.UnsignedModulesAllowed() {
+		fmt.Fprintf(&b, "allow_unsigned_modules = %t\n", false)
 	}
 	if d.Gateway.TrialReset == TrialResetOff {
 		fmt.Fprintf(&b, "trial_reset = %s\n", tomlString(d.Gateway.TrialReset))

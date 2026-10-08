@@ -8,6 +8,19 @@
     "scope": "global",
     "path": "<HOME>/.agents/skills/igdev/SKILL.md",
     "action": "created",
-    "version": "2"
+    "version": "2",
+    "harness": "all",
+    "targets": [
+      {
+        "harness": "agents",
+        "path": "<HOME>/.agents/skills/igdev/SKILL.md",
+        "action": "created"
+      },
+      {
+        "harness": "claude",
+        "path": "<HOME>/.claude/skills/igdev/SKILL.md",
+        "action": "created"
+      }
+    ]
   }
 }

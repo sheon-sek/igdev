@@ -1,0 +1,53 @@
+{
+  "ok": true,
+  "contract": "2",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "query": "import project",
+    "kind": "rest",
+    "ignition_version": "8.3.8",
+    "indexes": {
+      "rest": {
+        "path": "<HOME>/.cache/igdev/lookup/8.3.8/rest.json",
+        "source": "openapi",
+        "sha256": "d569afb751dbfef6966fe30265b6f7c25f0252fd0fd2ca356779a58c3202afc1",
+        "built": true,
+        "endpoints": 3
+      }
+    },
+    "results": [
+      {
+        "kind": "rest",
+        "name": "POST /data/api/v1/projects/import/{name}",
+        "score": 8,
+        "summary": "Import a project into this Ignition Gateway.",
+        "module": "platform",
+        "module_enabled": true,
+        "call": "igdev gateway api POST '/data/api/v1/projects/import/{name}' --header 'Content-Type: application/zip' --data @body.zip",
+        "source": "openapi"
+      },
+      {
+        "kind": "rest",
+        "name": "POST /data/api/v1/projects",
+        "score": 5,
+        "summary": "Create a new project.",
+        "module": "platform",
+        "module_enabled": true,
+        "call": "igdev gateway api POST '/data/api/v1/projects' --data @body.json",
+        "source": "openapi"
+      },
+      {
+        "kind": "rest",
+        "name": "POST /data/api/v1/tags/import",
+        "score": 4,
+        "summary": "Import tags from a file.",
+        "module": "platform",
+        "module_enabled": true,
+        "call": "igdev gateway api POST '/data/api/v1/tags/import'",
+        "source": "openapi"
+      }
+    ]
+  }
+}

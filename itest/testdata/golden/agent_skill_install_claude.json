@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "contract": "2",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "scope": "global",
+    "path": "<HOME>/.claude/skills/igdev/SKILL.md",
+    "action": "created",
+    "version": "2",
+    "harness": "claude",
+    "targets": [
+      {
+        "harness": "claude",
+        "path": "<HOME>/.claude/skills/igdev/SKILL.md",
+        "action": "created"
+      }
+    ]
+  }
+}

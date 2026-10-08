@@ -1,0 +1,20 @@
+[
+  {
+    "id": "com.acme.vision",
+    "name": "Acme Vision",
+    "version": "1.2.3",
+    "source": "<VISION>",
+    "artifact": "acme-vision.modl",
+    "path": "<ROOT>/.igdev/modules/acme-vision.modl",
+    "action": "created"
+  },
+  {
+    "id": "com.acme.historian",
+    "name": "Acme Historian",
+    "version": "0.9.0",
+    "source": "<HISTORIAN>",
+    "artifact": "acme-historian.modl",
+    "path": "<ROOT>/.igdev/modules/acme-historian.modl",
+    "action": "created"
+  }
+]

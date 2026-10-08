@@ -43,6 +43,26 @@ const (
 	scopeRepo   = "repo"
 )
 
+// The --harness values `agent skill-install` accepts: which skills roots the
+// skill is installed into. agents is ~/.agents/skills (Codex and other Agent
+// Skills harnesses), claude is ~/.claude/skills (Claude Code), and all is both.
+const (
+	harnessAll    = "all"
+	harnessAgents = "agents"
+	harnessClaude = "claude"
+)
+
+// skillHarnesses are the install targets in install order. agents comes first
+// because it is where igdev always installed, so the envelope's top-level path
+// stays where Contract 2 callers read it.
+var skillHarnesses = []struct {
+	name string
+	dir  string
+}{
+	{harnessAgents, ".agents"},
+	{harnessClaude, ".claude"},
+}
+
 // agentContextData is the `data` member of a successful `igdev agent context`
 // envelope: one call's orientation. The key set and order are frozen by the
 // goldens in itest/testdata/golden, and it is reported in every lifecycle
@@ -391,7 +411,7 @@ func agentModulesOf(found project.Found, doc project.Doc) agentModules {
 	return agentModules{
 		Count:                       staged.Count,
 		Staged:                      staged.Staged,
-		AllowUnsignedModules:        doc.Gateway.AllowUnsignedModules,
+		AllowUnsignedModules:        doc.Gateway.UnsignedModulesAllowed(),
 		AutoAccepted:                autoAccepted,
 		RequirePrivateModuleConsent: doc.Modules.RequirePrivateModuleConsent,
 	}
@@ -524,16 +544,32 @@ func (a *App) printAgentContext(data agentContextData) {
 type agentSkillInstallData struct {
 	// Scope is the resolved install scope: global or repo.
 	Scope string `json:"scope"`
+	// Path is the first target's skill document, absolute: the agents root
+	// unless --harness claude.
+	Path string `json:"path"`
+	// Action sums up the targets: created when every target was created,
+	// unchanged when every target already matched, and updated otherwise.
+	Action string `json:"action"`
+	// Version is the CLI Contract Version the installed frontmatter carries.
+	Version string `json:"version"`
+	// Harness is the resolved --harness value: all, agents, or claude.
+	Harness string `json:"harness"`
+	// Targets are the installs, one per skills root, in install order.
+	Targets []agentSkillTarget `json:"targets"`
+}
+
+// agentSkillTarget is one skills root the skill was written into.
+type agentSkillTarget struct {
+	// Harness is agents or claude.
+	Harness string `json:"harness"`
 	// Path is the skill document's absolute path.
 	Path string `json:"path"`
 	// Action is created, updated, or unchanged.
 	Action string `json:"action"`
-	// Version is the CLI Contract Version the installed frontmatter carries.
-	Version string `json:"version"`
 }
 
 func (a *App) newAgentSkillInstallCmd() *cobra.Command {
-	var scope string
+	var scope, harness string
 	cmd := &cobra.Command{
 		Use:   "skill-install",
 		Short: "Install the Agent Skill that matches this binary",
@@ -541,17 +577,22 @@ func (a *App) newAgentSkillInstallCmd() *cobra.Command {
 SKILL.md, is the thin workflow an agent follows when working an igdev repository.
 Beside it, references/ holds the command reference and the error-code reference,
 which an agent reads only when a task needs them. It is installed globally by
-default, into ` + "`~/.agents/skills/igdev/`" + `, so one install covers every repository.
-With ` + "`--scope repo`" + ` it goes into the repository instead, at
-` + "`.agents/skills/igdev/`" + `, where it can be committed and reviewed.
+default, so one install covers every repository, and into both skills roots:
+` + "`~/.claude/skills/igdev/`" + `, which Claude Code reads, and ` + "`~/.agents/skills/igdev/`" + `,
+which Codex and other Agent Skills harnesses read. ` + "`--harness claude`" + ` or
+` + "`--harness agents`" + ` installs into one of them. With ` + "`--scope repo`" + ` it goes into the
+repository instead, at ` + "`.claude/skills/igdev/`" + ` and ` + "`.agents/skills/igdev/`" + `, where it can
+be committed and reviewed.
 
 The entry's frontmatter carries the CLI Contract Version this binary speaks, so the
-guidance can never disagree with the tool. igdev owns SKILL.md and references/:
-installation writes every embedded file and removes pages from references/ that the
-embedded skill no longer carries. Other files beside them are left alone, and a
-symlinked skill directory or references/ is written through, never replaced. It is
-idempotent: files that already match are left untouched.`,
+guidance can never disagree with the tool. igdev owns SKILL.md and references/ at
+every target: installation writes every embedded file and removes pages from
+references/ that the embedded skill no longer carries. Other files beside them are
+left alone, and a symlinked skill directory or references/ is written through, never
+replaced, so one root linked to the other is written once and reported unchanged the
+second time. It is idempotent: files that already match are left untouched.`,
 		Example: `  igdev agent skill-install
+  igdev agent skill-install --harness claude
   igdev agent skill-install --scope repo
   igdev agent skill-install --json`,
 		Args: rejectArgs("agent skill-install"),
@@ -560,7 +601,7 @@ idempotent: files that already match are left untouched.`,
 			if err != nil {
 				return err
 			}
-			data, fault := installAgentSkill(found, scope)
+			data, fault := installAgentSkill(found, scope, harness)
 			if fault != nil {
 				return fault
 			}
@@ -569,18 +610,20 @@ idempotent: files that already match are left untouched.`,
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", scopeGlobal,
-		"where to install the skill: global (~/.agents/skills) or repo (.agents/skills)")
+		"where to install the skill: global (~/.claude/skills, ~/.agents/skills) or repo (.claude/skills, .agents/skills)")
+	cmd.Flags().StringVar(&harness, "harness", harnessAll,
+		"which skills roots to install into: all, claude (Claude Code), or agents (Codex and other harnesses)")
 	return cmd
 }
 
-// installAgentSkill resolves the install directory for the scope and writes the
-// embedded document there.
-func installAgentSkill(found project.Found, scope string) (agentSkillInstallData, *contract.Fault) {
-	var dir string
+// installAgentSkill resolves the install directories for the scope and harness
+// and writes the embedded skill into each of them.
+func installAgentSkill(found project.Found, scope, harness string) (agentSkillInstallData, *contract.Fault) {
+	var base string
 	switch strings.TrimSpace(scope) {
 	case "", scopeGlobal:
 		scope = scopeGlobal
-		dir = filepath.Join(xdg.Home(), ".agents", "skills", agentskill.Dir)
+		base = xdg.Home()
 	case scopeRepo:
 		if !found.InProject() {
 			return agentSkillInstallData{}, contract.NewFault(contract.CodeNotInitialized, contract.ExitFailure,
@@ -590,13 +633,48 @@ func installAgentSkill(found project.Found, scope string) (agentSkillInstallData
 					contract.Remediation{Command: "igdev init", Why: "create the Project Contract first"},
 					contract.Remediation{Command: "igdev agent skill-install", Why: "install the skill globally instead"})
 		}
-		dir = filepath.Join(found.Root, ".agents", "skills", agentskill.Dir)
+		base = found.Root
 	default:
 		return agentSkillInstallData{}, contract.UsageFault(
 			fmt.Sprintf("--scope %q is not %s or %s", scope, scopeGlobal, scopeRepo),
 			contract.Remediation{Command: "igdev help agent skill-install", Why: "show the accepted scopes"})
 	}
-	return writeAgentSkill(dir, scope)
+	harness = strings.TrimSpace(harness)
+	if harness == "" {
+		harness = harnessAll
+	}
+	if harness != harnessAll && harness != harnessAgents && harness != harnessClaude {
+		return agentSkillInstallData{}, contract.UsageFault(
+			fmt.Sprintf("--harness %q is not %s, %s, or %s", harness, harnessAll, harnessClaude, harnessAgents),
+			contract.Remediation{Command: "igdev help agent skill-install", Why: "show the accepted harnesses"})
+	}
+
+	data := agentSkillInstallData{Scope: scope, Version: agentskill.Version(), Harness: harness}
+	for _, target := range skillHarnesses {
+		if harness != harnessAll && harness != target.name {
+			continue
+		}
+		path, action, fault := writeAgentSkill(filepath.Join(base, target.dir, "skills", agentskill.Dir))
+		if fault != nil {
+			return agentSkillInstallData{}, fault
+		}
+		data.Targets = append(data.Targets, agentSkillTarget{Harness: target.name, Path: path, Action: action})
+	}
+	data.Path = data.Targets[0].Path
+	data.Action = summedAction(data.Targets)
+	return data, nil
+}
+
+// summedAction is the envelope's one action for every target: created or
+// unchanged when all targets agree, updated otherwise.
+func summedAction(targets []agentSkillTarget) string {
+	first := targets[0].Action
+	for _, target := range targets[1:] {
+		if target.Action != first {
+			return "updated"
+		}
+	}
+	return first
 }
 
 // writeAgentSkill writes the embedded skill into dir and removes every page in
@@ -606,13 +684,13 @@ func installAgentSkill(found project.Found, scope string) (agentSkillInstallData
 // SKILL.md before), unchanged (every file already matched and nothing was
 // removed), or updated. Identical files are left untouched, so a re-install
 // neither writes nor moves their mtimes.
-func writeAgentSkill(dir, scope string) (agentSkillInstallData, *contract.Fault) {
+func writeAgentSkill(dir string) (string, string, *contract.Fault) {
 	entry := filepath.Join(dir, agentskill.FileName)
 	action := "unchanged"
 	if _, err := os.Lstat(entry); os.IsNotExist(err) {
 		action = "created"
 	} else if err != nil {
-		return agentSkillInstallData{}, writeFault(entry, err)
+		return "", "", writeFault(entry, err)
 	}
 
 	embedded := agentskill.Files()
@@ -620,13 +698,13 @@ func writeAgentSkill(dir, scope string) (agentSkillInstallData, *contract.Fault)
 		path := filepath.Join(dir, filepath.FromSlash(name))
 		existing, err := os.ReadFile(path)
 		if err != nil && !os.IsNotExist(err) {
-			return agentSkillInstallData{}, writeFault(path, err)
+			return "", "", writeFault(path, err)
 		}
 		if err == nil && bytes.Equal(existing, embedded[name]) {
 			continue
 		}
 		if err := atomicfile.Write(path, embedded[name], 0o644, 0o755); err != nil {
-			return agentSkillInstallData{}, writeFault(path, err)
+			return "", "", writeFault(path, err)
 		}
 		if action == "unchanged" {
 			action = "updated"
@@ -635,17 +713,12 @@ func writeAgentSkill(dir, scope string) (agentSkillInstallData, *contract.Fault)
 
 	removed, fault := pruneAgentSkill(dir, embedded)
 	if fault != nil {
-		return agentSkillInstallData{}, fault
+		return "", "", fault
 	}
 	if removed && action == "unchanged" {
 		action = "updated"
 	}
-	return agentSkillInstallData{
-		Scope:   scope,
-		Path:    entry,
-		Action:  action,
-		Version: agentskill.Version(),
-	}, nil
+	return entry, action, nil
 }
 
 // pruneAgentSkill removes the files under dir's references/ that the embedded
@@ -715,5 +788,8 @@ func sortedFileNames(files map[string][]byte) []string {
 }
 
 func (a *App) printAgentSkillInstall(data agentSkillInstallData) {
-	fmt.Fprintf(a.Stdout, "skill:     %s (%s, %s, contract %s)\n", data.Path, data.Action, data.Scope, data.Version)
+	for _, target := range data.Targets {
+		fmt.Fprintf(a.Stdout, "skill:     %s (%s, %s, %s, contract %s)\n",
+			target.Path, target.Action, data.Scope, target.Harness, data.Version)
+	}
 }

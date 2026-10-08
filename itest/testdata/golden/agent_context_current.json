@@ -41,7 +41,7 @@
     "modules": {
       "count": 0,
       "staged": [],
-      "allow_unsigned_modules": false,
+      "allow_unsigned_modules": true,
       "auto_accepted": [],
       "require_private_module_consent": false
     },
