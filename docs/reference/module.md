@@ -38,6 +38,7 @@ Checkout Setup; every contract write is atomic and prints a unified diff.
 | [`igdev module add`](module-add.md) | Stage a private module artifact in the checkout |
 | [`igdev module clear`](module-clear.md) | Remove the private modules this checkout stages |
 | [`igdev module enable`](module-enable.md) | Add modules to the contract's [modules].enabled whitelist |
+| [`igdev module install`](module-install.md) | Hot-install a module into the running Gateway, keeping its data |
 | [`igdev module list`](module-list.md) | List the built-in modules, the private artifacts, and the whitelist |
 | [`igdev module require`](module-require.md) | Check that every required module of a capability is enabled |
 

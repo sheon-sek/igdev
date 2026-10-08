@@ -415,6 +415,28 @@ igdev gateway data get <p> [local]  copy <p> out of the data directory
 igdev gateway api <METHOD> <path>   call the Gateway REST API with the Instance token
 ```
 
+Working on the running Gateway without losing its data (ADR 0011):
+
+```text
+igdev restart                       restart in place, wait for RUNNING, report modules
+                                    (healthy, quarantined with reason, pending upgrades)
+igdev module install <file.modl>    hot-install over REST (upload, accept, install),
+                                    stage it, restart when an upgrade is pending
+igdev build --install               build, re-stage, then module install every changed
+                                    artifact
+igdev project import <dir|zip>      zip a project directory and import it
+igdev project export <name>         export a project into a directory or a .zip
+```
+
+`gateway reset` loads a staged module but discards projects and configuration;
+these verbs keep them. A module installed over a running build of the same id waits as a
+pending upgrade until a restart, and `module install` runs that restart itself. 8.3
+starts an unsigned module installed this way only after a restart, and may then ask for
+the module's certificate in its commissioning app; `restart` accepts it when the module is
+one the checkout stages (ADR 0006) and stops at exit level 3 for anything else. A
+`[modules].enabled` whitelist fixes the module list when the container starts, so a new
+id installed under one is reported `inactive` until the Gateway is recreated.
+
 Every engine call is `docker compose --project-name igdev-<instance> --file
 <runtime>/compose.yaml --env-file <runtime>/compose.env <verb>`, with the admin
 credentials, the staged Baseline's restore arguments, and the accepted private module

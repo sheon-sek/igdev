@@ -99,6 +99,34 @@ func Stage(dir, src string) (Staged, *contract.Fault) {
 	return Staged{Record: record, Path: path, Bytes: written, Replaced: replaced}, nil
 }
 
+// StageReplacing stages src as Stage does and removes every other staged file
+// that declares the same module id, so one module id stays one staged file: a
+// version bump changes the file name, and the old build would otherwise stay
+// mounted beside the new one. It reports the file names it removed.
+func StageReplacing(dir, src string) (Staged, []string, *contract.Fault) {
+	existing, fault := scanFiles(dir)
+	if fault != nil {
+		return Staged{}, nil, fault
+	}
+	written, fault := Stage(dir, src)
+	if fault != nil {
+		return Staged{}, nil, fault
+	}
+	var superseded []string
+	for _, record := range existing {
+		if record.ID != written.ID || record.Artifact == written.Artifact {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, record.Artifact)); err != nil && !os.IsNotExist(err) {
+			return Staged{}, nil, contract.NewFault(contract.CodeInternal, contract.ExitFailure,
+				fmt.Sprintf("cannot remove the superseded artifact %s: %v", record.Artifact, err)).WithCause(err)
+		}
+		superseded = append(superseded, record.Artifact)
+	}
+	sort.Strings(superseded)
+	return written, superseded, nil
+}
+
 // Artifact is one artifact a `[modules].artifacts` glob resolved and igdev
 // staged, with the glob that produced it.
 type Artifact struct {
@@ -126,20 +154,6 @@ type Artifact struct {
 // other staged file that declares the same module id, which is what makes a
 // version bump replace the previous build instead of joining it.
 func StageArtifacts(root, dir string, globs []string) ([]Artifact, *contract.Fault) {
-	if len(globs) == 0 {
-		return nil, nil
-	}
-	existing, fault := scanFiles(dir)
-	if fault != nil {
-		return nil, fault
-	}
-	staged := make(map[string]string, len(existing))
-	for _, record := range existing {
-		if record.ID != "" {
-			staged[record.Artifact] = record.ID
-		}
-	}
-
 	var out []Artifact
 	for _, pattern := range globs {
 		matches, fault := globArtifacts(root, pattern)
@@ -150,25 +164,11 @@ func StageArtifacts(root, dir string, globs []string) ([]Artifact, *contract.Fau
 			return nil, artifactGlobFault(pattern)
 		}
 		for _, match := range matches {
-			written, fault := Stage(dir, match)
+			written, superseded, fault := StageReplacing(dir, match)
 			if fault != nil {
 				return nil, fault
 			}
-			artifact := Artifact{Staged: written, Glob: pattern, Source: match}
-			for name, id := range staged {
-				if id != written.ID || name == written.Artifact {
-					continue
-				}
-				if err := os.Remove(filepath.Join(dir, name)); err != nil && !os.IsNotExist(err) {
-					return nil, contract.NewFault(contract.CodeInternal, contract.ExitFailure,
-						fmt.Sprintf("cannot remove the superseded artifact %s: %v", name, err)).WithCause(err)
-				}
-				artifact.Superseded = append(artifact.Superseded, name)
-				delete(staged, name)
-			}
-			sort.Strings(artifact.Superseded)
-			staged[written.Artifact] = written.ID
-			out = append(out, artifact)
+			out = append(out, Artifact{Staged: written, Glob: pattern, Source: match, Superseded: superseded})
 		}
 	}
 	return out, nil

@@ -107,6 +107,7 @@ Checkout Setup; every contract write is atomic and prints a unified diff.`,
 		a.newModuleRequireCmd(),
 		a.newModuleEnableCmd(),
 		a.newModuleAddCmd(),
+		a.newModuleInstallCmd(),
 		a.newModuleClearCmd(),
 	)
 	return cmd

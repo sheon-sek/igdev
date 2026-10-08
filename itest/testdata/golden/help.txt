@@ -36,6 +36,8 @@ Available Commands:
   jython      Compile project code with the pinned Jython compatibility checker
   lookup      Find a system.* function or a Gateway REST endpoint from one sentence
   module      List modules and check what project code requires
+  project     Import and export Ignition projects on the running Gateway
+  restart     Restart the Gateway, wait for it, and report its modules
   setup       Materialize this checkout: Instance identity, ports, runtime files
   status      Report project, setup, and effective config state
   test        Run the project's declared test stage
