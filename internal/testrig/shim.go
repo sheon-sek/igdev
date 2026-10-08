@@ -111,6 +111,30 @@ if [ "$1" = "run" ] || [ "$1" = "create" ]; then
   printf '%064x\n' "$n"
   exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
 fi
+# igdev cleanup reads the engine's objects with ps/volume ls and removes them
+# one by one; the shim answers both from the same state compose up keeps.
+if [ -n "$home" ] && [ "$1" = "ps" ]; then
+  for f in "$home"/containers/*; do
+    [ -f "$f" ] || continue
+    printf '%s\t%s\t%s\t\n' "$(basename "$f")" "$(sed -n 's/^project=//p' "$f")" "$(sed -n 's/^dir=//p' "$f")"
+  done
+  exit 0
+fi
+if [ -n "$home" ] && [ "$1" = "volume" ] && [ "$2" = "ls" ]; then
+  for f in "$home"/volumes/*; do
+    [ -f "$f" ] || continue
+    printf '%s\t%s\n' "$(basename "$f")" "$(sed -n 's/^project=//p' "$f")"
+  done
+  exit 0
+fi
+if [ -n "$home" ] && [ "$1" = "rm" ]; then
+  for a in "$@"; do rm -f "$home/containers/$a"; done
+  exit 0
+fi
+if [ -n "$home" ] && [ "$1" = "volume" ] && [ "$2" = "rm" ]; then
+  for a in "$@"; do rm -f "$home/volumes/$a"; done
+  exit 0
+fi
 if [ "$1" != "compose" ] || [ -z "$home" ]; then
   exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
 fi
@@ -140,7 +164,8 @@ mkdir -p "$home/containers" "$home/volumes"
 case "$verb" in
   up)
     ports="$(sed -n 's/.*127\.0\.0\.1:\([0-9][0-9]*\):[0-9][0-9]*.*/\1/p' "$file" 2>/dev/null | tr '\n' ' ')"
-    printf 'project=%s\nports=%s\n' "$project" "$ports" > "$home/containers/$container"
+    # Compose labels a container with the directory of its first Compose file.
+    printf 'project=%s\nports=%s\ndir=%s\n' "$project" "$ports" "$(cd "$(dirname "$file")" && pwd)" > "$home/containers/$container"
     printf 'project=%s\n' "$project" > "$home/volumes/$volume"
     printf ' Container %s  Started\n' "$container"
     ;;

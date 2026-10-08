@@ -34,3 +34,10 @@ no person involved; the only exit-3 stop left is the EULA, before a Gateway star
 a person can give it once per environment with `IGDEV_ACCEPT_EULA=Y`. `IGDEV_E_CAPACITY`
 stays in the frozen code table, retired. The CLI Contract Version stays 2: no verb,
 flag or `--json` key is removed, and the new flags (`gateway data --user`) only add.
+
+## Amendment 1: `cleanup` confirms only what reaches past the checkout (2026-10-08, igdev#110)
+
+`igdev cleanup` joins the destructive verbs that act when named, for this checkout and
+`--deinit`. `--machine` and `--uninstall` remove other checkouts' Gateways, the Consent
+record and the binary, which are outside this disposable Gateway, so they keep a guard:
+`--yes`, or one y/N in a terminal (ADR 0013).

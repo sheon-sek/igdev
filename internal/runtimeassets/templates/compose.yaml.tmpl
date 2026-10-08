@@ -23,6 +23,10 @@ services:
       args:
         IGNITION_VERSION: {{ quote .IgnitionVersion }}
     image: {{ .Namespace }}:{{ .IgnitionVersion }}
+    # Ties the container to its Instance, so `igdev cleanup` finds it even after
+    # the checkout and its .igdev/ are gone.
+    labels:
+      dev.igdev.instance: {{ quote .InstanceID }}
     # Names the login provider in the seeded security settings, then runs the
     # image's own entrypoint (ADR 0007, amendment 1).
     entrypoint: ["bash", "/usr/local/bin/igdev-gateway-entrypoint.sh"]
@@ -76,6 +80,8 @@ services:
   trial-keeper:
     image: {{ .Namespace }}:{{ .IgnitionVersion }}
     pull_policy: never
+    labels:
+      dev.igdev.instance: {{ quote .InstanceID }}
     depends_on:
       - gateway
     user: "2003:0"

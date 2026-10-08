@@ -378,6 +378,17 @@ pinned act into igdev's cache with go install once; only a host with neither act
 is IGDEV_E_ACT_MISSING, with the install commands in Remediation. --with-gateway ensures the Gateway first and
 adds data.gateway (action, reason, url, host_url, network); the job reads
 IGDEV_GATEWAY_URL and IGDEV_GATEWAY_TOKEN, and the token never appears in argv.`,
+	"igdev cleanup": `pass --json for the machine contract. data carries scope (checkout or
+machine), deinit, uninstall, dry_run, project_root, namespace, the counts removed,
+would_remove, kept and failed, and items: one entry per object with kind, ref, action
+(would_remove, removed, kept, failed), reason, and diff for an in-place edit. Run
+--dry-run --json first and show the items to the person when the scope is not obvious.
+cleanup and --deinit act when named, like gateway reset; --machine and --uninstall need
+--yes, and without it a non-terminal run is IGDEV_E_USAGE at exit 2 with the plan in
+data. Use them only when a person asked for that scope. It never refreshes the Checkout
+Setup and runs with no igdev.toml. A stopped Docker daemon is IGDEV_E_DOCKER_DAEMON and
+nothing is removed. A failed item is IGDEV_E_CLEANUP_PARTIAL: fix its reason and run the
+same command again. Done when a --dry-run lists no would_remove item.`,
 }
 
 // AgentUsage returns the machine-facing section for cmd, or "" when the command
