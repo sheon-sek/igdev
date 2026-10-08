@@ -3,11 +3,12 @@
 // into the Instance image so the resources exist before the Gateway's first start
 // (ADR 0009).
 //
-// A seed is tracked and shared, so it may hold configuration only. Load accepts a
-// resource type only when it is on the allowlist, refuses igdev's own resources,
-// refuses a JSON file that carries a secret field with a value, and refuses two
-// seed directories that write the same file. Every refusal names the offending
-// path. The result is deterministic: files in path order and a digest over their
+// A seed may carry any resource type except igdev's own (the Instance token and
+// the security settings it seeds), and two seed directories may not write the
+// same file. A JSON file that carries a secret field with a value is loaded, with
+// a warning: the seed is tracked, but the Gateway it builds is a disposable
+// development Gateway (ADR 0009, amendment 1). Every refusal and warning names the
+// offending path. The result is deterministic: files in path order and a digest over their
 // names and bytes, which the Setup Stamp records so a seed change makes the
 // checkout stale.
 package projectseed
@@ -27,29 +28,13 @@ import (
 	"github.com/sheon-sek/igdev/internal/contract"
 )
 
-// Limits keep a seed a configuration seed: a file or a total beyond them is
-// refused, never truncated.
+// Limits bound what a seed copies into the image: a file or a total beyond them
+// is refused, never truncated. They are far above any real configuration — a
+// large tag export included.
 const (
-	MaxFileBytes  = 1 << 20
-	MaxTotalBytes = 16 << 20
+	MaxFileBytes  = 64 << 20
+	MaxTotalBytes = 512 << 20
 )
-
-// Allowed are the resource types a project seed may carry, as
-// <module id>/<resource type>: tag, OPC, device, database, schedule and historian
-// configuration. Each is plain configuration whose credentials, when it has any,
-// are a separate field the secret rule refuses.
-var Allowed = []string{
-	"com.inductiveautomation.historian/historian-provider",
-	"com.inductiveautomation.opcua/device",
-	"ignition/database-connection",
-	"ignition/holiday",
-	"ignition/opc-connection",
-	"ignition/schedule",
-	"ignition/tag-definition",
-	"ignition/tag-group",
-	"ignition/tag-provider",
-	"ignition/tag-type-definition",
-}
 
 // Reserved are the resource types igdev seeds itself (ADR 0007). A project seed
 // that names one would replace the security settings or the Instance token, so it
@@ -77,6 +62,8 @@ type Seed struct {
 	// Digest is a sha256 over every file's path and bytes, or "" when there are
 	// no directories.
 	Digest string
+	// Warnings name the files that carry a secret field with a value.
+	Warnings []string
 }
 
 // Load reads the seed directories, relative to root, and applies every rule.
@@ -86,6 +73,7 @@ func Load(root string, dirs []string) (Seed, error) {
 	}
 	byPath := map[string]string{}
 	var files []File
+	var warnings []string
 	total := 0
 	for _, dir := range dirs {
 		base := filepath.Join(root, filepath.FromSlash(dir))
@@ -127,8 +115,12 @@ func Load(root string, dirs []string) (Seed, error) {
 				return invalid(fmt.Sprintf("the seed directories hold more than %d bytes", MaxTotalBytes))
 			}
 			if strings.HasSuffix(rel, ".json") {
-				if err := checkSecrets(data, shown); err != nil {
+				warning, err := checkSecrets(data, shown)
+				if err != nil {
 					return err
+				}
+				if warning != "" {
+					warnings = append(warnings, warning)
 				}
 			}
 			byPath[rel] = shown
@@ -148,7 +140,7 @@ func Load(root string, dirs []string) (Seed, error) {
 		fmt.Fprintf(h, "%s\x00%d\x00", f.Path, len(f.Data))
 		h.Write(f.Data)
 	}
-	return Seed{Files: files, Digest: hex.EncodeToString(h.Sum(nil))}, nil
+	return Seed{Files: files, Digest: hex.EncodeToString(h.Sum(nil)), Warnings: warnings}, nil
 }
 
 // Digest is the seed digest for the Setup Stamp. A seed that cannot be loaded
@@ -162,42 +154,36 @@ func Digest(root string, dirs []string) string {
 	return seed.Digest
 }
 
-// checkType applies the reserved list, then the allowlist, to a file's
-// <module>/<type> prefix.
+// checkType places a file at <module>/<type>/<name>/<file> and refuses igdev's
+// own resource types, which a project seed would otherwise override.
 func checkType(rel, shown string) error {
 	parts := strings.Split(rel, "/")
-	if len(parts) < 3 {
+	if len(parts) >= 3 {
+		kind := parts[0] + "/" + parts[1]
+		for _, reserved := range Reserved {
+			if kind == reserved {
+				return invalid(fmt.Sprintf("seed path %s collides with igdev's own %s resource, which a project seed cannot override", shown, kind))
+			}
+		}
+	}
+	if len(parts) < 4 {
 		return invalid(fmt.Sprintf("seed path %s is not inside <module>/<type>/<name>/", shown))
 	}
-	kind := parts[0] + "/" + parts[1]
-	for _, reserved := range Reserved {
-		if kind == reserved {
-			return invalid(fmt.Sprintf("seed path %s collides with igdev's own %s resource, which a project seed cannot override", shown, kind))
-		}
-	}
-	for _, allowed := range Allowed {
-		if kind == allowed {
-			if len(parts) < 4 {
-				return invalid(fmt.Sprintf("seed path %s is not inside <module>/<type>/<name>/", shown))
-			}
-			return nil
-		}
-	}
-	return invalid(fmt.Sprintf("seed path %s is a %s resource, which is not on the seed allowlist (%s)",
-		shown, kind, strings.Join(Allowed, ", ")))
+	return nil
 }
 
-// checkSecrets refuses a JSON file with a secret-named key that holds a value. An
-// empty string, null, or an empty object is no secret.
-func checkSecrets(data []byte, shown string) error {
+// checkSecrets reports a JSON file with a secret-named key that holds a value as
+// a warning, not a refusal. An empty string, null, or an empty object is no
+// secret. A file that is not JSON is still refused: the Gateway could not read it.
+func checkSecrets(data []byte, shown string) (string, error) {
 	var doc any
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return invalid(fmt.Sprintf("seed path %s is not valid JSON: %v", shown, err))
+		return "", invalid(fmt.Sprintf("seed path %s is not valid JSON: %v", shown, err))
 	}
 	if key, found := findSecret(doc, ""); found {
-		return invalid(fmt.Sprintf("seed path %s carries a secret at %s; a tracked seed holds no credentials", shown, key))
+		return fmt.Sprintf("seed path %s carries a secret at %s, and the seed is tracked in git", shown, key), nil
 	}
-	return nil
+	return "", nil
 }
 
 func findSecret(v any, at string) (string, bool) {

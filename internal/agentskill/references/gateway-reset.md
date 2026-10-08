@@ -5,8 +5,7 @@
 reset is `down --volumes`, then `up`, then `wait`: the Gateway's data is
 discarded and a fresh container starts against the same recorded ports.
 
-The Capacity Gate is applied before anything is discarded, so a refusal never
-costs the data that was about to be reset.
+Low free memory is a warning on stderr, as for up.
 
 ## Usage
 
@@ -25,7 +24,7 @@ igdev gateway reset [flags]
 ## Options
 
 ```text
-      --force            start the Gateway even when the Capacity Gate refuses (accepts the out-of-memory risk)
+      --force            accepted for compatibility: low memory only warns
   -h, --help             help for reset
       --timeout string   how long to wait for health: seconds, or a duration like 3m (default 180s)
 ```
@@ -41,6 +40,6 @@ igdev gateway reset [flags]
 
 pass --json for the machine contract. data is the up shape — instance_id,
 namespace, url, ports, capacity — because reset ends with a started, waited-for Gateway.
-The Capacity Gate runs before anything is discarded, so a refusal at exit 3 costs no
+Consent is checked before anything is discarded, so a refusal at exit 3 costs no
 data; otherwise the volume is removed, the container is recreated, and the staged
 Baseline is applied on the fresh launch.

@@ -79,10 +79,10 @@ func TestGatewayExecRunsInTheGatewayContainer(t *testing.T) {
 	env.AssertNoDockerOrphans(t)
 }
 
-// data put and get address files relative to the Gateway's data directory, as
-// the Gateway's own user, and refuse any path that could leave it before the
-// engine is asked anything.
-func TestGatewayDataMovesFilesUnderTheDataDirectory(t *testing.T) {
+// data put and get address a relative path under the Gateway's data directory
+// and an absolute one anywhere in the container, as the Gateway's own user unless
+// --user root says otherwise.
+func TestGatewayDataMovesFilesInTheContainer(t *testing.T) {
 	env := testrig.NewEnv(t)
 	env.ShimDocker()
 	env.ShimMeminfo(65536)
@@ -130,19 +130,23 @@ func TestGatewayDataMovesFilesUnderTheDataDirectory(t *testing.T) {
 		t.Errorf("a failed get left a file behind (err %v)", err)
 	}
 
-	before := len(env.DockerCalls(t))
-	for _, path := range []string{"../etc/passwd", "a/../../b", "/etc/passwd", "", "."} {
-		res := env.RunIn(dir, "gateway", "data", "get", path, "--json")
-		testrig.WantExit(t, res, contract.ExitUsage)
-		testrig.WantCode(t, testrig.Envelope(t, res.Stdout), contract.CodeUsage)
+	// An absolute path reaches anywhere in the container, and --user root runs
+	// the copy as root (igdev#103).
+	abs := env.RunIn(dir, "gateway", "data", "put", "--user", "root", "run.once", "/usr/local/bin/ignition/user-lib/jdbc/run.once", "--json")
+	testrig.WantExit(t, abs, contract.ExitOK)
+	if tail := composeTail(t, env); !strings.HasPrefix(tail, "exec -T --user root gateway sh -c ") ||
+		!strings.HasSuffix(tail, "igdev-data-put /usr/local/bin/ignition/user-lib/jdbc/run.once") {
+		t.Errorf("absolute put argv tail = %q", tail)
 	}
+
+	// Only an empty path is refused, before the engine is asked anything.
+	before := len(env.DockerCalls(t))
+	res := env.RunIn(dir, "gateway", "data", "get", "", "--json")
+	testrig.WantExit(t, res, contract.ExitUsage)
+	testrig.WantCode(t, testrig.Envelope(t, res.Stdout), contract.CodeUsage)
 	if after := len(env.DockerCalls(t)); after != before {
 		t.Errorf("a refused path still reached the engine (%d calls)", after-before)
 	}
-	// A symlink escape is caught in the container, and is a usage error too.
-	escape := env.Run(testrig.Run{Dir: dir, Args: []string{"gateway", "data", "get", "link/passwd", "--json"}, Env: []string{"IGDEV_SHIM_EXEC_EXIT=97"}})
-	testrig.WantExit(t, escape, contract.ExitUsage)
-	testrig.WantCode(t, testrig.Envelope(t, escape.Stdout), contract.CodeUsage)
 
 	testrig.WantExit(t, env.RunIn(dir, "gateway", "down", "--volumes"), contract.ExitOK)
 	env.AssertNoDockerOrphans(t)

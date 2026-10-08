@@ -107,8 +107,9 @@ func (a *App) projectStaged() (project.Found, *knowledge, error) {
 	if err != nil {
 		return found, nil, err
 	}
-	if fault := gate.Require(a.gateInput(found)); fault != nil {
-		return found, nil, fault
+	found, err = a.requireSetup(found)
+	if err != nil {
+		return found, nil, err
 	}
 	k, err := stagedKnowledge(found, res, doc, eff)
 	return found, k, err

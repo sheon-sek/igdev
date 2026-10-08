@@ -10,9 +10,9 @@ replace X-Ignition-API-Token, Origin, Referer or Host.
 
 --data sends a body: @file reads a file, - reads stdin, anything else is sent as
 given, as application/json unless a --header names another Content-Type. A body over
-16 MiB is refused.
+1 GiB is refused.
 
-Human mode prints the response body and fails on a 4xx or 5xx answer. --json
+Human mode prints the whole response body and fails on a 4xx or 5xx answer. --json
 reports {method, path, url, status, headers, body, body_bytes, truncated}: body is
 parsed when it is JSON, and a response over 4 MiB is reported as truncated with its
 full size rather than cut silently.
@@ -61,9 +61,10 @@ igdev gateway api <METHOD> <path> [flags]
 pass --json for the machine contract. data carries method, path, url,
 status, headers (content-type, content-length, location, etag when present), body (parsed
 JSON, else text, null when empty), body_bytes, and truncated (true when the answer was
-over 4 MiB: body is then the first bytes as text). Use it for every REST call to the
-Instance instead of curl with the token: the path must start with /, and the token and
-origin headers cannot be overridden. A 4xx or 5xx answer is IGDEV_E_GATEWAY_API with the
+over 4 MiB: body is then the first bytes as text). It is the shortest way to a REST call
+on the Instance, since it presents the token itself; the path must start with /, and the
+token and origin headers cannot be overridden. Human mode prints the whole body, and
+--data takes up to 1 GiB. A 4xx or 5xx answer is IGDEV_E_GATEWAY_API with the
 same data; no answer is IGDEV_E_GATEWAY_UNHEALTHY, fixed with igdev gateway ensure.
 With --output <file> the whole body goes to the file, with no cap, and data carries
 method, path, url, status, headers, output (the absolute path), and body_bytes instead of

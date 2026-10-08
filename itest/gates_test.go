@@ -105,10 +105,9 @@ func TestGateZeroLeaksAndOrphansAcrossCommands(t *testing.T) {
 		{"help"},
 		{"help", "status"},
 		{"completion", "bash"},
-		{"stat", "--json"},               // failure paths must clean up too
-		{"status", "--nope"},             // and usage errors
-		{"baseline", "status", "--json"}, // a Baseline needs a materialized checkout
-		{"baseline", "set"},              // and names its argument
+		{"stat", "--json"},   // failure paths must clean up too
+		{"status", "--nope"}, // and usage errors
+		{"baseline", "set"},  // a usage error names its argument
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			res := env.RunIn(root, args...)

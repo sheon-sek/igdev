@@ -38,3 +38,9 @@ verbs, a new flag, a new code). A `[modules].enabled` whitelist is fixed when th
 container starts, so `module install` reports a new id `inactive` under one rather than
 recreating the container. `module install` and `build --install` need a running Gateway;
 they never start one.
+
+## Amendment 1 (2026-10-08): restart accepts every module's terms
+
+Under ADR 0012, `restart` finishes the commissioning modules step for every module it
+lists, staged or not, unless `require_private_module_consent = true`, in which case only
+staged modules are accepted (ADR 0006 amendment 3).

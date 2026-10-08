@@ -20,10 +20,11 @@ import (
 	"github.com/sheon-sek/igdev/internal/gatewayapi"
 )
 
-// The bounds of one `gateway api` call: a request body larger than the first, or
-// a response larger than the second, is refused or reported, never cut silently.
+// The bounds of one `gateway api` call: a request body larger than the first is
+// refused, and a --json response larger than the second is reported as
+// truncated, never cut silently. Human mode and --output stream the whole body.
 const (
-	apiRequestLimit  = 16 << 20
+	apiRequestLimit  = 1 << 30
 	apiResponseLimit = 4 << 20
 	apiTimeout       = 60 * time.Second
 )
@@ -79,9 +80,9 @@ replace X-Ignition-API-Token, Origin, Referer or Host.
 
 --data sends a body: @file reads a file, - reads stdin, anything else is sent as
 given, as application/json unless a --header names another Content-Type. A body over
-16 MiB is refused.
+1 GiB is refused.
 
-Human mode prints the response body and fails on a 4xx or 5xx answer. --json
+Human mode prints the whole response body and fails on a 4xx or 5xx answer. --json
 reports {method, path, url, status, headers, body, body_bytes, truncated}: body is
 parsed when it is JSON, and a response over 4 MiB is reported as truncated with its
 full size rather than cut silently.
@@ -151,22 +152,27 @@ file after the path's last segment: GET /openapi.json --output writes openapi.js
 				})
 				return nil
 			}
-			out, raw := readAPIResponse(resp, method, path, target)
+			if !g.res.IsJSON() && resp.StatusCode < 400 {
+				// Human mode has no envelope to keep small: the whole body goes
+				// to the terminal or the pipe.
+				last := &lastByteWriter{w: a.Stdout}
+				if _, err := io.Copy(last, resp.Body); err != nil {
+					return contract.NewFault(contract.CodeGatewayAPI, contract.ExitFailure,
+						fmt.Sprintf("%s %s answered %s, but the body could not be read: %v", method, path, resp.Status, err)).WithCause(err)
+				}
+				if last.n > 0 && last.last != '\n' {
+					fmt.Fprintln(a.Stdout)
+				}
+				return nil
+			}
+			out := readAPIResponse(resp, method, path, target)
 			if resp.StatusCode >= 400 {
 				return contract.NewFault(contract.CodeGatewayAPI, contract.ExitFailure,
 					fmt.Sprintf("%s %s answered %s", method, path, resp.Status)).
 					WithData(out).
 					WithRemediation(contract.Remediation{Command: "igdev gateway logs --tail 50", Why: "read why the Gateway refused it"})
 			}
-			a.emit(g.res, out, func() {
-				_, _ = a.Stdout.Write(raw)
-				if len(raw) > 0 && raw[len(raw)-1] != '\n' {
-					fmt.Fprintln(a.Stdout)
-				}
-				if out.Truncated {
-					fmt.Fprintf(a.Stderr, "[igdev] the response was %d bytes; the first %d are shown\n", out.BodyBytes, apiResponseLimit)
-				}
-			})
+			a.emit(g.res, out, func() {})
 			return nil
 		},
 	}
@@ -325,9 +331,26 @@ func (a *App) apiBody(data string) ([]byte, *contract.Fault) {
 	return body, nil
 }
 
+// lastByteWriter passes writes through and remembers the last byte, so human
+// mode can end a body that has no trailing newline with one.
+type lastByteWriter struct {
+	w    io.Writer
+	n    int64
+	last byte
+}
+
+func (l *lastByteWriter) Write(p []byte) (int, error) {
+	n, err := l.w.Write(p)
+	if n > 0 {
+		l.n += int64(n)
+		l.last = p[n-1]
+	}
+	return n, err
+}
+
 // readAPIResponse reads the answer up to the cap, counts the rest, and decodes it
-// for the report. raw is what human mode prints.
-func readAPIResponse(resp *http.Response, method, path, url string) (gatewayAPIData, []byte) {
+// for the report.
+func readAPIResponse(resp *http.Response, method, path, url string) gatewayAPIData {
 	out := gatewayAPIData{Method: method, Path: path, URL: url, Status: resp.StatusCode, Headers: apiHeadersOf(resp)}
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, apiResponseLimit))
 	rest, _ := io.Copy(io.Discard, resp.Body)
@@ -341,5 +364,5 @@ func readAPIResponse(resp *http.Response, method, path, url string) (gatewayAPID
 	default:
 		out.Body = string(raw)
 	}
-	return out, raw
+	return out
 }

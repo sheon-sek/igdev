@@ -302,22 +302,24 @@ func TestWizardInteractiveWithoutTerminalIsUsage(t *testing.T) {
 	res.AssertNoLeaksOutside(t, dir)
 }
 
-// The Consent gate: a missing EULA stops the Wizard at exit level 3 with the
-// human command visible, and no answer inside the Wizard writes Consent
-// (ADR 0004).
-func TestWizardSetupConsentMissingExitsThree(t *testing.T) {
+// Without the EULA the setup Wizard reports it, names the command a person runs,
+// and walks on: setup materializes either way, and a prompt answer is never an
+// acceptance (igdev#101).
+func TestWizardSetupConsentMissingWalksOn(t *testing.T) {
 	env := testrig.NewEnv(t)
 	dir := env.Project("repo", testrig.MinimalContract)
 
 	session := env.StartPTY(testrig.PTYRun{Args: []string{"setup"}, Dir: dir, Env: wizardEnv(env)})
-	session.Expect("Has `igdev setup --accept-eula` been run").Send("n")
+	session.Expect("Gateway admin password").Send("\r") // generate
+	session.Expect("Baseline backup").Send("\r")        // none
+	session.Expect("Stage a custom module").Send("\r")  // none
+	session.Expect("Gateway HTTP port").Send("\r")      // allocate
 	res := session.Wait()
 
-	testrig.WantExit(t, res, contract.ExitHumanAction)
+	testrig.WantExit(t, res, contract.ExitOK)
 	for _, want := range []string{
-		"IGDEV_E_CONSENT_REQUIRED",
-		"igdev setup --accept-eula",
 		"the Ignition EULA is not accepted",
+		"igdev setup --accept-eula",
 	} {
 		if !strings.Contains(res.Screen, want) {
 			t.Errorf("the terminal never showed %q:\n%s", want, res.Screen)
@@ -328,10 +330,8 @@ func TestWizardSetupConsentMissingExitsThree(t *testing.T) {
 	} else if _, ok := accepted.Accepted(consent.EULA); ok {
 		t.Error("the Wizard wrote an acceptance a prompt answer cannot give")
 	}
-	// Nothing was materialized either: the missing term stops setup before it
-	// writes anything.
-	if _, err := os.Stat(filepath.Join(dir, project.StateDir)); !os.IsNotExist(err) {
-		t.Errorf("the Consent gate materialized a checkout: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, project.StateDir, "setup.json")); err != nil {
+		t.Errorf("the walkthrough did not materialize the checkout: %v", err)
 	}
 	res.AssertNoLeaksOutside(t, dir, filepath.Join(env.Home, ".config"))
 }
@@ -353,9 +353,6 @@ func TestWizardSetupAcceptEULAUnblocksConsentGate(t *testing.T) {
 	res := session.Wait()
 	testrig.WantExit(t, res, contract.ExitOK)
 
-	if strings.Contains(res.Screen, "Has `igdev setup --accept-eula` been run") {
-		t.Errorf("the Acceptance flag still dead-ends in the Consent gate that names it:\n%s", res.Screen)
-	}
 	if !strings.Contains(res.Screen, "the Ignition EULA is accepted on this machine") {
 		t.Errorf("step 1 never reported the recorded acceptance:\n%s", res.Screen)
 	}

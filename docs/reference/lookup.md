@@ -39,7 +39,7 @@ leaves module_enabled out.
 ## Usage
 
 ```text
-igdev lookup ["<query>"] [flags]
+igdev lookup [<query>...] [flags]
 ```
 
 ## Examples

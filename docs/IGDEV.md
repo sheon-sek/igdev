@@ -83,7 +83,7 @@ and `packaging/install.sh` for real against a loopback file server.
 | `internal/gate` | the Gate: contract schema, Setup Stamp (digest, schema, CLI Contract, Instance identity and ports), `[tool].min_version` — `Evaluate` / `Require` / `Decode` |
 | `internal/instance` | the Instance identity: UUID minting, validation, and the `igdev-<short-id>` namespace |
 | `internal/ports` | dynamic loopback port allocation by bind probe, and the free-port check a refresh uses |
-| `internal/capacity` | the Capacity Gate: `MemAvailable` measurement and the refusal arithmetic (ADR 0003) |
+| `internal/capacity` | the Capacity Gate: `MemAvailable` measurement and the low-memory arithmetic it warns with (ADR 0003) |
 | `internal/docker` | the `docker compose` client: one Instance's project, `up` / `down` / `ps` / `logs` / `restart`, and the running-project listing the Capacity Gate reports |
 | `internal/consent` | the machine-global human-only Consent record: term table, load/accept, the exit-3 check |
 | `internal/runtimeassets` | the embedded Compose / Compose-env / Dockerfile / trial-keeper templates, the Gateway configuration seed, and their deterministic render |
@@ -97,7 +97,7 @@ and `packaging/install.sh` for real against a loopback file server.
 | `internal/semver` | version ordering used by the notice |
 | `internal/xdg` | `~/.cache/igdev`, `~/.config/igdev`, `~/.local/state/igdev` |
 | `internal/gatewayapi` | the `gateway api` request, built from the recorded URL with the token and origin headers a caller cannot replace (ADR 0007) |
-| `internal/projectseed` | the tracked `[gateway] seed`: the type allowlist, the secret-key and size refusals, and its digest (ADR 0009) |
+| `internal/projectseed` | the tracked `[gateway] seed`: the reserved-type and size refusals, the secret-key warning, and its digest (ADR 0009) |
 | `internal/jython` | the pinned standalone-jar table, the lock-guarded cache, and the one-JVM batched compile |
 | `internal/agentskill` | the embedded Agent Skill (`SKILL.md` plus `references/`, which `make reference` writes) |
 | `internal/buildinfo` | the release version and commit stamped in at build time |
@@ -134,8 +134,7 @@ error, `3` human action required. Codes are namespaced `IGDEV_E_*`; `igdev` emit
 `IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED`, `IGDEV_E_VERSION_UNSUPPORTED`, and from the
 Checkout Setup (ticket 03) `IGDEV_E_CONSENT_REQUIRED` (exit 3: a person must accept a
 legal term) and `IGDEV_E_PORT_ALLOC` (the host refused three loopback binds). The
-Gateway suite adds `IGDEV_E_CAPACITY` (exit 3: the Capacity Gate refused to start a
-Gateway and a person frees memory or passes `--force`), `IGDEV_E_GATEWAY_UNHEALTHY`
+Gateway suite adds `IGDEV_E_GATEWAY_UNHEALTHY`
 (a Gateway did not answer before the deadline, or answered a smoke check with an error
 status), `IGDEV_E_DOCKER` (a container-engine call failed, or the engine is not
 installed) and `IGDEV_E_DOCKER_DAEMON` (the docker CLI is there but its daemon is
@@ -155,8 +154,8 @@ handed an id that is neither built-in nor declared by a staged `.modl`, so enabl
 would whitelist a module nothing can load) and `IGDEV_E_MODULE_ARCHIVE_INVALID`
 (`module add` was handed a file that is not a readable module archive: not a zip, no
 `module.xml`, no usable id, or an archive the zip-bomb guard refuses).
-`igdev ci-local` adds `IGDEV_E_ACT_MISSING` (no act on PATH: the remediation carries
-the install commands and no subprocess is attempted) and `IGDEV_E_ACT_FAILED` (act
+`igdev ci-local` adds `IGDEV_E_ACT_MISSING` (no act on PATH and no Go toolchain to
+fetch one: the remediation carries the install commands) and `IGDEV_E_ACT_FAILED` (act
 exited non-zero — the exit level is act's own exit code, and the envelope's `data`
 carries the invocation and the tail of act's output). The pipeline verbs add
 `IGDEV_E_COMMAND_FAILED` (a declared stage exited non-zero) and the Jython codes below;
@@ -349,9 +348,11 @@ development Gateway loads the unsigned builds a module repository produces.
 **Consent.** The record is machine-global: `~/.config/igdev/accepted.toml`, keyed by
 term (`ignition-eula`, `module-license`, `module-cert`) and holding when each was
 accepted and by which CLI. Only a human-invoked command writes it — `igdev setup
---accept-eula` today — and a missing term stops the run with `IGDEV_E_CONSENT_REQUIRED`
-at exit level 3, naming the exact command in Remediation. Consent is checked before
-anything is written, so a refused setup leaves the tree untouched. Re-accepting on a
+--accept-eula` today. `IGDEV_ACCEPT_EULA=Y`, set by a person in an environment's
+configuration, counts as the EULA acceptance without a record (ADR 0004, amendment 2).
+`setup` materializes either way and only notes a missing EULA on stderr; the verbs that
+start a Gateway are the ones that stop with `IGDEV_E_CONSENT_REQUIRED` at exit level 3,
+naming the exact command in Remediation, before anything is discarded. Re-accepting on a
 machine that already consented is a successful no-op: the first acceptance is the
 legal fact, so its timestamp does not move.
 
@@ -380,9 +381,9 @@ force, so an unattended run knows which behaviour it gets (ADR 0006).
 ## The Gateway lifecycle
 
 `igdev gateway` drives the Ignition container the Checkout Setup describes. Every verb
-passes the Gate (a current Checkout Setup) and the machine Consent record first, so a
-refused verb is the same frozen shape `setup` produces, and no verb ever talks to the
-engine before both hold.
+passes the Gate first, which refreshes a missing or stale Checkout Setup on the spot
+(ADR 0012); the verbs that start a Gateway also need the EULA accepted, and no such verb
+talks to the engine before it is.
 
 ```
 igdev gateway ensure [--fresh] [--min-trial D]   reuse a healthy Gateway, start a
@@ -402,16 +403,17 @@ igdev gateway status                `docker compose ps` for this project plus th
 igdev gateway logs [--tail N]       the Gateway's log: streamed for humans, in
                                     data.logs with --json
 igdev gateway url                   the recorded URL, and nothing else
-igdev gateway credentials --json    {username, password, api_token}; human mode never
-                                    prints a secret
+igdev gateway credentials           username, password, API token and login URL;
+                                    --json carries {username, password, api_token}
 igdev gateway trial                 the Gateway's license mode, trial time left, and
                                     whether it expired
 igdev gateway trial reset           reset an expired trial in place; a no-op while the
                                     trial has time left
 igdev gateway exec -- <cmd...>      run a command in the Gateway container (as ignition,
                                     or --user root), exiting with its exit code
-igdev gateway data put <local> <p>  copy a host file to <p> under the data directory
-igdev gateway data get <p> [local]  copy <p> out of the data directory
+igdev gateway data put <local> <p>  copy a host file to <p>: relative is under the
+                                    data directory, absolute anywhere (--user root)
+igdev gateway data get <p> [local]  copy <p> out of the container
 igdev gateway api <METHOD> <path>   call the Gateway REST API with the Instance token
 ```
 
@@ -432,8 +434,9 @@ igdev project export <name>         export a project into a directory or a .zip
 these verbs keep them. A module installed over a running build of the same id waits as a
 pending upgrade until a restart, and `module install` runs that restart itself. 8.3
 starts an unsigned module installed this way only after a restart, and may then ask for
-the module's certificate in its commissioning app; `restart` accepts it when the module is
-one the checkout stages (ADR 0006) and stops at exit level 3 for anything else. A
+the module's certificate in its commissioning app; `restart` accepts it for any module
+(only staged ones under `require_private_module_consent`, ADR 0006 amendment 3) and stops
+at exit level 3 for any other commissioning step. A
 `[modules].enabled` whitelist fixes the module list when the container starts, so a new
 id installed under one is reported `inactive` until the Gateway is recreated.
 
@@ -480,8 +483,8 @@ makes the Checkout Setup stale. The seed applies to a fresh volume only, so run
 the request to the recorded loopback URL with `X-Ignition-API-Token`, `Origin`, `Referer`
 and `Accept: application/json`. The path must start with `/`, so a full URL or another
 host is a usage error and the token never leaves the Instance; `--header` adds headers
-but cannot replace those four (or `Host`). `--data @file|-|<body>` sends a body (16 MiB
-at most). Human mode prints the body; `--json` reports `status`, selected `headers`, the
+but cannot replace those four (or `Host`). `--data @file|-|<body>` sends a body (1 GiB
+at most). Human mode prints the whole body; `--json` reports `status`, selected `headers`, the
 `body` parsed when it is JSON, `body_bytes`, and `truncated` when the answer was over
 4 MiB. A 4xx or 5xx answer is `IGDEV_E_GATEWAY_API` with the same data.
 
@@ -494,8 +497,8 @@ when the Gateway reports FAULTED, rejects the token because its volume predates 
 than `--min-trial`. Under the default `trial_reset = "auto"` the trial keeper resets an
 expired trial in place, so `--min-trial` is accepted, never forces a reset, and the
 report's `note` says so. The report adds `reason`, `container`, `host_address`, `trial`
-and `capacity`. The Capacity Gate and Consent are applied before anything is
-discarded, so a refusal costs nothing. A Docker daemon that is not running is
+and `capacity`. Consent is checked before anything is discarded, so a refusal
+costs nothing; low memory only warns. A Docker daemon that is not running is
 `IGDEV_E_DOCKER_DAEMON` from every verb: start Docker, never reset.
 
 **Reaching inside.** `exec` and `data` are how a workflow touches the running
@@ -504,11 +507,10 @@ Gateway's container without rebuilding the compose call or bypassing the Gate (#
 unless `--user root` is given; human mode streams and exits with the command's code,
 `--json` captures each stream up to 1 MiB and reports the full sizes and whether one
 was cut, and a non-zero exit is `IGDEV_E_EXEC_FAILED` at that exit level. `data put`
-and `data get` move one file, with paths relative to
-`/usr/local/bin/ignition/data`: an absolute path or a `..` segment is refused before
-the engine is asked, and a symlink that resolves outside the directory is refused in
-the container. Files are read and written as `2003:0`, so the Gateway owns what igdev
-puts there. Both need a running Gateway (`IGDEV_E_GATEWAY_UNHEALTHY` otherwise).
+and `data get` move one file: a relative path is under `/usr/local/bin/ignition/data`,
+an absolute one anywhere in the container (a JDBC driver into `user-lib/jdbc`, say).
+Files are read and written as `2003:0`, so the Gateway owns what igdev puts there, or as
+root with `--user root`. Both need a running Gateway (`IGDEV_E_GATEWAY_UNHEALTHY` otherwise).
 
 **Host and container.** The Gateway reaches services on the host, such as a
 simulator's OPC UA server, at `host.docker.internal`: the rendered Compose file maps it
@@ -528,15 +530,13 @@ trial expires. It reads the token from `IGDEV_GATEWAY_API_TOKEN` in the process
 environment. `gateway status` lists it next to the Gateway and reports the `trial`
 object, and so does `agent context`.
 
-**Capacity Gate.** `up` and `reset` read `MemAvailable` from `/proc/meminfo` (ADR
-0003) and refuse to start another Gateway when it is below the contract's
-`[gateway] memory_mb` plus 512 MiB headroom: `IGDEV_E_CAPACITY` at exit level 3, with
-the running `igdev-*` compose projects named in the message and `--force` in
-Remediation. `--force` starts the Gateway anyway and says so on stderr. A host whose
-free memory cannot be read (no `MemAvailable`, another platform) is not refused: there
-is no evidence of a shortage, and the warning on stderr records that the guard did not
-apply. The rig points the gate at a fixture through `capacity.MeminfoEnv`
-(`IGDEV_SHIM_MEMINFO`), which is what makes the refusal reachable in a hermetic test.
+**Capacity Gate.** `up`, `reset` and `ensure` read `MemAvailable` from `/proc/meminfo`
+(ADR 0003) and, when it is below the contract's `[gateway] memory_mb` plus 512 MiB
+headroom, warn on stderr with the numbers and the running `igdev-*` compose projects,
+then start the Gateway anyway (amendment 1). `capacity` in the report carries the
+measurement either way. A host whose free memory cannot be read says so the same way.
+The rig points the gate at a fixture through `capacity.MeminfoEnv`
+(`IGDEV_SHIM_MEMINFO`), which is what makes the warning reachable in a hermetic test.
 
 ## The Baseline
 
@@ -935,8 +935,7 @@ level, stopping before anything that follows.
 adds the runtime half — the Capacity Gate, `up`, `wait` (240 s), and the `--smoke`
 endpoint checks — and
 leaves the Gateway running so the URL it reports can be opened by hand; stop it with
-`igdev gateway down`. The Gateway half needs recorded Consent like every gateway
-verb, so on a machine that has not accepted the EULA it fails with
+`igdev gateway down`. The Gateway half starts a Gateway, so on a machine that has not accepted the EULA it fails with
 `IGDEV_E_CONSENT_REQUIRED` at exit 3.
 
 ## Running the project's CI locally
@@ -962,8 +961,10 @@ Arguments after `--` reach act verbatim and in order, so an act flag igdev does 
 model (`--reuse`, `--container-architecture`) still gets through.
 
 The verb passes the Gate (a current Checkout Setup) but not Consent: no Gateway starts
-and no license is accepted. A host without act fails with `IGDEV_E_ACT_MISSING` — the
-remediation names `pipx install act` and `brew install act` — and nothing is spawned.
+and no license is accepted. A host without act on PATH gets a pinned act built into
+igdev's cache with `go install` once, and later runs reuse it; only a host without a Go
+toolchain fails with `IGDEV_E_ACT_MISSING`, whose remediation names `go install`,
+`brew install act` and act's official installer.
 `act` is an optional `igdev doctor` prerequisite for the same reason.
 
 In machine mode `data` carries `event`, `job`, `offline`, `command`, `args`, `workdir`,
@@ -972,7 +973,7 @@ whole verb against a PATH-shimmed act that records argv, working directory, and 
 environment act inherited, so no docker, no network, and no real workflow is involved.
 
 **With a Gateway.** `--with-gateway` runs `igdev gateway ensure` first (so it needs
-Consent, like every gateway verb), then puts the job container on the Instance's compose
+the EULA accepted, like every verb that starts a Gateway), then puts the job container on the Instance's compose
 network (`--network igdev-<id>_default`), where the job reaches the Gateway at
 `http://gateway:8088`. The job gets `IGDEV_GATEWAY_URL` and `IGDEV_GATEWAY_TOKEN` as
 environment variables, and the token also as the act secret `IGDEV_GATEWAY_TOKEN`, so act

@@ -127,29 +127,31 @@ own Gateway is the one holding it, in which case the record keeps the triplet so
 running Gateway's URLs survive a re-setup. Ports never appear in the tracked Project
 Contract (ADR 0003).
 
-Consent is required before anything is written. The record is machine-global
-(~/.config/igdev/accepted.toml, ADR 0004) and only a human-invoked command writes it,
-so an automated run that finds a term missing stops with IGDEV_E_CONSENT_REQUIRED at
-exit level 3 and names the exact command below. Passing --accept-eula records the
-Ignition EULA acceptance for this machine; re-running it once accepted is a no-op.
+Consent governs starting a Gateway, not this materialization: setup writes the
+Checkout Setup whether or not the Ignition EULA is accepted, so check, test and build
+work on any machine, and the verbs that start a Gateway stop with
+IGDEV_E_CONSENT_REQUIRED at exit level 3 until it is. The record is machine-global
+(~/.config/igdev/accepted.toml, ADR 0004) and only a human-invoked command writes it.
+Passing --accept-eula records the Ignition EULA acceptance for this machine; re-running
+it once accepted is a no-op. IGDEV_ACCEPT_EULA=Y, set by a person in an environment's
+configuration, stands for the same acceptance.
 
 The admin password comes from --admin-password, then IGDEV_GATEWAY_ADMIN_PASSWORD, then
 the local config that is already there, and is generated otherwise. It is never printed
 in either dialect: read it with ` + "`igdev gateway credentials --json`" + `.
 
-The Capacity Gate (ADR 0003) attaches where a Gateway starts, not here: setup records
-the requested heap, and ` + "`igdev gateway up`" + ` compares it against the host's
-free memory.
+The memory measurement (ADR 0003) attaches where a Gateway starts, not here: setup
+records the requested heap, and ` + "`igdev gateway up`" + ` warns when the host's free memory
+is below it.
 
-A terminal gets the setup Wizard when the checkout has not been materialized yet, when
-no admin password is on record, or when this machine has not accepted the Ignition
-EULA. Its steps are the Consent gate, the requested heap, the admin password, an
+A terminal gets the setup Wizard when the checkout has not been materialized yet, or
+when no admin password is on record. Its steps are the Consent gate, the requested heap, the admin password, an
 optional Baseline and custom module, an optional port pin, the materialization, and the
 summary.
 --interactive runs it even when everything is already on record; --yes takes the same
 defaults without asking; --json never prompts, whatever the terminal is. The Consent
-step only shows ` + "`igdev setup --accept-eula`" + `: a Wizard answer is never an acceptance,
-and the run stops at exit level 3 until the machine record itself says otherwise.
+step only reports the record and shows ` + "`igdev setup --accept-eula`" + `: a Wizard answer is
+never an acceptance.
 
 --gateway-port pins the Instance's HTTP port machine-locally: the pin is recorded in
 ` + "`.igdev/local.toml`" + ` and re-used by the next setup, and the tracked Project Contract
@@ -259,10 +261,12 @@ Baseline step.`,
 				return err
 			}
 
-			// Nothing is materialized until the required terms are on record: a
-			// missing term is a human action, not a transient failure.
-			if fault := location.Check(consent.EULA); fault != nil {
-				return fault
+			// The EULA governs running an Ignition Gateway, not rendering files, so
+			// a machine that has not accepted it still materializes: check, test and
+			// build need no Gateway (ADR 0004, amendment 2). The verbs that start a
+			// Gateway are the ones that stop at the human step.
+			if location.Check(consent.EULA) != nil {
+				a.stage("the Ignition EULA is not accepted on this machine: a Gateway will not start until a person runs `igdev setup --accept-eula` or sets %s=Y", consent.EULAEnv)
 			}
 
 			// The materialization's timestamp is taken here, after the Wizard: a
@@ -649,11 +653,15 @@ func (a *App) materializeRuntime(found project.Found, doc project.Doc, instanceI
 	if fault != nil {
 		return nil, fault
 	}
-	// The project's tracked seed is copied into the build context, checked
-	// against the allowlist and the secret rule first (ADR 0009).
+	// The project's tracked seed is copied into the build context. A secret
+	// in it is a warning, not a refusal (ADR 0009, amendment 1, owner decision
+	// on igdev#104).
 	seed, err := projectseed.Load(found.Root, doc.Gateway.Seed)
 	if err != nil {
 		return nil, err
+	}
+	for _, warning := range seed.Warnings {
+		fmt.Fprintf(a.Stderr, "[igdev] WARNING %s\n", warning)
 	}
 	projectSeed := make([]runtimeassets.File, 0, len(seed.Files))
 	for _, f := range seed.Files {

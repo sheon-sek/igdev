@@ -352,25 +352,26 @@ func TestBaselineRejectsWhatIsNotABackup(t *testing.T) {
 	env.AssertNoDockerCalls(t)
 }
 
-// The Baseline lives in the Checkout Setup, so a checkout that was never
-// materialized has none to report: the Gate refuses first and names the repair.
-func TestBaselineRequiresSetup(t *testing.T) {
+// A baseline verb in a checkout that was never set up refreshes the Checkout
+// Setup itself and carries on (igdev#102): setup only renders disposable state.
+func TestBaselineRefreshesAMissingSetup(t *testing.T) {
 	env := testrig.NewEnv(t)
 	env.ShimDocker()
-	dir := env.Project("repo", testrig.MinimalContract)
 
-	for _, args := range [][]string{
-		{"baseline", "set", env.Path("backups/customer.gwbk")},
+	for i, args := range [][]string{
 		{"baseline", "status"},
 		{"baseline", "clear"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			dir := env.Project(fmt.Sprintf("repo%d", i), testrig.MinimalContract)
 			res := env.RunIn(dir, append(args, "--json")...)
-			testrig.WantExit(t, res, contract.ExitFailure)
-			envelope := testrig.Envelope(t, res.Stdout)
-			testrig.WantCode(t, envelope, contract.CodeSetupRequired)
-			testrig.WantRemediation(t, envelope, "igdev setup")
-			res.AssertNoLeaks(t)
+			testrig.WantExit(t, res, contract.ExitOK)
+			if !strings.Contains(res.Stderr, "refreshing the Checkout Setup first") {
+				t.Errorf("stderr does not say the setup was refreshed:\n%s", res.Stderr)
+			}
+			if _, err := os.Stat(filepath.Join(dir, ".igdev", "setup.json")); err != nil {
+				t.Errorf("no Checkout Setup after the refresh: %v", err)
+			}
 		})
 	}
 	env.AssertNoDockerCalls(t)
@@ -396,12 +397,12 @@ func TestBaselineSurvivesSetup(t *testing.T) {
 		}
 	}
 
-	// A hand-edited contract makes the checkout stale; the Baseline is still
-	// there, and the setup that repairs the stamp keeps it.
+	// A hand-edited contract makes the checkout stale; the verb refreshes the
+	// stamp itself, and the Baseline is still there afterwards.
 	env.Write("repo/igdev.toml", testrig.MinimalContract+"# hand-edited\n")
 	stale := env.RunIn(dir, "baseline", "status", "--json")
-	testrig.WantExit(t, stale, contract.ExitFailure)
-	testrig.WantCode(t, testrig.Envelope(t, stale.Stdout), contract.CodeSetupStale)
+	testrig.WantExit(t, stale, contract.ExitOK)
+	assertStaged(t, env, dir, source, body)
 
 	testrig.WantExit(t, env.RunIn(dir, "setup"), contract.ExitOK)
 	assertStaged(t, env, dir, source, body)

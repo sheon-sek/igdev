@@ -20,7 +20,7 @@ human action required. At exit 3 an agent stops and hands the Remediation to a p
 | `IGDEV_E_PORT_ALLOC` | 1 | The host refused three loopback binds, so no ports could be recorded. | Retry `igdev setup`. If it repeats, check what holds loopback ports. |
 | `IGDEV_E_CONTRACT_SCHEMA_UNSUPPORTED` | 1 | `igdev.toml` declares a schema version this binary does not speak. | Install the igdev version the contract needs. Do not edit the schema field. |
 | `IGDEV_E_VERSION_UNSUPPORTED` | 1 | `[tool].min_version` in `igdev.toml` is newer than this binary. | Ask a person to upgrade igdev. |
-| `IGDEV_E_CAPACITY` | 3 | The Capacity Gate refused to start a Gateway: free memory is below the heap plus headroom. | Stop. A person frees memory or decides to pass `--force`. |
+| `IGDEV_E_CAPACITY` | 3 | Retired: the Capacity Gate only warns since ADR 0003 amendment 1, so no verb emits it. | Nothing to do; the code stays reserved so the frozen table keeps its meaning. |
 | `IGDEV_E_GATEWAY_UNHEALTHY` | 1 | The Gateway missed its health deadline or failed a smoke check. | Read `igdev gateway logs --tail 200`, then fix the cause. |
 | `IGDEV_E_DOCKER` | 1 | A container-engine call failed, or the engine is missing or not compose v2. | Run `igdev doctor` and report what it finds. |
 | `IGDEV_E_DOCKER_DAEMON` | 1 | The docker CLI is installed but cannot reach the Docker daemon: it is stopped or its socket is unreachable. | Start Docker, then run `igdev doctor`. Never `gateway reset` for this. |

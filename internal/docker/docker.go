@@ -258,14 +258,33 @@ func Fault(action, output string, err error) *contract.Fault {
 	if detail == "" {
 		detail = err.Error()
 	}
+	if SocketDenied(output) {
+		return contract.NewFault(contract.CodeDocker, contract.ExitFailure,
+			fmt.Sprintf("%s failed: this user may not use the Docker socket: %s", action, detail)).
+			WithCause(err).
+			WithRemediation(
+				contract.Remediation{
+					Command: "sudo usermod -aG docker \"$USER\" && newgrp docker",
+					Why:     "join the docker group, then run igdev again from that shell",
+				},
+				contract.Remediation{
+					Command: "igdev doctor",
+					Why:     "audit that the engine answers this user",
+				})
+	}
 	if DaemonDown(output) {
 		return contract.NewFault(contract.CodeDockerDaemon, contract.ExitFailure,
 			fmt.Sprintf("%s failed: the Docker daemon is not reachable: %s", action, detail)).
 			WithCause(err).
-			WithRemediation(contract.Remediation{
-				Command: "igdev doctor",
-				Why:     "start Docker first; this audits that the engine answers again",
-			})
+			WithRemediation(
+				contract.Remediation{
+					Command: "sudo systemctl start docker",
+					Why:     "start the engine (in a container without systemd: sudo dockerd in the background); never reset the Gateway for it",
+				},
+				contract.Remediation{
+					Command: "igdev doctor",
+					Why:     "audit that the engine answers again",
+				})
 	}
 	return contract.NewFault(contract.CodeDocker, contract.ExitFailure,
 		fmt.Sprintf("%s failed: %s", action, detail)).
@@ -282,6 +301,24 @@ var daemonDown = []string{
 	"error during connect",
 	"docker.sock: connect: no such file or directory",
 	"docker.sock: connect: connection refused",
+}
+
+// socketDenied matches what the docker CLI prints when the engine runs but this
+// user may not open its socket.
+var socketDenied = []string{
+	"permission denied while trying to connect to the docker",
+	"permission denied while trying to connect to the Docker daemon",
+	"docker.sock: connect: permission denied",
+}
+
+// SocketDenied reports whether engine output says the socket refused this user.
+func SocketDenied(output string) bool {
+	for _, marker := range socketDenied {
+		if strings.Contains(output, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // DaemonDown reports whether engine output says the daemon is unreachable, as

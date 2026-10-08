@@ -45,3 +45,15 @@ which overrides `external`. A seed should therefore add resources under its own 
 rather than redefine built-in ones. A type outside the allowlist needs a new decision
 that amends this ADR. Connecting to a system that needs a credential is a step a harness
 takes after start, with the credential from its own secret store.
+
+## Amendment 1: any resource type, and a secret is a warning (2026-10-08, igdev#104)
+
+The allowlist sent every new resource type through a new decision, and the secret rule
+refused a development database password the project chose to track. Both protected only
+the disposable Gateway the seed builds.
+
+- A seed may carry any `<module>/<type>/<name>/` resource except igdev's reserved ones
+  (`api-token`, `security-levels`, `security-properties`), which stay a collision.
+- A secret-named field with a value is a warning on stderr naming the file and the JSON
+  path, never the value. A file that is not JSON is still refused.
+- The bounds are 64 MiB per file and 512 MiB in total, so a large tag export fits.

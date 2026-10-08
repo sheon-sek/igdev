@@ -57,8 +57,10 @@ const (
 // module.xml is a handful of kilobytes, and even a fat module archive stays well
 // under the total.
 const (
-	// MaxArchiveBytes bounds the total uncompressed size of every entry.
-	MaxArchiveBytes = 64 << 20
+	// MaxArchiveBytes bounds the total uncompressed size of every entry. It is
+	// far above the largest module (the 8.3.8 image's biggest is 33 MB stored),
+	// so a fat third-party module is never refused for its size.
+	MaxArchiveBytes = 1 << 30
 	// MaxMetadataBytes bounds the uncompressed module.xml igdev reads.
 	MaxMetadataBytes = 1 << 20
 	// MaxCompressionRatio bounds how far one entry may expand relative to its

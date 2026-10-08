@@ -65,7 +65,8 @@ func TestConsentFileRefusesAMissingOrStaleTerm(t *testing.T) {
 		"other terms": "[module-license]\naccepted_at = \"2026-01-01T00:00:00Z\"\ncli_version = \"0.9.0\"\n",
 	} {
 		file := env.Write("secret/"+strings.ReplaceAll(name, " ", "-")+".toml", body)
-		res := env.Run(testrig.Run{Dir: dir, Args: []string{"setup", "--json"}, Env: []string{consent.FileEnv + "=" + file}})
+		// Starting a Gateway is what needs the EULA; setup alone no longer does.
+		res := env.Run(testrig.Run{Dir: dir, Args: []string{"gateway", "up", "--json"}, Env: []string{consent.FileEnv + "=" + file}})
 		testrig.WantExit(t, res, contract.ExitHumanAction)
 		envelope := testrig.Envelope(t, res.Stdout)
 		testrig.WantCode(t, envelope, contract.CodeConsentRequired)

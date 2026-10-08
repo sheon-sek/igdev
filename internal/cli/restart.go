@@ -48,8 +48,9 @@ restart; finalized is true when every one of them was upgraded.
 
 A Gateway that comes back asking to accept a module's certificate or license (8.3
 does so for an unsigned module installed over REST) has the modules step finished
-for it when every module it asks about is one this checkout stages, as at start-up
-(ADR 0006); any other commissioning step stops the run at exit level 3.
+for it, whichever modules it asks about, as at start-up (ADR 0006); with
+[modules] require_private_module_consent only modules this checkout stages are
+accepted. Any other commissioning step stops the run at exit level 3.
 
 A quarantined module this checkout stages or installed fails the run with
 IGDEV_E_MODULE_QUARANTINED and the Gateway's reason; an unsigned build names

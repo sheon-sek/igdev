@@ -19,9 +19,10 @@ and in order, so an act flag igdev does not know (`--reuse`,
 `--container-architecture`) passes through unchanged. A trailing argument that is not
 flag-shaped needs no `--`; flag-shaped passthrough is what it is for.
 
-act is an optional `igdev doctor` prerequisite: when it is not installed,
-`ci-local` fails with IGDEV_E_ACT_MISSING and the install commands, and no
-subprocess is attempted. The verb passes the Gate (a current Checkout Setup) but
+act is an optional `igdev doctor` prerequisite: when it is not on PATH, `ci-local`
+fetches act v0.2.89 into igdev's cache with `go install` once and uses that copy;
+only a host without a Go toolchain fails with IGDEV_E_ACT_MISSING and the install
+commands. The verb passes the Gate (a current Checkout Setup) but
 not Consent: it starts no Gateway.
 
 --with-gateway first runs `igdev gateway ensure` for this checkout, which does need
@@ -72,7 +73,8 @@ pass --json for the machine contract. data carries the exact invocation
 (event, job, offline, command, args, workdir), act's exit code, and the tail of its
 output. act's own output streams to stderr in both dialects, so a human reads the
 workflow run and an agent reads the envelope. A run act cannot complete is
-IGDEV_E_ACT_FAILED at act's own exit code; a host without act is IGDEV_E_ACT_MISSING
-with the install commands in Remediation. --with-gateway ensures the Gateway first and
+IGDEV_E_ACT_FAILED at act's own exit code. Without act on PATH, ci-local fetches a
+pinned act into igdev's cache with go install once; only a host with neither act nor Go
+is IGDEV_E_ACT_MISSING, with the install commands in Remediation. --with-gateway ensures the Gateway first and
 adds data.gateway (action, reason, url, host_url, network); the job reads
 IGDEV_GATEWAY_URL and IGDEV_GATEWAY_TOKEN, and the token never appears in argv.

@@ -141,9 +141,9 @@ func gatewayVerbs(t *testing.T, env *testrig.Env) []string {
 	return verbs
 }
 
-// Consent is machine state and it is required before anything touches a runtime:
-// without the record every verb is the frozen human-required shape, and no engine
-// call happens.
+// Consent is machine state and it is required before a Gateway starts: without the
+// record a starting verb is the frozen human-required shape and no engine call
+// happens, while a verb that only reads the Instance still answers (igdev#101).
 func TestGatewayRequiresConsent(t *testing.T) {
 	env := testrig.NewEnv(t)
 	env.ShimDocker()
@@ -155,7 +155,7 @@ func TestGatewayRequiresConsent(t *testing.T) {
 	if err := os.Remove(consent.Path(filepath.Join(env.Home, ".config", "igdev"))); err != nil {
 		t.Fatalf("remove the Consent record: %v", err)
 	}
-	for _, action := range []string{"up", "url", "status"} {
+	for _, action := range []string{"up", "reset", "ensure"} {
 		t.Run(action, func(t *testing.T) {
 			res := env.RunIn(dir, "gateway", action, "--json")
 			testrig.WantExit(t, res, contract.ExitHumanAction)
@@ -165,11 +165,12 @@ func TestGatewayRequiresConsent(t *testing.T) {
 		})
 	}
 	env.AssertNoDockerCalls(t)
+	testrig.WantExit(t, env.RunIn(dir, "gateway", "url", "--json"), contract.ExitOK)
 }
 
-// A checkout that was never materialized has no Instance to control: the Gate
-// refuses before any engine call and names the repair.
-func TestGatewayRequiresSetup(t *testing.T) {
+// A checkout that was never materialized is set up by the first gateway verb,
+// before any engine call (igdev#102).
+func TestGatewayRefreshesAMissingSetup(t *testing.T) {
 	env := testrig.NewEnv(t)
 	env.ShimDocker()
 	env.ShimMeminfo(65536)
@@ -177,10 +178,13 @@ func TestGatewayRequiresSetup(t *testing.T) {
 	dir := env.Path("repo")
 
 	res := env.RunIn(dir, "gateway", "url", "--json")
-	testrig.WantExit(t, res, contract.ExitFailure)
-	envelope := testrig.Envelope(t, res.Stdout)
-	testrig.WantCode(t, envelope, contract.CodeSetupRequired)
-	testrig.WantRemediation(t, envelope, "igdev setup")
+	testrig.WantExit(t, res, contract.ExitOK)
+	if !strings.Contains(res.Stderr, "refreshing the Checkout Setup first") {
+		t.Errorf("stderr does not say the setup was refreshed:\n%s", res.Stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".igdev", "setup.json")); err != nil {
+		t.Errorf("no Checkout Setup after the refresh: %v", err)
+	}
 	env.AssertNoDockerCalls(t)
 }
 
@@ -627,10 +631,10 @@ func TestGatewaySmokeWithoutDeclaredEndpoints(t *testing.T) {
 	}
 }
 
-// The Capacity Gate refuses a new Gateway against a shimmed memory reading, names
-// the running instance that holds the memory, and --force bypasses it with a
-// warning.
-func TestGatewayCapacityGateRefusesAndForceOverrides(t *testing.T) {
+// Low memory against a shimmed reading is a warning that names the running
+// instance holding the memory, never a refusal: the Gateway starts, and the
+// capacity block reports the numbers (igdev#105).
+func TestGatewayCapacityGateWarnsAndStarts(t *testing.T) {
 	env := testrig.NewEnv(t)
 	env.ShimDocker()
 	env.ShimMeminfo(65536)
@@ -642,41 +646,26 @@ func TestGatewayCapacityGateRefusesAndForceOverrides(t *testing.T) {
 	env.ShimMeminfo(1024)
 	second := env.Project("second", testrig.MinimalContract)
 	testrig.WantExit(t, env.RunIn(second, "setup", "--accept-eula"), contract.ExitOK)
-	normalizeInstance(t, env, setupStampOf(t, second))
 
 	res := env.RunIn(second, "gateway", "up", "--json")
-	testrig.WantExit(t, res, contract.ExitHumanAction)
-	env.Golden(t, "gateway_capacity.json", res.Stdout)
-
-	envelope := testrig.Envelope(t, res.Stdout)
-	testrig.WantCode(t, envelope, contract.CodeCapacity)
-	testrig.WantRemediation(t, envelope, "igdev gateway up --force")
-	if !strings.Contains(envelope.Message, "1024 MiB available") ||
-		!strings.Contains(envelope.Message, "2560 MiB required") {
-		t.Errorf("refusal does not report the arithmetic: %q", envelope.Message)
-	}
-	if !strings.Contains(envelope.Message, firstStamp.Namespace()) {
-		t.Errorf("refusal does not name the running instance %s: %q", firstStamp.Namespace(), envelope.Message)
-	}
-	// The refused run never asked the engine to start anything.
-	if verbs := gatewayVerbs(t, env); slices.Contains(verbs, namespaceOf(t, second)+":up") {
-		t.Errorf("a refused up still started the project: %v", verbs)
-	}
-
-	// --force starts it anyway, with the warning a person has to see.
-	forced := env.RunIn(second, "gateway", "up", "--force", "--json")
-	testrig.WantExit(t, forced, contract.ExitOK)
-	if !strings.Contains(forced.Stderr, "bypassed") {
-		t.Errorf("--force did not warn on stderr: %q", forced.Stderr)
+	testrig.WantExit(t, res, contract.ExitOK)
+	for _, want := range []string{"low memory, starting anyway", "1024 MiB available", "2560 MiB required", firstStamp.Namespace()} {
+		if !strings.Contains(res.Stderr, want) {
+			t.Errorf("the warning does not say %q:\n%s", want, res.Stderr)
+		}
 	}
 	var data struct {
 		Capacity struct {
-			Forced bool `json:"forced"`
+			AvailableMB int  `json:"available_mb"`
+			Forced      bool `json:"forced"`
 		} `json:"capacity"`
 	}
-	testrig.DataOf(t, forced.Stdout, &data)
-	if !data.Capacity.Forced {
-		t.Error("--force did not report the bypass")
+	testrig.DataOf(t, res.Stdout, &data)
+	if data.Capacity.AvailableMB != 1024 || data.Capacity.Forced {
+		t.Errorf("capacity = %+v, want 1024 MiB measured and not forced", data.Capacity)
+	}
+	if verbs := gatewayVerbs(t, env); !slices.Contains(verbs, namespaceOf(t, second)+":up") {
+		t.Errorf("the low-memory up did not start the project: %v", verbs)
 	}
 
 	for _, dir := range []string{first, second} {
@@ -768,9 +757,9 @@ func TestGatewayLogsPassesThroughComposeLogs(t *testing.T) {
 	env.AssertNoDockerOrphans(t)
 }
 
-// The admin password is served only by `gateway credentials --json`; every human
-// command reports the username and where the secret lives, never the secret.
-func TestGatewayCredentialsAreMachineOnly(t *testing.T) {
+// `gateway credentials` serves the development Gateway's password and token in
+// both dialects; every other command keeps them out of its output.
+func TestGatewayCredentialsArePrintedOnlyByCredentials(t *testing.T) {
 	env := testrig.NewEnv(t)
 	env.ShimDocker()
 	env.ShimMeminfo(65536)
@@ -798,16 +787,14 @@ func TestGatewayCredentialsAreMachineOnly(t *testing.T) {
 	env.RegisterReplacement(data.APIToken, "<API_TOKEN>")
 	env.Golden(t, "gateway_credentials.json", res.Stdout)
 
-	// Human output reports where the credential lives and never the credential.
+	// Human output prints the credentials a person logs in with, and where they
+	// came from (igdev#103).
 	human := env.RunIn(dir, "gateway", "credentials")
 	testrig.WantExit(t, human, contract.ExitOK)
+	if !strings.Contains(human.Stdout, secret) || !strings.Contains(human.Stdout, data.APIToken) {
+		t.Errorf("human credentials do not print the password and token:\n%s", human.Stdout)
+	}
 	env.Golden(t, "gateway_credentials.txt", human.Stdout)
-	if strings.Contains(human.Stdout+human.Stderr, data.APIToken) {
-		t.Errorf("human credentials leaked the API token:\n%s", human.Stdout)
-	}
-	if strings.Contains(human.Stdout+human.Stderr, secret) {
-		t.Errorf("human credentials leaked the password:\n%s\n%s", human.Stdout, human.Stderr)
-	}
 	if !strings.Contains(human.Stdout, "admin") || !strings.Contains(human.Stdout, "local.toml") {
 		t.Errorf("human credentials do not report the username and source:\n%s", human.Stdout)
 	}

@@ -48,5 +48,5 @@ pass --json for the machine contract. Run igdev's flags before the command
 stderr, stdout_bytes, stderr_bytes, and truncated: each stream is kept up to 1 MiB and
 the byte counts are the full sizes. A non-zero exit is IGDEV_E_EXEC_FAILED at the
 command's own exit level, with the same data. A Gateway that is not running is
-IGDEV_E_GATEWAY_UNHEALTHY with igdev gateway up as Remediation. Use this instead of
-docker exec: it goes through the Gate and addresses only this Instance.
+IGDEV_E_GATEWAY_UNHEALTHY with igdev gateway up as Remediation. It saves building the
+compose invocation for this Instance; --user root runs as root.

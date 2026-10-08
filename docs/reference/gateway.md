@@ -5,12 +5,13 @@
 gateway drives the Ignition Gateway container the Checkout Setup describes: one
 compose project named igdev-<instance>, one named volume, and the recorded ports.
 
-Every verb passes the Gate (a current Checkout Setup) and the machine's Consent
-record first, and every URL it prints is the recorded one — the port in
-`.igdev/setup.json`, never an assumed 8088 (ADR 0003). `up` and `reset` also pass the
-Capacity Gate: when the host's free memory is below the requested heap plus 512 MiB
-headroom, starting another Gateway is refused with IGDEV_E_CAPACITY at exit level 3
-until memory is freed or `--force` accepts the risk.
+Every verb passes the Gate first — a missing or stale Checkout Setup is refreshed on
+the spot — and every URL it prints is the recorded one: the port in
+`.igdev/setup.json`, never an assumed 8088 (ADR 0003). The verbs that start a Gateway
+(`up`, `reset`, `ensure`) also need the machine's EULA acceptance and stop with
+IGDEV_E_CONSENT_REQUIRED at exit level 3 until a person has given it. They measure the
+host's free memory too, and warn on stderr when it is below the requested heap plus
+512 MiB headroom, but start anyway.
 
 The private modules this checkout stages are accepted as part of starting it: their ids
 reach the Gateway as ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS, so a staged
@@ -31,8 +32,8 @@ never from a file on disk.
 | Command | What it does |
 | --- | --- |
 | [`igdev gateway api`](gateway-api.md) | Call this Instance's Gateway REST API with its own token |
-| [`igdev gateway credentials`](gateway-credentials.md) | Read the Gateway admin credentials (the password only as JSON) |
-| [`igdev gateway data`](gateway-data.md) | Move files into and out of the Gateway's data directory |
+| [`igdev gateway credentials`](gateway-credentials.md) | Read the Gateway admin credentials and API token |
+| [`igdev gateway data`](gateway-data.md) | Move files into and out of the Gateway container |
 | [`igdev gateway down`](gateway-down.md) | Stop this Instance's Gateway |
 | [`igdev gateway ensure`](gateway-ensure.md) | Leave this Instance with a running, healthy Gateway, reusing one when it can |
 | [`igdev gateway exec`](gateway-exec.md) | Run a command inside this Instance's Gateway container |
@@ -82,9 +83,9 @@ same address block — instance_id, namespace, url, ports (http, https, debug) �
 the Checkout Setup, so an agent never assumes a port. up and reset add capacity
 (measured, available_mb, required_mb, headroom_mb, forced); wait --smoke adds checks; status
 adds state and services; down adds volumes_removed; logs carries the log text;
-credentials carries the password. Every verb needs recorded Consent (exit 3,
-IGDEV_E_CONSENT_REQUIRED) and a current Checkout Setup, and up/reset also pass the
-Capacity Gate (IGDEV_E_CAPACITY, exit 3). Starting a Gateway accepts the private
+credentials carries the password. Every verb refreshes a missing or stale Checkout
+Setup first. The verbs that start a Gateway (up, reset, ensure) need the EULA accepted
+(exit 3, IGDEV_E_CONSENT_REQUIRED); low free memory is only a warning on stderr. Starting a Gateway accepts the private
 modules this checkout staged, by module id (ACCEPT_MODULE_LICENSES and
 ACCEPT_MODULE_CERTS); a contract with [modules] require_private_module_consent = true
 instead requires the machine-global module-license and module-cert terms, and without

@@ -124,39 +124,43 @@ func repoEntries(t *testing.T, dir string) []string {
 	return names
 }
 
-// Consent comes first: without the machine-global record nothing is materialized
-// and the failure is the frozen human-required shape.
-func TestSetupRefusesWithoutConsent(t *testing.T) {
+// Without the EULA, setup still materializes the checkout — check, test and build
+// need no Gateway — and only a verb that starts a Gateway stops at exit 3 for a
+// person (igdev#101). Nothing writes a Consent record on the person's behalf.
+func TestSetupWithoutConsentMaterializesAndOnlyStartingStops(t *testing.T) {
 	env := testrig.NewEnv(t)
 	env.ShimDocker()
+	env.ShimMeminfo(65536)
 	dir := env.Mkdir("repo")
 	testrig.WantExit(t, env.RunIn(dir, "init"), contract.ExitOK)
-	base := env.Snapshot()
 
 	res := env.RunIn(dir, "setup", "--json")
-	testrig.WantExit(t, res, contract.ExitHumanAction)
-	env.Golden(t, "setup_consent_required.json", res.Stdout)
+	testrig.WantExit(t, res, contract.ExitOK)
+	if !strings.Contains(res.Stderr, "the Ignition EULA is not accepted") {
+		t.Errorf("setup does not say the EULA is missing:\n%s", res.Stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".igdev", "setup.json")); err != nil {
+		t.Errorf("setup did not materialize the checkout: %v", err)
+	}
 
-	envelope := testrig.Envelope(t, res.Stdout)
+	up := env.RunIn(dir, "gateway", "up", "--json")
+	testrig.WantExit(t, up, contract.ExitHumanAction)
+	env.Golden(t, "gateway_consent_required.json", up.Stdout)
+	envelope := testrig.Envelope(t, up.Stdout)
 	testrig.WantCode(t, envelope, contract.CodeConsentRequired)
 	testrig.WantRemediation(t, envelope, "igdev setup --accept-eula")
-	if !strings.Contains(envelope.Message, "Ignition EULA") {
-		t.Errorf("message does not name the term: %q", envelope.Message)
-	}
-	// A refused run writes nothing at all: no Consent record, no .igdev/.
-	res.AssertNoLeaks(t)
+	testrig.WantRemediation(t, envelope, "export IGDEV_ACCEPT_EULA=Y")
 
-	// Human mode reports the same thing as prose on stderr, and stdout stays
-	// empty so a pipe never receives it.
-	human := env.RunIn(dir, "setup")
-	testrig.WantExit(t, human, contract.ExitHumanAction)
-	env.Golden(t, "setup_consent_required.txt", human.Stderr)
-	if human.Stdout != "" {
-		t.Errorf("human failure wrote to stdout: %q", human.Stdout)
-	}
-	human.AssertNoLeaks(t)
-	if changes := env.Changes(base); len(changes) != 0 {
-		t.Errorf("a refused setup changed %v", changes)
+	// A verb that only addresses the Instance needs no Consent.
+	testrig.WantExit(t, env.RunIn(dir, "gateway", "url", "--json"), contract.ExitOK)
+	env.AssertNoDockerCalls(t)
+
+	// IGDEV_ACCEPT_EULA=Y, set by a person in the environment, is the
+	// acceptance: the Gateway starts, and still no record is written.
+	accepted := env.Run(testrig.Run{Dir: dir, Args: []string{"gateway", "up", "--json"}, Env: []string{"IGDEV_ACCEPT_EULA=Y"}})
+	testrig.WantExit(t, accepted, contract.ExitOK)
+	if _, err := os.Stat(env.Path(machineRecord)); !os.IsNotExist(err) {
+		t.Errorf("a run without an acceptance wrote a machine record: %v", err)
 	}
 }
 

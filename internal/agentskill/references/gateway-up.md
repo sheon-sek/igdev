@@ -2,13 +2,13 @@
 
 # `igdev gateway up`
 
-up starts the Instance: the Capacity Gate first, then a detached `docker compose up`
+up starts the Instance: the memory measurement first, then a detached `docker compose up`
 that builds when the image is not current, for this Instance's project, with the
 recorded ports and the generated admin credentials. The Gateway is not waited for —
 use `igdev gateway wait`, which is also the last step of `igdev gateway reset`.
 
---force starts the Gateway even when the Capacity Gate refuses, which is the
-escape hatch for a machine where the measurement is wrong or the risk is accepted.
+Low free memory is a warning on stderr, never a refusal; --force is accepted and only
+changes the wording of that warning.
 
 The staged private modules this checkout holds are accepted by their module id —
 ACCEPT_MODULE_LICENSES and ACCEPT_MODULE_CERTS — so a staged `.modl` that declares a
@@ -34,7 +34,7 @@ igdev gateway up [flags]
 ## Options
 
 ```text
-      --force   start the Gateway even when the Capacity Gate refuses (accepts the out-of-memory risk)
+      --force   accepted for compatibility: low memory only warns
   -h, --help    help for up
 ```
 
@@ -51,8 +51,8 @@ pass --json for the machine contract. data carries instance_id, namespace,
 url, ports, and capacity (measured, available_mb, required_mb, headroom_mb, forced). up
 returns as soon as the container is started: follow it with igdev gateway wait (--smoke to
 check the declared endpoints too), and never assume the URL from the address block is answering yet. A
-refusal is IGDEV_E_CAPACITY at exit 3 — a human frees memory or passes --force — and a
-machine that was never set up is IGDEV_E_SETUP_REQUIRED, repaired with igdev setup. The
+machine without the EULA accepted is IGDEV_E_CONSENT_REQUIRED at exit 3; low free memory
+is a warning on stderr and capacity reports the numbers. The
 staged private modules are accepted by module id as part of starting (ADR 0006); with
 [modules] require_private_module_consent the run stops at exit 3 until the
 module-license and module-cert terms are recorded.

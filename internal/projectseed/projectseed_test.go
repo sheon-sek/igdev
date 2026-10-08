@@ -64,11 +64,13 @@ func TestLoadAcceptsAnAllowedResource(t *testing.T) {
 	}
 }
 
-func TestLoadRefusesAnUnlistedType(t *testing.T) {
+func TestLoadAcceptsAnyResourceType(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "seed/ignition/user-source/people/config.json", `{}`)
-	_, err := Load(root, []string{"seed"})
-	wantRefusal(t, err, "seed/ignition/user-source/people/config.json", "not on the seed allowlist")
+	seed, err := Load(root, []string{"seed"})
+	if err != nil || len(seed.Files) != 1 {
+		t.Fatalf("Load = %v, %v; want the user-source file loaded", seed.Files, err)
+	}
 }
 
 func TestLoadRefusesIgdevsOwnResources(t *testing.T) {
@@ -87,17 +89,18 @@ func TestLoadRefusesTwoDirectoriesWritingOneFile(t *testing.T) {
 	wantRefusal(t, err, "b/ignition/tag-provider/sim/config.json", "collides with a/ignition/tag-provider/sim/config.json")
 }
 
-func TestLoadRefusesASecret(t *testing.T) {
+func TestLoadWarnsAboutASecret(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "seed/ignition/database-connection/hist/config.json",
 		`{"settings":{"connectURL":"jdbc:postgresql://db/hist","auth":{"Password":"hunter2"}}}`)
-	_, err := Load(root, []string{"seed"})
-	wantRefusal(t, err, "seed/ignition/database-connection/hist/config.json", ".settings.auth.Password")
-
-	write(t, root, "seed/ignition/database-connection/hist/config.json",
-		`{"settings":{"auth":{"password":{"type":"Embedded","data":{"ciphertext":"x"}}}}}`)
-	_, err = Load(root, []string{"seed"})
-	wantRefusal(t, err, ".settings.auth.password")
+	seed, err := Load(root, []string{"seed"})
+	if err != nil || len(seed.Files) != 1 {
+		t.Fatalf("Load = %v, %v; want the file loaded", seed.Files, err)
+	}
+	if len(seed.Warnings) != 1 || !strings.Contains(seed.Warnings[0], ".settings.auth.Password") ||
+		!strings.Contains(seed.Warnings[0], "seed/ignition/database-connection/hist/config.json") {
+		t.Errorf("warnings = %q, want one naming the file and .settings.auth.Password", seed.Warnings)
+	}
 }
 
 func TestLoadRefusesASymlinkAndAMissingDirectory(t *testing.T) {

@@ -62,9 +62,9 @@ stage that ran â€” module-validate, module-scan, declared-check, jython-check â€
 its status and per-stage detail (paths, checked, findings, command, file_count), plus
 failed naming the stage that stopped the run. The stage order is a contract, so a
 failure is always at the same place, and an earlier stage's result is still in the same
-envelope. Fix the reported stage and re-run; a missing or stale Checkout Setup arrives
-as IGDEV_E_SETUP_REQUIRED or IGDEV_E_SETUP_STALE, repaired with igdev setup. --all
+envelope. Fix the reported stage and re-run; a missing or stale Checkout Setup is
+refreshed before the first stage, with a note on stderr. --all
 appends the test and build stages, and --all --gateway the Gateway stages, with
 gateway_url carrying the Gateway --gateway left running (stop it with igdev gateway
-down); the --gateway half needs recorded Consent, so without it the run stops at exit 3
+down); the --gateway half needs the EULA accepted, so without it the run stops at exit 3
 with IGDEV_E_CONSENT_REQUIRED.

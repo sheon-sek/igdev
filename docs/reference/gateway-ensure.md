@@ -18,8 +18,8 @@ address the Gateway reaches the host by, and the trial. Under the default
 trial_reset = "auto" the trial keeper resets an expired trial in place, so
 --min-trial is accepted but never forces a reset, and the report says so.
 
-The Capacity Gate and Consent apply exactly as they do for `up` and `reset`, before
-anything is discarded, so a refusal costs nothing.
+Consent applies exactly as it does for `up` and `reset`, before anything is discarded,
+so a refusal costs nothing; low free memory only warns.
 
 ## Usage
 
@@ -38,7 +38,7 @@ igdev gateway ensure [flags]
 ## Options
 
 ```text
-      --force              start the Gateway even when the Capacity Gate refuses (accepts the out-of-memory risk)
+      --force              accepted for compatibility: low memory only warns
       --fresh              reset the Gateway even when it is healthy, discarding its data
   -h, --help               help for ensure
       --min-trial string   with trial_reset = "off", reset when the trial has less than this left: seconds, or a duration like 30m
@@ -59,6 +59,6 @@ pass --json for the machine contract. data carries action
 trial_short), instance_id, namespace, url, ports, container, host_address, trial (or
 null), capacity (null when reused), and note when --min-trial did not apply. Call it
 once before e2e work instead of chaining up, wait, and status: when it returns the
-Gateway answered RUNNING. A refusal is IGDEV_E_CAPACITY or IGDEV_E_CONSENT_REQUIRED at
-exit 3 and discards nothing. IGDEV_E_DOCKER_DAEMON means Docker is not running: start
-it, never reset. Pass --fresh to discard the data on purpose.
+Gateway answered RUNNING. A refusal is IGDEV_E_CONSENT_REQUIRED at exit 3 and discards
+nothing. IGDEV_E_DOCKER_DAEMON means Docker is not running: start it (sudo systemctl
+start docker, or sudo dockerd in a container) and retry, never reset. Pass --fresh to discard the data on purpose.

@@ -21,8 +21,8 @@ var agentUsage = map[string]string{
 	"igdev": `pass --json for the machine contract. stdout is then a single JSON envelope
 {ok, contract, code, message, remediation, data}; progress and notices go to stderr.
 Exit levels are 0 success, 1 command failure, 2 usage error, 3 human action required:
-exit 3 means a person must act (Consent, the Capacity Gate) and Remediation names the
-exact command. With every argument supplied igdev runs in Silent Mode and never prompts.
+exit 3 means a person must accept a legal term (Consent) and Remediation names the
+exact command. A missing or stale Checkout Setup is refreshed automatically. With every argument supplied igdev runs in Silent Mode and never prompts.
 Orient before acting: igdev status --json works everywhere, and igdev agent context
 --json answers the whole orientation in one call.`,
 	"igdev init": `pass --json for the machine contract. data carries one block per tracked
@@ -37,10 +37,12 @@ specified invocation is the whole interface.`,
 	"igdev setup": `pass --json for the machine contract. data carries instance_id, namespace,
 ports, setup_path, files (each rendered runtime path with kind, action, and mode),
 credentials (path, source, username — never the password), and consent_accepted. setup
-is the repair path for IGDEV_E_SETUP_REQUIRED and IGDEV_E_SETUP_STALE, which every
-dependent verb reports with a Remediation naming it. IGDEV_E_CONSENT_REQUIRED at exit 3
-is the human handoff: a person runs igdev setup --accept-eula, then the automated run
-repeats. Read the admin password only through igdev gateway credentials --json.`,
+materializes whether or not the EULA is accepted, and every project command runs it
+on its own when the Checkout Setup is missing or stale, so calling it by hand is only
+needed after a manual change under .igdev/. IGDEV_E_CONSENT_REQUIRED at exit 3 comes
+from the verbs that start a Gateway: a person runs igdev setup --accept-eula, or sets
+IGDEV_ACCEPT_EULA=Y in the environment's configuration, then the automated run repeats.
+Read the admin password through igdev gateway credentials.`,
 	"igdev status": `pass --json for the machine contract. data is the whole report:
 initialized, project_root, working_dir, contract (path, present, schema_version,
 schema_supported, digest), setup (present, path, stamp_state, instance_id, namespace,
@@ -80,11 +82,11 @@ stage that ran — module-validate, module-scan, declared-check, jython-check �
 its status and per-stage detail (paths, checked, findings, command, file_count), plus
 failed naming the stage that stopped the run. The stage order is a contract, so a
 failure is always at the same place, and an earlier stage's result is still in the same
-envelope. Fix the reported stage and re-run; a missing or stale Checkout Setup arrives
-as IGDEV_E_SETUP_REQUIRED or IGDEV_E_SETUP_STALE, repaired with igdev setup. --all
+envelope. Fix the reported stage and re-run; a missing or stale Checkout Setup is
+refreshed before the first stage, with a note on stderr. --all
 appends the test and build stages, and --all --gateway the Gateway stages, with
 gateway_url carrying the Gateway --gateway left running (stop it with igdev gateway
-down); the --gateway half needs recorded Consent, so without it the run stops at exit 3
+down); the --gateway half needs the EULA accepted, so without it the run stops at exit 3
 with IGDEV_E_CONSENT_REQUIRED.`,
 	"igdev test": `pass --json for the machine contract. data.stages carries the declared-
 test stage with its command and status; an undeclared stage is reported skipped, never
@@ -180,9 +182,9 @@ same address block — instance_id, namespace, url, ports (http, https, debug) �
 the Checkout Setup, so an agent never assumes a port. up and reset add capacity
 (measured, available_mb, required_mb, headroom_mb, forced); wait --smoke adds checks; status
 adds state and services; down adds volumes_removed; logs carries the log text;
-credentials carries the password. Every verb needs recorded Consent (exit 3,
-IGDEV_E_CONSENT_REQUIRED) and a current Checkout Setup, and up/reset also pass the
-Capacity Gate (IGDEV_E_CAPACITY, exit 3). Starting a Gateway accepts the private
+credentials carries the password. Every verb refreshes a missing or stale Checkout
+Setup first. The verbs that start a Gateway (up, reset, ensure) need the EULA accepted
+(exit 3, IGDEV_E_CONSENT_REQUIRED); low free memory is only a warning on stderr. Starting a Gateway accepts the private
 modules this checkout staged, by module id (ACCEPT_MODULE_LICENSES and
 ACCEPT_MODULE_CERTS); a contract with [modules] require_private_module_consent = true
 instead requires the machine-global module-license and module-cert terms, and without
@@ -190,9 +192,10 @@ them the run stops at exit 3 (ADR 0006).`,
 	"igdev gateway api": `pass --json for the machine contract. data carries method, path, url,
 status, headers (content-type, content-length, location, etag when present), body (parsed
 JSON, else text, null when empty), body_bytes, and truncated (true when the answer was
-over 4 MiB: body is then the first bytes as text). Use it for every REST call to the
-Instance instead of curl with the token: the path must start with /, and the token and
-origin headers cannot be overridden. A 4xx or 5xx answer is IGDEV_E_GATEWAY_API with the
+over 4 MiB: body is then the first bytes as text). It is the shortest way to a REST call
+on the Instance, since it presents the token itself; the path must start with /, and the
+token and origin headers cannot be overridden. Human mode prints the whole body, and
+--data takes up to 1 GiB. A 4xx or 5xx answer is IGDEV_E_GATEWAY_API with the
 same data; no answer is IGDEV_E_GATEWAY_UNHEALTHY, fixed with igdev gateway ensure.
 With --output <file> the whole body goes to the file, with no cap, and data carries
 method, path, url, status, headers, output (the absolute path), and body_bytes instead of
@@ -203,15 +206,15 @@ the path's last segment (GET /openapi.json --output writes openapi.json).`,
 trial_short), instance_id, namespace, url, ports, container, host_address, trial (or
 null), capacity (null when reused), and note when --min-trial did not apply. Call it
 once before e2e work instead of chaining up, wait, and status: when it returns the
-Gateway answered RUNNING. A refusal is IGDEV_E_CAPACITY or IGDEV_E_CONSENT_REQUIRED at
-exit 3 and discards nothing. IGDEV_E_DOCKER_DAEMON means Docker is not running: start
-it, never reset. Pass --fresh to discard the data on purpose.`,
+Gateway answered RUNNING. A refusal is IGDEV_E_CONSENT_REQUIRED at exit 3 and discards
+nothing. IGDEV_E_DOCKER_DAEMON means Docker is not running: start it (sudo systemctl
+start docker, or sudo dockerd in a container) and retry, never reset. Pass --fresh to discard the data on purpose.`,
 	"igdev gateway up": `pass --json for the machine contract. data carries instance_id, namespace,
 url, ports, and capacity (measured, available_mb, required_mb, headroom_mb, forced). up
 returns as soon as the container is started: follow it with igdev gateway wait (--smoke to
 check the declared endpoints too), and never assume the URL from the address block is answering yet. A
-refusal is IGDEV_E_CAPACITY at exit 3 — a human frees memory or passes --force — and a
-machine that was never set up is IGDEV_E_SETUP_REQUIRED, repaired with igdev setup. The
+machine without the EULA accepted is IGDEV_E_CONSENT_REQUIRED at exit 3; low free memory
+is a warning on stderr and capacity reports the numbers. The
 staged private modules are accepted by module id as part of starting (ADR 0006); with
 [modules] require_private_module_consent the run stops at exit 3 until the
 module-license and module-cert terms are recorded.`,
@@ -221,7 +224,7 @@ discards the Gateway's data, which with a staged Baseline is reproduced by the n
 igdev gateway reset.`,
 	"igdev gateway reset": `pass --json for the machine contract. data is the up shape — instance_id,
 namespace, url, ports, capacity — because reset ends with a started, waited-for Gateway.
-The Capacity Gate runs before anything is discarded, so a refusal at exit 3 costs no
+Consent is checked before anything is discarded, so a refusal at exit 3 costs no
 data; otherwise the volume is removed, the container is recreated, and the staged
 Baseline is applied on the fresh launch.`,
 	"igdev gateway restart": `pass --json for the machine contract. data is the address block:
@@ -232,8 +235,9 @@ modules (healthy[] with id, name, version, state, on_startup, pending_upgrade, s
 quarantined[] with id, name, version, reason, staged), and pending_upgrade (before,
 after, finalized). Use it instead of gateway restart plus wait plus a REST call: it
 returns once the Gateway reports RUNNING. A module this checkout stages that comes back
-quarantined is IGDEV_E_MODULE_QUARANTINED; a commissioning step other than accepting the
-terms of a staged module stops at exit 3 for a person.`,
+quarantined is IGDEV_E_MODULE_QUARANTINED. The modules commissioning step is finished
+for any module (only staged ones under require_private_module_consent); any other
+commissioning step stops at exit 3 for a person.`,
 	"igdev project": `project import and export move a project between a directory (or zip) and
 the running Gateway through its REST API with the Instance token. Keep projects in git as
 directories: export into the directory, import from it.`,
@@ -273,22 +277,23 @@ expires, and igdev gateway trial reset does the same on demand.`,
 reset, before, and after (null when not reset). A trial that has not expired is a
 successful no-op with reset false: Ignition accepts a reset only after expiry. A refused
 reset is IGDEV_E_TRIAL_RESET; HTTP 401 means the Gateway's data predates the Instance API
-token, and the Remediation is igdev gateway reset, which discards the Gateway's data, so
-confirm with a person before running it.`,
+token, and the Remediation is igdev gateway reset, which discards the Gateway's data:
+run it when the task can afford a fresh Gateway.`,
 	"igdev gateway exec": `pass --json for the machine contract. Run igdev's flags before the command
 (or before --). data carries instance_id, container, user, command, exit_code, stdout,
 stderr, stdout_bytes, stderr_bytes, and truncated: each stream is kept up to 1 MiB and
 the byte counts are the full sizes. A non-zero exit is IGDEV_E_EXEC_FAILED at the
 command's own exit level, with the same data. A Gateway that is not running is
-IGDEV_E_GATEWAY_UNHEALTHY with igdev gateway up as Remediation. Use this instead of
-docker exec: it goes through the Gate and addresses only this Instance.`,
-	"igdev gateway data": `pass --json for the machine contract. Use put and get instead of docker cp:
-paths on the Gateway side are relative to its data directory, and anything that could
-leave it (absolute, .., a symlink out) is IGDEV_E_USAGE before or instead of a copy.`,
+IGDEV_E_GATEWAY_UNHEALTHY with igdev gateway up as Remediation. It saves building the
+compose invocation for this Instance; --user root runs as root.`,
+	"igdev gateway data": `pass --json for the machine contract. put and get address this Instance's
+container without a compose invocation: a relative Gateway-side path is under the data
+directory, an absolute one anywhere in the container. --user root reads and writes as
+root instead of the Gateway's user.`,
 	"igdev gateway data put": `pass --json for the machine contract. data carries instance_id, path,
 container_path, local, bytes, and sha256 of what was written. Parent directories are
-created, and the file is owned by the Gateway's user (2003:0). A path outside the data
-directory is IGDEV_E_USAGE; a container-side failure is IGDEV_E_EXEC_FAILED.`,
+created, and the file is owned by the Gateway's user (2003:0), or by root with --user
+root. A container-side failure is IGDEV_E_EXEC_FAILED.`,
 	"igdev gateway data get": `pass --json for the machine contract. data carries instance_id, path,
 container_path, bytes, and sha256, plus local when a <local> path was given, or
 content_base64 (up to 1 MiB; a larger file is IGDEV_E_USAGE naming the <local> form).
@@ -301,13 +306,12 @@ engine's buffer is read (0 is everything it holds).`,
 	"igdev gateway url": `pass --json for the machine contract. data is the address block, and
 data.url is the only URL to script against: the port came from the Checkout Setup, so
 nothing in igdev or its callers may assume 8088.`,
-	"igdev gateway credentials": `pass --json for the machine contract, and --json is the only dialect that
-prints the password: human mode reports the username and where the password came from.
+	"igdev gateway credentials": `pass --json for the machine contract. Both dialects print the
+development Gateway's credentials; human mode adds the source and the URL to log in at.
 data carries username, password, and api_token: the Instance's own API token, the
 X-Ignition-API-Token value that administers this Gateway (empty for a checkout set up
 before igdev seeded one). A missing password (IGDEV_E_CONFIG_INVALID) is repaired with
-igdev setup; IGDEV_GATEWAY_ADMIN_PASSWORD overrides both tiers for CI. Never log the
-envelope: it is a secret.`,
+igdev setup; IGDEV_GATEWAY_ADMIN_PASSWORD overrides both tiers for CI.`,
 	"igdev baseline": `pass --json for the machine contract. set and status report the staged
 Baseline as staged, path, bytes, source, sha256, staged_at, and restore_args (what a
 fresh launch applies); clear reports removed. The staged file is the state and the
@@ -369,8 +373,9 @@ references/ is written through, never replaced. --scope repo requires a Project 
 (event, job, offline, command, args, workdir), act's exit code, and the tail of its
 output. act's own output streams to stderr in both dialects, so a human reads the
 workflow run and an agent reads the envelope. A run act cannot complete is
-IGDEV_E_ACT_FAILED at act's own exit code; a host without act is IGDEV_E_ACT_MISSING
-with the install commands in Remediation. --with-gateway ensures the Gateway first and
+IGDEV_E_ACT_FAILED at act's own exit code. Without act on PATH, ci-local fetches a
+pinned act into igdev's cache with go install once; only a host with neither act nor Go
+is IGDEV_E_ACT_MISSING, with the install commands in Remediation. --with-gateway ensures the Gateway first and
 adds data.gateway (action, reason, url, host_url, network); the job reads
 IGDEV_GATEWAY_URL and IGDEV_GATEWAY_TOKEN, and the token never appears in argv.`,
 }

@@ -16,8 +16,8 @@ import (
 	"github.com/sheon-sek/igdev/internal/config"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/docker"
-	"github.com/sheon-sek/igdev/internal/gate"
 	"github.com/sheon-sek/igdev/internal/project"
+	"github.com/sheon-sek/igdev/internal/xdg"
 )
 
 // ciLocalEventDefault is the GitHub event `ci-local` runs when --event says
@@ -90,16 +90,53 @@ const (
 	inNetworkURL    = "http://" + docker.GatewayServiceName + ":8088"
 )
 
-// missingActFault is the fault for a host without act. It names the tool the
-// way `igdev doctor` does and how to install it, because the fix is a host
-// change, not a project change.
+// actVersion is the act release igdev fetches when none is on PATH. `go install`
+// builds it from the module proxy, and the Go checksum database verifies the
+// source, so the pin is the version alone.
+const actVersion = "v0.2.89"
+
+// actModule is the module path `go install` fetches act from.
+const actModule = "github.com/nektos/act"
+
+// findAct returns the act binary ci-local runs: the one on PATH, else the copy
+// igdev fetched into its cache earlier, else a fresh `go install` into that cache
+// when a Go toolchain is on PATH (igdev#106). Only a host with neither act nor Go
+// gets IGDEV_E_ACT_MISSING.
+func (a *App) findAct() (string, *contract.Fault) {
+	if bin, err := exec.LookPath("act"); err == nil {
+		return bin, nil
+	}
+	dir := filepath.Join(xdg.Resolve().Cache, "act", actVersion)
+	cached := filepath.Join(dir, "act")
+	if info, err := os.Stat(cached); err == nil && info.Mode().IsRegular() {
+		return cached, nil
+	}
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		return "", missingActFault(err)
+	}
+	a.stage("ci-local: act is not on PATH; fetching act %s into %s with go install (once per machine)", actVersion, dir)
+	install := exec.Command(goBin, "install", actModule+"@"+actVersion)
+	install.Env = append(os.Environ(), "GOBIN="+dir)
+	install.Stdout, install.Stderr = a.Stderr, a.Stderr
+	if err := install.Run(); err != nil {
+		return "", missingActFault(err)
+	}
+	return cached, nil
+}
+
+// missingActFault is the fault for a host without act and without a Go
+// toolchain to fetch it. It names the official ways to install it, because the
+// fix is a host change, not a project change.
 func missingActFault(cause error) *contract.Fault {
 	return contract.NewFault(contract.CodeActMissing, contract.ExitFailure,
-		"act is not on PATH: igdev ci-local runs this project's GitHub Actions workflows through it").
+		"act is not on PATH and igdev could not fetch it: igdev ci-local runs this project's GitHub Actions workflows through it").
 		WithCause(cause).
 		WithRemediation(
-			contract.Remediation{Command: "pipx install act", Why: "install act (nektos/act)"},
-			contract.Remediation{Command: "brew install act", Why: "install act (nektos/act) on macOS"})
+			contract.Remediation{Command: "go install " + actModule + "@" + actVersion, Why: "build act (nektos/act) with a Go toolchain"},
+			contract.Remediation{Command: "brew install act", Why: "install act on macOS or Linux with Homebrew"},
+			contract.Remediation{Command: "curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash",
+				Why: "install act with its official installer"})
 }
 
 // requireCILocalGate is the Gate `ci-local` passes before it runs anything:
@@ -113,8 +150,13 @@ func (a *App) requireCILocalGate() (project.Found, *config.Resolution, error) {
 	if err != nil {
 		return found, res, err
 	}
-	if err := gate.Require(a.gateInput(found)); err != nil {
-		return found, res, err
+	refreshed, err := a.requireSetup(found)
+	if err != nil {
+		return refreshed, res, err
+	}
+	if string(refreshed.SetupRaw) != string(found.SetupRaw) {
+		// setup ran: resolve again, since it may have written the local tier.
+		return a.gate()
 	}
 	return found, res, nil
 }
@@ -142,9 +184,10 @@ and in order, so an act flag igdev does not know (` + "`--reuse`" + `,
 ` + "`--container-architecture`" + `) passes through unchanged. A trailing argument that is not
 flag-shaped needs no ` + "`--`" + `; flag-shaped passthrough is what it is for.
 
-act is an optional ` + "`igdev doctor`" + ` prerequisite: when it is not installed,
-` + "`ci-local`" + ` fails with IGDEV_E_ACT_MISSING and the install commands, and no
-subprocess is attempted. The verb passes the Gate (a current Checkout Setup) but
+act is an optional ` + "`igdev doctor`" + ` prerequisite: when it is not on PATH, ` + "`ci-local`" + `
+fetches act ` + actVersion + ` into igdev's cache with ` + "`go install`" + ` once and uses that copy;
+only a host without a Go toolchain fails with IGDEV_E_ACT_MISSING and the install
+commands. The verb passes the Gate (a current Checkout Setup) but
 not Consent: it starts no Gateway.
 
 --with-gateway first runs ` + "`igdev gateway ensure`" + ` for this checkout, which does need
@@ -182,9 +225,9 @@ project .env or .secrets file act would read by default is not read in this mode
 			if err != nil {
 				return err
 			}
-			bin, lookErr := exec.LookPath("act")
-			if lookErr != nil {
-				return missingActFault(lookErr)
+			bin, fault := a.findAct()
+			if fault != nil {
+				return fault
 			}
 			data := ciLocalData{
 				Event:   event,
@@ -220,7 +263,7 @@ project .env or .secrets file act would read by default is not read in this mode
 // that hand it to the job: the compose network, and the env and secret files that
 // carry the URL and the token. cleanup removes the files.
 func (a *App) ciLocalGateway(data *ciLocalData) ([]string, func(), error) {
-	g, err := a.gatewayContext()
+	g, err := a.startingGatewayContext()
 	if err != nil {
 		return nil, nil, err
 	}

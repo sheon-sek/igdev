@@ -49,11 +49,12 @@ func statusPing(client *http.Client, base string) (commissionedState, error) {
 }
 
 // finishModuleCommissioning completes the modules step a restart left the
-// Gateway in, when every module it asks about is one this checkout stages: those
-// are the developer's own artifacts, accepted without a human step as at start-up
-// (ADR 0006), behind the machine-global terms when the contract requires them. A
-// step other than modules, or a module the checkout does not own, stops the run:
-// that is a person's decision. It then waits until the Gateway runs again.
+// Gateway in, accepting the terms of every module it asks about: the modules on
+// a disposable development Gateway are the developer's own choice, accepted
+// without a human step as at start-up (ADR 0006), behind the machine-global terms
+// when the contract requires them — and then only for modules this checkout
+// stages. A step other than modules stops the run for a person. It then waits
+// until the Gateway runs again.
 func (a *App) finishModuleCommissioning(g *gateway, staged []string, timeout time.Duration) error {
 	client := &http.Client{Timeout: gatewayProbeTimeout}
 	state, err := statusPing(client, g.url())
@@ -103,7 +104,11 @@ func (a *App) finishModuleCommissioning(g *gateway, staged []string, timeout tim
 			foreign = append(foreign, l.ModuleID)
 		}
 	}
-	if len(foreign) > 0 {
+	// A module the checkout does not stage — installed straight over REST, say —
+	// was still put there by whoever works on this disposable Gateway, so its
+	// terms are accepted the same way (ADR 0006, amendment 3). Only the strict
+	// contract keeps it a person's decision.
+	if len(foreign) > 0 && g.doc.Modules.RequirePrivateModuleConsent {
 		return commissioningFault(g, fmt.Sprintf("the Gateway asks to accept the terms of %s, which this checkout does not stage",
 			strings.Join(foreign, ", ")))
 	}
