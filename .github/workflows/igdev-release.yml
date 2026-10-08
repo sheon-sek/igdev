@@ -51,11 +51,18 @@ jobs:
           tar -xzf "$artifact" -C /tmp
           /tmp/igdev-"${{ steps.package.outputs.version }}"-linux-amd64/igdev version --json
 
+      - name: Find release notes
+        id: notes
+        run: |
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then echo "path=$notes" >>"$GITHUB_OUTPUT"; fi
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: igdev ${{ steps.package.outputs.version }}
+          body_path: ${{ steps.notes.outputs.path }}
           files: |
             ${{ steps.package.outputs.dist }}/*.tar.gz
             ${{ steps.package.outputs.dist }}/checksums.txt
