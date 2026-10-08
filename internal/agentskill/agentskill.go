@@ -3,10 +3,14 @@
 // (into the global skills directory by default, or into a repository with
 // --scope repo).
 //
-// SKILL.md is the entry an agent loads first. It teaches ordering, boundaries,
-// and error handling, and routes to references/, the generated command and
-// error-code reference an agent reads only when a task needs it. cmd/igdev-docs
-// writes references/; nothing there is handwritten. The skill carries no API
+// SKILL.md is the entry an agent loads first. Its description says when to load
+// the skill; its body names the three layers (environment, operations on the
+// Gateway, knowledge and checks), the steps with their completion criteria, and
+// the Consent guardrail. It routes to references/: the generated command and
+// error-code reference, which cmd/igdev-docs writes, and the hand-written
+// references/guides/ (one page per scenario plus lookup), which the generator
+// never touches because it only writes and checks the pages directly in
+// references/. The skill carries no API
 // catalogs (the Core Catalog embedded in the binary is the machine source for
 // those) and, apart from the CLI Contract Version in its frontmatter, no
 // version-like detail. It is embedded with //go:embed, so installing it reads no

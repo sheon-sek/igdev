@@ -100,7 +100,7 @@ and `packaging/install.sh` for real against a loopback file server.
 | `internal/gatewayapi` | the `gateway api` request, built from the recorded URL with the token and origin headers a caller cannot replace (ADR 0007) |
 | `internal/projectseed` | the tracked `[gateway] seed`: the reserved-type and size refusals, the secret-key warning, and its digest (ADR 0009) |
 | `internal/jython` | the pinned standalone-jar table, the lock-guarded cache, and the one-JVM batched compile |
-| `internal/agentskill` | the embedded Agent Skill (`SKILL.md` plus `references/`, which `make reference` writes) |
+| `internal/agentskill` | the embedded Agent Skill (`SKILL.md`, the generated `references/` that `make reference` writes, and the hand-written `references/guides/`) |
 | `internal/buildinfo` | the release version and commit stamped in at build time |
 | `internal/testrig` | seam S1 harness: scratch HOME, PATH shims, loopback server, goldens, gates |
 | `itest` | behaviour tests and the goldens that freeze the contract |
