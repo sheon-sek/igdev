@@ -27,6 +27,7 @@ Available Commands:
   catalog     Inspect the capability knowledge the CLI resolves against
   check       Run the fixed preflight pipeline before anything else
   ci-local    Run this project's GitHub Actions workflows locally through act
+  cleanup     Remove everything igdev created, for this checkout or the whole machine
   completion  Print the shell completion script for igdev
   consent     Carry a person's Consent record to an unattended runner
   doctor      Audit the host prerequisites igdev's runtime work depends on

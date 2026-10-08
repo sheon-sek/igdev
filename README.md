@@ -115,6 +115,21 @@ Configuration resolves from the highest tier that names a key: command-line flag
 `igdev.toml`, then embedded defaults. No config file is ever executed, and `--config
 key=value` overrides one key for a single run.
 
+### Cleaning up a finished project
+
+```bash
+igdev cleanup --dry-run               # list what would go, change nothing
+igdev cleanup                         # this checkout: Gateway containers, volume, network, image, .igdev/
+igdev cleanup --deinit                # also igdev.toml, the AGENTS.md block, a repo-scope skill
+igdev cleanup --machine --yes         # every igdev Instance, base images, cache/state/config, global skills
+igdev cleanup --uninstall --yes       # all of that, then the igdev binary and its PATH entry
+```
+
+The Gateway's projects go with it, so `igdev project export` what you want to keep first.
+`--machine` removes the Consent record: a person accepts the EULA again before the next
+Gateway starts. `.gitignore`, the Docker build cache and act's images are left alone and
+listed as kept.
+
 ### Upgrading from CLI Contract 1
 
 Contract 2 removed `gateway smoke` (use `gateway wait --smoke`), `verify` (use

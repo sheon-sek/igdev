@@ -95,4 +95,6 @@ var CodeDocs = []CodeDoc{
 		"Read `data` (status, body) and fix the request, or read `igdev gateway logs`."},
 	{CodeModuleQuarantined, "1", "The running Gateway quarantined a module this checkout stages or installed. The message carries the Gateway's reason.",
 		"Follow the Remediation: an unsigned build needs `allow_unsigned_modules = true`; otherwise read `igdev gateway logs`."},
+	{CodeCleanupPartial, "1", "`igdev cleanup` removed what it could, but at least one item failed. `data.items` carries each outcome and reason.",
+		"Fix what the failed items' reasons name, then run the same cleanup again: it is idempotent."},
 }

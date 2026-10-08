@@ -43,6 +43,7 @@ Orient before acting: igdev status --json works everywhere, and igdev agent cont
 | [`igdev catalog status`](catalog-status.md) | Report the Core Catalog and Project Overlay layers with digests |
 | [`igdev check`](check.md) | Run the fixed preflight pipeline before anything else |
 | [`igdev ci-local`](ci-local.md) | Run this project's GitHub Actions workflows locally through act |
+| [`igdev cleanup`](cleanup.md) | Remove everything igdev created, for this checkout or the whole machine |
 | [`igdev completion`](completion.md) | Print the shell completion script for igdev |
 | [`igdev consent`](consent.md) | Carry a person's Consent record to an unattended runner |
 | [`igdev consent export`](consent-export.md) | Export this machine's Consent record for IGDEV_CONSENT_FILE |

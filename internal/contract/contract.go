@@ -187,6 +187,9 @@ const (
 	// that the running Gateway quarantined after `restart` or `module install`.
 	// The message carries the Gateway's reason; data carries the module report.
 	CodeModuleQuarantined Code = "IGDEV_E_MODULE_QUARANTINED"
+	// CodeCleanupPartial covers an `igdev cleanup` run that removed what it could
+	// but failed on at least one item. data carries every item with its outcome.
+	CodeCleanupPartial Code = "IGDEV_E_CLEANUP_PARTIAL"
 )
 
 // Remediation is a machine-readable next step: the exact command that clears
