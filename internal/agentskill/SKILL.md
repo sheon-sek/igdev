@@ -1,79 +1,70 @@
 ---
 name: igdev
 version: "2"
-description: "Work an Ignition local-development checkout from an agent session with igdev: orient with status, keep init and setup apart, never accept legal terms, validate before running, and speak JSON."
+description: "Ignition local development with igdev. Use when a repository has igdev.toml, when a task needs a running Ignition Gateway, when you need a system.* function or a Gateway REST endpoint, or when you build an Ignition SDK module, MCP Tools, or an AI agent against Ignition."
 ---
 
 # igdev
 
-igdev is the Ignition local-development toolchain. Each repository declares what it
-needs in a tracked `igdev.toml` Project Contract; igdev materializes a disposable
-runtime into the gitignored `.igdev/`. This file is the workflow. Read a reference
-file below only when the task needs it; do not guess a flag or a code.
+igdev gives each checkout its own disposable Ignition Gateway. The tracked `igdev.toml`
+(the Project Contract) is the only state worth keeping. `.igdev/` and the Gateway are
+disposable: the next igdev command regenerates `.igdev/`, and `igdev gateway ensure`
+brings the Gateway back.
 
-## References
+Pass `--json` to every command and act on the envelope. A failure names a `code` and a
+`remediation`: run the remediation. `references/errors.md` explains each code.
 
-- `references/README.md`: every command, one line each. Start here to find a verb.
-- `references/<command>.md`: one command's flags, examples, and agent usage. The
-  name is the command path with dashes, for example `references/gateway-up.md` or
-  `references/module-require.md`. `igdev help <command>` prints the same text.
-- `references/errors.md`: every `IGDEV_E_*` code with its exit level and next step.
-  Read it when a run fails and the Remediation alone does not explain the failure.
-- `references/agent-context.md`: the field-by-field shape of
-  `igdev agent context --json`.
+## Three layers
 
-## Workflow
+| Layer | Reach for first |
+| --- | --- |
+| Environment | `igdev init`, `igdev setup`, `igdev gateway ensure`, `igdev gateway down` |
+| Operations on the Gateway | `igdev gateway api`, `igdev gateway exec`, `igdev gateway data`, `igdev module install`, `igdev restart`, `igdev project import` / `export` |
+| Knowledge and checks | `igdev lookup`, `igdev check` |
 
-1. **Status first.** Orient with `igdev status --json` before doing anything else.
-   It is the safe first call: it works before `init` and `setup` and never mutates.
-   For a full one-call orientation — lifecycle, versions, instance, gateway,
-   modules, catalog, and command availability — run `igdev agent context --json`.
+## Steps
 
-2. **Keep init and setup separate.** `igdev init` writes the tracked Project
-   Contract (`igdev.toml`) and is the only verb that mutates tracked files. `igdev
-   setup` materializes this checkout into `.igdev/` and writes nothing tracked. A
-   missing or stale Checkout Setup is repaired with `setup`, never by hand-editing
-   generated files.
+1. **Orient.** Run `igdev agent context --json`.
+   Done when it returns `ok:true`. With no `igdev.toml` yet, write one with
+   `igdev init --json` and the flags the task needs. When this file's `version` differs
+   from the envelope's `contract`, run `igdev agent skill-install` and reload the skill.
+2. **Look it up.** Before writing a `system.*` call or a REST request, run
+   `igdev lookup "<what you need>" --json`, then `--name <result>` for the full entry.
+   Done when every function and endpoint you write matches a looked-up entry.
+3. **Check.** Run `igdev check --json`; `--all` adds the test and build stages.
+   Done when it returns `ok:true`.
+4. **Gateway, when behaviour depends on the Ignition runtime** (`system.*` results,
+   modules, tags, OPC, REST, MCP). Run `igdev gateway ensure --json`.
+   Done when it reports `url`. Read the URL, ports and `host_address` (how the Gateway
+   reaches this host) from that envelope; ports differ per checkout. Then work through
+   the operations layer: `igdev gateway api` presents the API token itself, and
+   `igdev gateway exec` and `igdev gateway data put|get` reach inside the container.
+5. **Finish.** Run `igdev gateway down --volumes`, or keep the Gateway for the next run
+   and say so. Done when your report states which.
 
-3. **Never accept a legal term.** Consent (the Ignition EULA, module licenses,
-   module certificates) is human-only. Never run `setup --accept-eula`,
-   `--accept-module-license`, or `--accept-module-certificate` on a person's
-   behalf. When a command exits 3 with `IGDEV_E_CONSENT_REQUIRED`, stop and hand
-   the exact Remediation command to a human.
+Change the contract (versions, modules, commands) with `igdev init --json <flags>`: it
+prints the diff for review, and the next command picks the change up.
 
-4. **Validate before you run.** Use `igdev check` to exercise the preflight
-   pipeline (module validate, capability scan, the declared check command, batched
-   Jython). Fix what it reports. Do not run `test`, `build`, or a Gateway on a
-   checkout that has not passed.
+## Consent
 
-5. **Start a Gateway only when runtime matters.** Drive it through igdev. When
-   the task needs the running Ignition runtime, call `igdev gateway ensure --json`:
-   it reuses a healthy Gateway, starts a stopped one, or resets a broken one, and
-   reports `action`, `url`, `container` and `trial`. Then reach the Gateway only with
-   igdev verbs:
-   - REST: `igdev gateway api <METHOD> <path> --json` sends the Instance API token
-     for you. Never write curl with `X-Ignition-API-Token` by hand.
-   - Inside the container: `igdev gateway exec -- <cmd>`, and `igdev gateway data
-     put|get` for files under the data directory.
-     Never `docker exec`, `docker cp` or `docker inspect` an Instance.
-   - Trial: `igdev gateway trial --json`. An expired trial is reset in place by the
-     trial keeper or `igdev gateway trial reset`; never rebuild a Gateway because its
-     trial ran out.
-   - Host services: the Gateway reaches the host at `host.docker.internal`.
-   Ports are dynamic: read the URL from the JSON, never assume 8088. The Gateway is
-   disposable: stop it with `igdev gateway down --volumes` when done.
-   `IGDEV_E_DOCKER_DAEMON` means Docker is not running: ask a person to start it,
-   and never reset the Gateway for it.
+The Ignition EULA is a legal acceptance only a person can give, once per machine. When a
+command exits 3 with `IGDEV_E_CONSENT_REQUIRED`, stop and hand its remediation to a
+person (`igdev setup --accept-eula`, or `IGDEV_ACCEPT_EULA=Y` in the environment's
+configuration). Never pass an `--accept-*` flag or set `IGDEV_ACCEPT_EULA` yourself.
+Done when the person has the remediation and you have stopped.
 
-6. **Never edit `.igdev/`.** Everything under `.igdev/` is generated and
-   disposable; `igdev setup` re-renders it. Delete it rather than patch it, and
-   make tracked changes through the CLI so they print a reviewable diff.
+A person working at a terminal can run `igdev init`, `igdev setup` and
+`igdev module add` without arguments to get their interactive Wizards; suggest them when
+a person sets up a checkout by hand.
 
-7. **Never bypass a preflight fault.** A fault names an exact code and Remediation.
-   Run the Remediation; do not skip the stage, silence the error, or force past it.
-   `--force` is a human's risk decision, not an agent's.
+## Scenario guides
 
-8. **Speak JSON.** Pass `--json` so stdout is the single envelope
-   `{ok, contract, code, message, remediation, data}` and progress stays on stderr.
-   With every argument supplied igdev runs in Silent Mode: it never prompts,
-   whatever the terminal is.
+Read the guide that matches the task before its first step:
+
+- `references/guides/scenario-sdk-module.md`: building an Ignition module (`.modl`).
+- `references/guides/scenario-mcp-tools.md`: writing Tools for the Ignition MCP Module.
+- `references/guides/scenario-ai-agent.md`: preparing a Gateway and data for an AI agent.
+- `references/guides/lookup.md`: when `lookup` finds nothing or reports `embedded`.
+
+A command's flags are in `references/<command path with dashes>.md`, for example
+`references/gateway-api.md`; `references/README.md` lists every command.
