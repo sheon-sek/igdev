@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "contract": "2",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "name": "demo",
+    "source": "<PROJECT>",
+    "zipped": true,
+    "bytes": 366,
+    "overwrite": false,
+    "changes": [
+      "demo"
+    ]
+  }
+}

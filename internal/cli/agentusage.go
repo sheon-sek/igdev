@@ -102,7 +102,11 @@ file, with superseded listing any staged file it replaced — and then re-materi
 the runtime. A declared glob that matches nothing fails with
 IGDEV_E_MODULE_ARTIFACT_MISSING. A failing stage propagates its own exit code and
 stops the run before anything is re-staged, so a build that failed never republishes
-modules.`,
+modules. --install adds stage module-install: installs lists each artifact with id,
+artifact, action (installed or unchanged — same sha256 as last time), status (healthy,
+inactive, quarantined), and restarted; it is igdev module install for each changed
+artifact and stops at the first failure. Use build --install as the SDK inner loop: the
+running Gateway keeps its projects and configuration.`,
 	"igdev jython": `pass --json for the machine contract. jython check carries data.version,
 data.jar (the verified cache entry the compile ran against), file_count, files, and
 diagnostics on a failed compile. The checker is pinned by sha256 in the embedded version
@@ -161,6 +165,15 @@ staged unless the archive's module.xml can be read, and nothing is written to th
 contract: a staged private module is enabled by being staged, so no whitelist entry is
 needed. The staged id is a first-class id for igdev module require and igdev module
 list reports it as "enabled (staged)".`,
+	"igdev module install": `pass --json for the machine contract. data carries id, name, version,
+source, path (the staged copy, so a later reset or fresh volume loads it too), accepted
+(the module's own terms igdev accepted: certificate, eula), restarted, status (healthy,
+inactive, quarantined), and module (the Gateway's row: version, state, on_startup,
+reason). Use it instead of module add plus gateway reset whenever the Gateway's data
+must survive. A pending upgrade or a module that did not start is finished with an
+in-place restart. A quarantine is IGDEV_E_MODULE_QUARANTINED with the Gateway's reason
+(unsigned: igdev init --allow-unsigned-modules). inactive means a [modules].enabled
+whitelist left the new id disabled until the Gateway is recreated.`,
 	"igdev module clear": `pass --json for the machine contract. data carries modules_dir, removed
 (the artifact file names deleted), count, staged (what is left), runtime_dir, and the
 runtime files re-rendered. Clearing an empty staging area is a successful no-op.`,
@@ -217,6 +230,27 @@ Baseline is applied on the fresh launch.`,
 	"igdev gateway restart": `pass --json for the machine contract. data is the address block:
 instance_id, namespace, url, and ports. The named volume is kept, so nothing is restored
 and no state is lost; use igdev gateway reset when a fresh Gateway is what is wanted.`,
+	"igdev restart": `pass --json for the machine contract. data carries the address block,
+modules (healthy[] with id, name, version, state, on_startup, pending_upgrade, staged;
+quarantined[] with id, name, version, reason, staged), and pending_upgrade (before,
+after, finalized). Use it instead of gateway restart plus wait plus a REST call: it
+returns once the Gateway reports RUNNING. A module this checkout stages that comes back
+quarantined is IGDEV_E_MODULE_QUARANTINED. The modules commissioning step is finished
+for any module (only staged ones under require_private_module_consent); any other
+commissioning step stops at exit 3 for a person.`,
+	"igdev project": `project import and export move a project between a directory (or zip) and
+the running Gateway through its REST API with the Instance token. Keep projects in git as
+directories: export into the directory, import from it.`,
+	"igdev project import": `pass --json for the machine contract. data carries name, source,
+zipped (true when a directory was zipped), bytes, overwrite, and changes (the projects the
+Gateway reports it changed). A directory without project.json, or a name the Gateway
+already has without --overwrite, is a usage error at exit 2 whose Remediation names the
+fix. Never hand-build the zip or call the import endpoint through gateway api.`,
+	"igdev project export": `pass --json for the machine contract. data carries name, output,
+unpacked, bytes, and files (when unpacked). An --output that does not end in .zip is a
+directory left holding exactly the exported files, so git shows additions and deletions;
+it must be absent, empty, or already hold project.json. An unknown project is a usage
+error at exit 2.`,
 	"igdev gateway wait": `pass --json for the machine contract. data is the address block. The
 wait ends when the Gateway reports RUNNING on its readiness endpoint (/StatusPing) —
 the root document answering is not readiness, Jetty serves it while the Gateway is

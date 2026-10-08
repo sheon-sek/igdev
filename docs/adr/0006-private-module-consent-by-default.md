@@ -59,3 +59,13 @@ Version stays 2, because no verb, flag or `--json` key changes shape.
 The `.modl` reader's total uncompressed bound rises from 64 MiB to 1 GiB, so a large
 third-party module is never refused for its size; the compression-ratio guard against
 decompression bombs stays (ADR 0012).
+
+## Amendment 3: restart accepts every module's terms (2026-10-08, igdev#104)
+
+`restart` finishing 8.3's modules commissioning step stopped at exit 3 for a module the
+checkout does not stage, such as one installed straight over REST. On a disposable
+development Gateway that module is still the developer's choice, so `restart` now
+accepts the terms of every module the step lists. With
+`[modules] require_private_module_consent = true` the old rule holds: only staged
+modules, behind the machine-global terms. A commissioning step other than modules is
+still a person's (ADR 0011, ADR 0012).

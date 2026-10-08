@@ -35,6 +35,10 @@ type GatewayStub struct {
 	last     http.Header
 	lastVerb string
 	lastBody string
+	// requests is every request as "METHOD /path?query", in arrival order.
+	requests []string
+	// types is the Content-Type of the last request to each path.
+	types map[string]string
 }
 
 // ServeGateway starts a stand-in Gateway on a loopback port the fixture already
@@ -115,10 +119,33 @@ func (g *GatewayStub) LastRequest() (string, http.Header, string) {
 	return g.lastVerb, g.last.Clone(), g.lastBody
 }
 
+// Requests reports every request the stand-in answered except readiness polls,
+// as "METHOD /path?query" in arrival order, so a test can assert the sequence of
+// REST calls a verb made.
+func (g *GatewayStub) Requests() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]string{}, g.requests...)
+}
+
+// ContentType reports the Content-Type of the last request to path.
+func (g *GatewayStub) ContentType(path string) string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.types[path]
+}
+
 func (g *GatewayStub) handle(w http.ResponseWriter, r *http.Request) {
 	raw, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	g.mu.Lock()
 	g.last, g.lastVerb, g.lastBody = r.Header.Clone(), r.Method, string(raw)
+	if r.URL.Path != statusPingPath {
+		g.requests = append(g.requests, r.Method+" "+r.URL.RequestURI())
+		if g.types == nil {
+			g.types = map[string]string{}
+		}
+		g.types[r.URL.Path] = r.Header.Get("Content-Type")
+	}
 	status, ok := g.paths[r.URL.Path]
 	body := g.bodies[r.URL.Path]
 	g.hits++

@@ -1,0 +1,27 @@
+{
+  "ok": true,
+  "contract": "2",
+  "code": "",
+  "message": "ok",
+  "remediation": [],
+  "data": {
+    "id": "com.acme.vision",
+    "name": "Acme Vision",
+    "version": "1.2.3",
+    "source": "<BUILD>",
+    "path": "<ROOT>/repo/.igdev/modules/acme.modl",
+    "accepted": [
+      "certificate"
+    ],
+    "restarted": false,
+    "status": "healthy",
+    "module": {
+      "id": "com.acme.vision",
+      "name": "Acme Vision",
+      "version": "1.2.3 (b0)",
+      "state": "ACTIVE",
+      "on_startup": "enabled",
+      "staged": true
+    }
+  }
+}

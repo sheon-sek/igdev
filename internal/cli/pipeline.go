@@ -70,6 +70,20 @@ type stageResult struct {
 	// `[modules].artifacts`: one entry per artifact the globs resolved and this
 	// run staged.
 	Artifacts []stagedArtifact `json:"artifacts,omitempty"`
+	// Installs is the module-install detail of `build --install`: one entry per
+	// staged artifact, installed into the running Gateway or skipped as unchanged.
+	Installs []moduleInstallResult `json:"installs,omitempty"`
+}
+
+// moduleInstallResult is one artifact `build --install` considered.
+type moduleInstallResult struct {
+	ID       string `json:"id"`
+	Artifact string `json:"artifact"`
+	// Action is installed, or unchanged when the same bytes were installed last time.
+	Action string `json:"action"`
+	// Status is the Gateway's verdict for an installed module: healthy or quarantined.
+	Status    string `json:"status,omitempty"`
+	Restarted bool   `json:"restarted,omitempty"`
 }
 
 // stagedArtifact is one artifact a contract glob matched and `igdev build`
@@ -219,7 +233,11 @@ non-zero propagates its own exit code.`,
 }
 
 func (a *App) newBuildCmd() *cobra.Command {
-	return &cobra.Command{
+	var (
+		install    bool
+		timeoutRaw string
+	)
+	cmd := &cobra.Command{
 		Use:   "build",
 		Short: "Run the project's declared build stage, then re-stage the modules",
 		Long: `build dispatches [commands].build at the Project Root, then brings the module
@@ -234,11 +252,24 @@ declares its build outputs and finds none of them has nothing to stage.
 
 An undeclared build stage is skipped and reported as skipped. A stage that exits
 non-zero propagates its own exit code and stops the run before anything is
-re-staged. An undeclared artifacts list stages nothing on its own.`,
+re-staged. An undeclared artifacts list stages nothing on its own.
+
+--install adds a module-install stage: every artifact the globs staged whose bytes
+changed since the last install is hot-installed into the running Gateway exactly as
+` + "`igdev module install`" + ` does, restarting it when an install replaced a running build.
+The digest of each installed artifact is recorded in .igdev/modules/, so an unchanged
+artifact is reported as unchanged and not uploaded again. The stage stops at the first
+failure. This is the SDK inner loop: edit, ` + "`igdev check`" + `, ` + "`igdev build --install`" + `,
+then ` + "`igdev gateway logs`" + ` or ` + "`igdev gateway api`" + `, with no data lost.`,
 		Example: `  igdev build
-  igdev build --json`,
+  igdev build --json
+  igdev build --install`,
 		Args: rejectArgs("build"),
 		RunE: func(_ *cobra.Command, _ []string) error {
+			timeout, err := parseTimeout(timeoutRaw, gatewayWaitDefault)
+			if err != nil {
+				return err
+			}
 			found, k, err := a.projectStaged()
 			if err != nil {
 				return err
@@ -247,10 +278,20 @@ re-staged. An undeclared artifacts list stages nothing on its own.`,
 			if fault := a.runBuildStages(found, k, &data); fault != nil {
 				return fault
 			}
+			if install {
+				if fault := a.runInstallStage(found, &data, timeout); fault != nil {
+					return fault
+				}
+			}
 			a.emit(k.res, data, func() { a.printPipeline(data) })
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&install, "install", false,
+		"also hot-install every changed artifact into the running Gateway (module install)")
+	cmd.Flags().StringVar(&timeoutRaw, "timeout", "",
+		"with --install, how long to wait for each module and restart (default 180s)")
+	return cmd
 }
 
 // runCheckStages runs the four frozen check stages in order.
@@ -671,6 +712,17 @@ func stageDetail(stage stageResult) string {
 			return ""
 		}
 		return fmt.Sprintf("%d file(s)", stage.FileCount)
+	case "module-install":
+		if stage.Status == stageSkipped {
+			return stage.Message
+		}
+		installed := 0
+		for _, i := range stage.Installs {
+			if i.Action == "installed" {
+				installed++
+			}
+		}
+		return fmt.Sprintf("%d installed, %d unchanged", installed, len(stage.Installs)-installed)
 	case "module-restage":
 		if stage.Status == stageSkipped {
 			return ""

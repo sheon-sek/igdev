@@ -16,6 +16,14 @@ An undeclared build stage is skipped and reported as skipped. A stage that exits
 non-zero propagates its own exit code and stops the run before anything is
 re-staged. An undeclared artifacts list stages nothing on its own.
 
+--install adds a module-install stage: every artifact the globs staged whose bytes
+changed since the last install is hot-installed into the running Gateway exactly as
+`igdev module install` does, restarting it when an install replaced a running build.
+The digest of each installed artifact is recorded in .igdev/modules/, so an unchanged
+artifact is reported as unchanged and not uploaded again. The stage stops at the first
+failure. This is the SDK inner loop: edit, `igdev check`, `igdev build --install`,
+then `igdev gateway logs` or `igdev gateway api`, with no data lost.
+
 ## Usage
 
 ```text
@@ -27,12 +35,15 @@ igdev build [flags]
 ```text
   igdev build
   igdev build --json
+  igdev build --install
 ```
 
 ## Options
 
 ```text
-  -h, --help   help for build
+  -h, --help             help for build
+      --install          also hot-install every changed artifact into the running Gateway (module install)
+      --timeout string   with --install, how long to wait for each module and restart (default 180s)
 ```
 
 ## Global options
@@ -53,4 +64,8 @@ file, with superseded listing any staged file it replaced — and then re-materi
 the runtime. A declared glob that matches nothing fails with
 IGDEV_E_MODULE_ARTIFACT_MISSING. A failing stage propagates its own exit code and
 stops the run before anything is re-staged, so a build that failed never republishes
-modules.
+modules. --install adds stage module-install: installs lists each artifact with id,
+artifact, action (installed or unchanged — same sha256 as last time), status (healthy,
+inactive, quarantined), and restarted; it is igdev module install for each changed
+artifact and stops at the first failure. Use build --install as the SDK inner loop: the
+running Gateway keeps its projects and configuration.
