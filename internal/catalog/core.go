@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/sheon-sek/igdev/internal/contract"
+	"github.com/sheon-sek/igdev/internal/semver"
 )
 
 // assets holds the Core Catalog data, one directory per Ignition version. The
@@ -39,7 +40,7 @@ func coreAsset(version string, plane Plane) string {
 }
 
 // Versions lists the Ignition versions this binary carries a Core Catalog for,
-// in name order.
+// oldest first. Order is semantic, so 8.3.8 comes before 8.3.10.
 func Versions() []string {
 	entries, err := assets.ReadDir("assets")
 	if err != nil {
@@ -55,8 +56,24 @@ func Versions() []string {
 		}
 		out = append(out, entry.Name())
 	}
-	sort.Strings(out)
+	sort.SliceStable(out, func(i, j int) bool { return versionLess(out[i], out[j]) })
 	return out
+}
+
+// versionLess orders version names semantically; a name that does not parse
+// sorts after every parsable one, by name.
+func versionLess(a, b string) bool {
+	va, errA := semver.Parse(a)
+	vb, errB := semver.Parse(b)
+	switch {
+	case errA == nil && errB == nil:
+		return va.Less(vb)
+	case errA == nil:
+		return true
+	case errB == nil:
+		return false
+	}
+	return a < b
 }
 
 // Core loads the embedded Core Catalog for one Ignition version. A version this

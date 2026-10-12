@@ -604,3 +604,28 @@ func TestModuleRequireMongoDBNeedsStagedArtifact(t *testing.T) {
 	testrig.WantCode(t, envelope, contract.CodeModuleArtifactMissing)
 	testrig.WantRemediation(t, envelope, "igdev module add /path/to/module.modl")
 }
+
+// A checkout pinned to Ignition 8.3.10 resolves against the embedded 8.3.10 Core
+// Catalog: catalog status names it, and a native function resolves through it.
+func TestCatalog8310Embedded(t *testing.T) {
+	env := testrig.NewEnv(t)
+	dir := env.Project("repo-8310", strings.Replace(knowledgeContract(), `version = "8.3.8"`, `version = "8.3.10"`, 1))
+
+	status := env.RunIn(dir, "catalog", "status", "--json")
+	testrig.WantExit(t, status, contract.ExitOK)
+	var data catalogStatusData
+	testrig.DataOf(t, status.Stdout, &data)
+	want, fault := catalog.CoreDigest("8.3.10")
+	if fault != nil {
+		t.Fatalf("CoreDigest: %v", fault)
+	}
+	if data.Core.Version != "8.3.10" || data.Core.Source != "embedded" || data.Core.Digest != want {
+		t.Errorf("core = %+v, want embedded 8.3.10 with digest %s", data.Core, want)
+	}
+	if data.Core.Counts.BuiltinModules != 32 {
+		t.Errorf("built-in modules = %d, want 32", data.Core.Counts.BuiltinModules)
+	}
+
+	testrig.WantExit(t, env.RunIn(dir, "module", "require", "system.tag.readBlocking", "--json"), contract.ExitOK)
+	env.AssertNoDockerCalls(t)
+}
