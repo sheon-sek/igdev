@@ -100,6 +100,9 @@ func (a *App) restartGateway(g *gateway, timeout time.Duration) (restartData, er
 	if m, fault := g.readModules(staged); fault == nil {
 		before = m.pendingUpgrade()
 	}
+	if err := a.guardVolumeVersion(g); err != nil {
+		return restartData{}, err
+	}
 	a.stage("restart: restarting %s in place", g.stamp.Namespace())
 	if fault := g.compose.Restart(); fault != nil {
 		return restartData{}, fault

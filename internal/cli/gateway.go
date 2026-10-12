@@ -484,6 +484,9 @@ without them (ADR 0006).`,
 			if err := g.requireRuntimeFiles(); err != nil {
 				return err
 			}
+			if err := a.guardVolumeVersion(g); err != nil {
+				return err
+			}
 			decision := a.admit(g, force)
 			a.stage("gateway up: starting %s (docker compose up --detach --build %s)",
 				g.stamp.Namespace(), strings.Join(g.compose.UpServices(), " "))

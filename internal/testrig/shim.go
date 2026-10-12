@@ -107,6 +107,23 @@ if [ "$1" = "cp" ]; then
   tar -C "$(dirname "$IGDEV_SHIM_DOCKER_CP_ROOT$src")" -cf - "$(basename "$src")"
   exit 0
 fi
+# The volume-version guard asks whether a volume exists, then cats its init
+# record through a throwaway container: the answer is IGDEV_SHIM_VOLUME_INIT, or
+# a missing file when that is unset.
+if [ -n "$home" ] && [ "$1" = "volume" ] && [ "$2" = "inspect" ]; then
+  for a in "$@"; do last="$a"; done
+  if [ -f "$home/volumes/$last" ]; then printf '%s\n' "$last"; exit 0; fi
+  echo "Error response from daemon: get $last: no such volume" >&2
+  exit 1
+fi
+if [ "$1" = "run" ] && [ "$3" = "--entrypoint" ] && [ "$4" = "cat" ]; then
+  if [ -z "$IGDEV_SHIM_VOLUME_INIT" ]; then
+    echo "cat: can't open file: No such file or directory" >&2
+    exit 1
+  fi
+  printf '%s\n' "$IGDEV_SHIM_VOLUME_INIT"
+  exit 0
+fi
 if [ "$1" = "run" ] || [ "$1" = "create" ]; then
   printf '%064x\n' "$n"
   exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
@@ -508,9 +525,30 @@ type DockerCall struct {
 // string means igdev supplied it empty; a variable igdev never sets is empty too.
 func (c DockerCall) GatewayEnv(name string) string { return c.Env[name] }
 
-// DockerCalls returns the shim's call log, oldest first. An absent log means no
-// docker was ever invoked.
+// DockerCalls returns the shim's call log, oldest first, without the reads the
+// volume-version guard makes before a start (VolumeGuardCall): the engine call
+// sequences the lifecycle tests assert are the ones that change state. An absent
+// log means no docker was ever invoked.
 func (e *Env) DockerCalls(t *testing.T) []DockerCall {
+	t.Helper()
+	var out []DockerCall
+	for _, call := range e.AllDockerCalls(t) {
+		if !VolumeGuardCall(call) {
+			out = append(out, call)
+		}
+	}
+	return out
+}
+
+// VolumeGuardCall is whether call is one of the guard's reads of a data volume:
+// the existence check or the throwaway cat of its init record.
+func VolumeGuardCall(call DockerCall) bool {
+	argv := strings.Join(call.Argv, " ")
+	return strings.HasPrefix(argv, "volume inspect ") || strings.HasPrefix(argv, "run --rm --entrypoint cat ")
+}
+
+// AllDockerCalls returns the shim's whole call log, oldest first.
+func (e *Env) AllDockerCalls(t *testing.T) []DockerCall {
 	t.Helper()
 	raw, err := os.ReadFile(e.Path("state", "docker-calls.jsonl"))
 	if os.IsNotExist(err) {

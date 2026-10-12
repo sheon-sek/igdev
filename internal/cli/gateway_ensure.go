@@ -258,6 +258,11 @@ func (a *App) ensureGateway(g *gateway, opts ensureOptions) (gatewayEnsureData, 
 		return data, err
 	}
 	data.Action, data.Reason = action, reason
+	if action == ensureStarted {
+		if err := a.guardVolumeVersion(g); err != nil {
+			return data, err
+		}
+	}
 	if action != ensureReused {
 		decision := a.admit(g, opts.force)
 		capacity := capacityOf(decision, opts.force)

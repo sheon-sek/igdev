@@ -359,6 +359,11 @@ func (a *App) runGatewayStages(data *pipelineData) *contract.Fault {
 		data.Stages = append(data.Stages, stage)
 		return failPipeline(data, stage.Stage, contract.AsFault(err))
 	}
+	if err := a.guardVolumeVersion(g); err != nil {
+		stage := stageResult{Stage: "gateway-up", Status: stageFailed, Message: contract.AsFault(err).Message}
+		data.Stages = append(data.Stages, stage)
+		return failPipeline(data, stage.Stage, contract.AsFault(err))
+	}
 	a.admit(g, false)
 	if fault := g.compose.Up(); fault != nil {
 		stage := stageResult{Stage: "gateway-up", Status: stageFailed, Message: fault.Message}

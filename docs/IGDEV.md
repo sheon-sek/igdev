@@ -539,6 +539,16 @@ measurement either way. A host whose free memory cannot be read says so the same
 The rig points the gate at a fixture through `capacity.MeminfoEnv`
 (`IGDEV_SHIM_MEMINFO`), which is what makes the warning reachable in a hermetic test.
 
+**Changing `[ignition].version`.** The data volume remembers the Ignition version that
+last ran it (`volume_version` in `.container-init.conf`). Before `up`, `ensure` (when it
+starts rather than resets), `restart`, `module install` and `check --all --gateway` start
+the Gateway on an existing volume, igdev reads that version. A volume older than the
+contract is upgraded by the image one way: igdev prints a note on stderr and starts.
+A volume newer than the contract cannot start on the older image, so igdev stops at once
+with `IGDEV_E_GATEWAY_UNHEALTHY` instead of timing out: set the version back and run
+`igdev setup`, or run `igdev gateway reset`, which deletes the volume's data. `reset`
+and `ensure --fresh` delete the volume anyway and skip the check.
+
 ## The Baseline
 
 ```
