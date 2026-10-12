@@ -1182,12 +1182,34 @@ anywhere.
 
 ### Adding an Ignition version to the Core Catalog
 
-Copy the four plane files of the new version under
-`internal/catalog/assets/<version>/`, add a `CoreDigest` constant to
-`internal/catalog/catalog_test.go`, and add the version to the matrix the release
-pipeline exercises. No code changes: `catalog.Core` reads whatever the embedded
-directory tree carries, and a version that is not there fails closed. Row counts are
-never asserted — the digest is the integrity test, exactly as ADR 0005 requires.
+The four plane files of a version live under `internal/catalog/assets/<version>/`.
+The dev-only generator `cmd/igdev-catalog` (run with `go run`, not packaged, not part
+of the CLI Contract) derives them from the official image and a real Gateway:
+
+1. Pull the image: `docker pull inductiveautomation/ignition:<version>`.
+2. `go run ./cmd/igdev-catalog modules --image inductiveautomation/ignition:<version>
+   --output internal/catalog/assets/<version>/builtin-modules.tsv` reads each
+   `user-lib/modules/*.modl` `module.xml` without starting a container.
+3. `go run ./cmd/igdev-catalog functions-check --image inductiveautomation/ignition:<version>
+   --version <previous version>` reports the Gateway-scope functions the image's
+   bundles document that the previous `native-system-functions.tsv` lacks, and the
+   rows it no longer documents. Perspective has no bundles, and rows of modules the
+   image does not ship cannot be checked; both are listed apart. Start the new
+   version's plane from the previous one and apply what the report calls for;
+   `capability-modules.tsv` is copied unless the report says otherwise.
+4. On a running Gateway of the version, capture the OpenAPI document with
+   `igdev gateway api GET /openapi.json --output openapi-<version>.json`, then
+   `go run ./cmd/igdev-catalog rest --openapi openapi-<version>.json --version <version>
+   --compare internal/catalog/assets/<previous>/rest-endpoints.tsv
+   --output internal/catalog/assets/<version>/rest-endpoints.tsv`; stderr lists the
+   operation count and the rows added and removed.
+5. Commit the data and add the version's `CoreDigest` constant to
+   `internal/catalog/catalog_test.go`, and add the version to the matrix the release
+   pipeline exercises.
+
+No code changes: `catalog.Core` reads whatever the embedded directory tree carries,
+and a version that is not there fails closed. Row counts are never asserted — the
+digest is the integrity test, exactly as ADR 0005 requires.
 
 ### Adding a config key
 

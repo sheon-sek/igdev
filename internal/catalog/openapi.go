@@ -477,3 +477,18 @@ func joinLines(lines []string) string {
 	}
 	return strings.Join(lines, "\n") + "\n"
 }
+
+// RenderCoreREST renders operations as the REST plane of a Core Catalog version,
+// internal/catalog/assets/<version>/rest-endpoints.tsv, in the shape the 8.3.8
+// file has. The dev-only generator (cmd/igdev-catalog) is its caller.
+func RenderCoreREST(version, sourceDigest string, operations []OpenAPIOperation) []byte {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Ignition %s public REST operation catalog generated from a real Gateway /openapi.json.\n", version)
+	fmt.Fprintf(&b, "# source_sha256=%s\n", sourceDigest)
+	b.WriteString("# method<TAB>path_template<TAB>owner_kind(platform|module|private-module)<TAB>required_module_ids(comma-separated or -)\n")
+	for _, op := range operations {
+		b.WriteString(RestOperation(op).tsv())
+		b.WriteByte('\n')
+	}
+	return []byte(b.String())
+}
