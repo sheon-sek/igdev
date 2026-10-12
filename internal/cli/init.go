@@ -216,7 +216,7 @@ command passes the Gate first and refuses to run on a missing or stale Checkout 
 	wizard.register(cmd)
 	flags.StringVar(&name, "name", "", "repository name recorded as [project].name")
 	flags.StringVar(&ignitionVersion, "ignition-version", "",
-		"Ignition version this checkout targets, e.g. 8.3.8 (default "+project.DefaultDoc().Ignition.Version+")")
+		"Ignition version this checkout targets (default "+project.DefaultDoc().Ignition.Version+")")
 	flags.StringVar(&jythonVersion, "jython-version", "",
 		"Jython version the compatibility checker targets (default "+project.DefaultJythonVersion+")")
 	flags.StringVar(&edition, "edition", "", "Ignition module edition (default "+project.DefaultEdition+")")

@@ -9,7 +9,7 @@
       "why": "list the catalog layers and versions this binary carries"
     },
     {
-      "command": "igdev status --config ignition.version=8.3.8",
+      "command": "igdev status --config ignition.version=8.3.10",
       "why": "ask for the Ignition version this binary knows"
     }
   ],

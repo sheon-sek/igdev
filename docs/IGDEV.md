@@ -608,9 +608,11 @@ The Core Catalog is embedded per Ignition version under
 `internal/catalog/assets/<version>/` (`builtin-modules.tsv`,
 `native-system-functions.tsv`, `capability-modules.tsv`, `rest-endpoints.tsv`), ported
 from the predecessor toolchain's catalogs at the cutover. Nothing reads a repository file
-at runtime. v0.1 carries exactly `8.3.8`; any other resolved version fails
+at runtime. The binary carries one Core Catalog per supported version (`8.3.8` and
+`8.3.10`), and new checkouts default to `8.3.10`; any other resolved version fails
 closed with `IGDEV_E_CATALOG_VERSION_MISSING` rather than borrowing another version's
-rows. Adding a version is adding data plus a digest, not changing code.
+rows. Adding a version is adding data plus a digest, not changing code; see
+[Adding an Ignition version to the Core Catalog](#adding-an-ignition-version-to-the-core-catalog).
 
 Integrity is a digest, never a row count: `catalog.CoreDigest` hashes the four plane
 files in a frozen order (name, NUL, bytes, NUL) and a unit test pins the result, so any
@@ -910,7 +912,7 @@ every problem. Failures are `IGDEV_E_JYTHON_SYNTAX`, a path that does not exist 
 `IGDEV_E_JAVA_MISSING`.
 
 The standalone jar is a downloaded artifact pinned by sha256 in the embedded
-version-keyed table (`jython.Pins`; 2.7.4 is the Ignition 8.3.8 target). The cache
+version-keyed table (`jython.Pins`; 2.7.4 is the target of both Ignition 8.3.8 and 8.3.10). The cache
 entry is `<XDG cache>/igdev/jython/<version>/jython-standalone-<version>.jar`, and
 every access follows the frozen cache policy:
 
@@ -1284,7 +1286,7 @@ module surface is otherwise read-only.
 
 Ticket 19 is the cutover, and the "not yet dogfooding" state above is gone: this
 repository carries its own Project Contract and runs on the installed binary. `igdev.toml`
-declares Ignition `8.3.8`, Jython `2.7.4`, the built-in modules the image ships, the
+declares Ignition `8.3.10`, Jython `2.7.4`, the built-in modules the image ships, the
 Makefile targets behind `[commands]` check/test/build, 2048 MiB of Gateway heap, and no
 `[scan]` paths, because after the retirement the tree holds no Jython sources (`igdev
 check` reports the scan and Jython stages as skipped). The whitelist stops short of the

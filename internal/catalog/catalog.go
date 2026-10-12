@@ -20,9 +20,10 @@ import (
 	"github.com/sheon-sek/igdev/internal/contract"
 )
 
-// Target is the Ignition version igdev 0.1 ships a Core Catalog for. Adding a
-// version means adding embedded data and its digest, never changing code.
-const Target = "8.3.8"
+// Target is the default Ignition version for new checkouts. The binary embeds a
+// Core Catalog for every supported version (see core.go); adding a version means
+// adding embedded data and its digest, never changing code.
+const Target = "8.3.10"
 
 // Layer names where a resolved row came from.
 type Layer string

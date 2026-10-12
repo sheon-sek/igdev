@@ -17,7 +17,7 @@ on:
       ignition_version:
         description: Ignition version to boot
         required: true
-        default: "8.3.8"
+        default: "8.3.10"
       wait_timeout:
         description: Seconds `igdev gateway wait` may take for health
         required: true
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      IGNITION_VERSION: ${{ github.event.inputs.ignition_version || '8.3.8' }}
+      IGNITION_VERSION: ${{ github.event.inputs.ignition_version || '8.3.10' }}
       WAIT_TIMEOUT: ${{ github.event.inputs.wait_timeout || '420' }}
       CHECKOUT: ${{ github.workspace }}/e2e-checkout
     steps:

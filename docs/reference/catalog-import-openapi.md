@@ -49,7 +49,7 @@ igdev catalog import-openapi <openapi.json> [flags]
   igdev catalog import-openapi openapi.json
   igdev catalog import-openapi openapi.json --json
   igdev catalog import-openapi openapi.json --prune
-  igdev catalog import-openapi /tmp/openapi.json --ignition-version 8.3.8 --output catalog/rest-overlay.tsv
+  igdev catalog import-openapi /tmp/openapi.json --ignition-version 8.3.10 --output catalog/rest-overlay.tsv
 ```
 
 ## Options

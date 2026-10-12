@@ -7,10 +7,10 @@
   "data": {
     "query": "import project",
     "kind": "rest",
-    "ignition_version": "8.3.8",
+    "ignition_version": "8.3.10",
     "indexes": {
       "rest": {
-        "path": "<HOME>/.cache/igdev/lookup/8.3.8/rest.json",
+        "path": "<HOME>/.cache/igdev/lookup/8.3.10/rest.json",
         "source": "openapi",
         "sha256": "d569afb751dbfef6966fe30265b6f7c25f0252fd0fd2ca356779a58c3202afc1",
         "built": true,

@@ -334,8 +334,8 @@ overlay_paths = ["catalog/overlay.tsv"]
 	if data.Capabilities.OverlayRows != 1 {
 		t.Errorf("overlay_rows = %d, want 1", data.Capabilities.OverlayRows)
 	}
-	if data.Capabilities.RestOperations != 695 {
-		t.Errorf("rest_operations = %d, want the 694 core rows plus the 1 overlay row", data.Capabilities.RestOperations)
+	if data.Capabilities.RestOperations != 699 {
+		t.Errorf("rest_operations = %d, want the 698 core rows plus the 1 overlay row", data.Capabilities.RestOperations)
 	}
 }
 

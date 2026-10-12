@@ -18,7 +18,7 @@
     "versions": {
       "cli": "0.2.0",
       "cli_contract": "2",
-      "ignition": "8.3.8",
+      "ignition": "8.3.10",
       "jython": "2.7.4"
     },
     "instance": {
@@ -46,7 +46,7 @@
       "require_private_module_consent": false
     },
     "catalog": {
-      "core_digest": "sha256:361b56e36abad2179b64dffe748bb46aad000740d41eb5646046736dc4ef0728",
+      "core_digest": "sha256:334ffdfceab83071a54c385b579d732af5e4ca6d7d918f4bfc4a2237ec329288",
       "overlay": {
         "present": false,
         "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -55,7 +55,7 @@
     },
     "capabilities": {
       "native_functions": 392,
-      "rest_operations": 694,
+      "rest_operations": 698,
       "overlay_rows": 0
     },
     "commands": {
