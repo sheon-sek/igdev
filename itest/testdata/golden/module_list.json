@@ -80,11 +80,6 @@
         "enabled": true
       },
       {
-        "id": "com.inductiveautomation.connectors.mongodb",
-        "artifact": "MongoDB Connector-module.modl",
-        "enabled": true
-      },
-      {
         "id": "com.inductiveautomation.opcua.drivers.omron",
         "artifact": "Omron-Driver.modl",
         "enabled": true

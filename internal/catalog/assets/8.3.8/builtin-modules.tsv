@@ -15,7 +15,6 @@ com.inductiveautomation.opcua.drivers.logix	Logix Driver-module.modl
 com.inductiveautomation.opcua.drivers.micro800	Micro800 Driver-module.modl
 com.inductiveautomation.opcua.drivers.mitsubishi	Mitsubishi-Driver.modl
 com.inductiveautomation.opcua.drivers.modbus	Modbus Driver v2-module.modl
-com.inductiveautomation.connectors.mongodb	MongoDB Connector-module.modl
 com.inductiveautomation.opcua.drivers.omron	Omron-Driver.modl
 com.inductiveautomation.opcua	OPC-UA-module.modl
 com.inductiveautomation.perspective	Perspective-module.modl
