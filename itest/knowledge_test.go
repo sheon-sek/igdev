@@ -591,3 +591,16 @@ func TestKnowledgeWorksBeforeSetup(t *testing.T) {
 	testrig.WantCode(t, testrig.Envelope(t, res.Stdout), contract.CodeConfigInvalid)
 	res.AssertNoLeaks(t)
 }
+
+// MongoDB is not in the 8.3.8 image, so its functions resolve to a private module
+// that must be staged first: require fails with the module add remediation.
+func TestModuleRequireMongoDBNeedsStagedArtifact(t *testing.T) {
+	env := testrig.NewEnv(t)
+	root := env.Project("repo", knowledgeContract())
+
+	res := env.RunIn(root, "module", "require", "system.mongodb.aggregate", "--json")
+	testrig.WantExit(t, res, contract.ExitFailure)
+	envelope := testrig.Envelope(t, res.Stdout)
+	testrig.WantCode(t, envelope, contract.CodeModuleArtifactMissing)
+	testrig.WantRemediation(t, envelope, "igdev module add /path/to/module.modl")
+}

@@ -6,7 +6,7 @@ module answers what the Ignition runtime can do before a Gateway starts: which
 modules this checkout has, and which modules the code it will run requires.
 
 The knowledge is the Effective Catalog — the Core Catalog embedded in this binary
-(33 built-in modules, the Gateway-scope system.* functions with their module
+(32 built-in modules, the Gateway-scope system.* functions with their module
 mappings, and the 694 REST operations of Ignition 8.3.8) plus this repository's
 tracked Project Overlay, declared as `[catalog].overlay_paths` in the Project
 Contract.

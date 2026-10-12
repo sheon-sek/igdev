@@ -31,7 +31,7 @@
       "require_private_module_consent": false
     },
     "catalog": {
-      "core_digest": "sha256:cb2c0f1d81212bbfb5b3cc9686f105acf818a886283e71c89b12d57fc95cdbf0",
+      "core_digest": "sha256:361b56e36abad2179b64dffe748bb46aad000740d41eb5646046736dc4ef0728",
       "overlay": {
         "present": false,
         "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",

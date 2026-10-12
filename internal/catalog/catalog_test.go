@@ -215,7 +215,7 @@ func TestCoreDigestConstants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CoreDigest: %v", err)
 	}
-	const want = "sha256:cb2c0f1d81212bbfb5b3cc9686f105acf818a886283e71c89b12d57fc95cdbf0"
+	const want = "sha256:361b56e36abad2179b64dffe748bb46aad000740d41eb5646046736dc4ef0728"
 	if got != want {
 		t.Errorf("CoreDigest(8.3.8) = %q, want %q", got, want)
 	}
