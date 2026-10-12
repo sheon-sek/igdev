@@ -211,13 +211,29 @@ func TestVerifyModuleVerdicts(t *testing.T) {
 // the frozen values of the embedded 8.3.8 data: any byte change to a catalog file
 // fails this test, which is what the ADR asks for instead of row counts.
 func TestCoreDigestConstants(t *testing.T) {
-	got, err := CoreDigest("8.3.8")
-	if err != nil {
-		t.Fatalf("CoreDigest: %v", err)
+	for version, want := range map[string]string{
+		"8.3.8":  "sha256:361b56e36abad2179b64dffe748bb46aad000740d41eb5646046736dc4ef0728",
+		"8.3.10": "sha256:334ffdfceab83071a54c385b579d732af5e4ca6d7d918f4bfc4a2237ec329288",
+	} {
+		got, err := CoreDigest(version)
+		if err != nil {
+			t.Fatalf("CoreDigest(%s): %v", version, err)
+		}
+		if got != want {
+			t.Errorf("CoreDigest(%s) = %q, want %q", version, got, want)
+		}
 	}
-	const want = "sha256:361b56e36abad2179b64dffe748bb46aad000740d41eb5646046736dc4ef0728"
-	if got != want {
-		t.Errorf("CoreDigest(8.3.8) = %q, want %q", got, want)
+}
+
+// Versions are listed oldest first by semantic order, not by name, so the init
+// wizard and fault messages read 8.3.8 before 8.3.10.
+func TestVersionsSortSemantically(t *testing.T) {
+	got := strings.Join(Versions(), ",")
+	if got != "8.3.8,8.3.10" {
+		t.Errorf("Versions() = %s, want 8.3.8,8.3.10", got)
+	}
+	if !versionLess("8.3.9", "8.3.10") || versionLess("8.3.10", "8.3.9") || !versionLess("8.3.10", "custom") {
+		t.Error("versionLess does not order 8.3.9 < 8.3.10 < unparsable names")
 	}
 }
 
@@ -231,7 +247,7 @@ func TestUnknownVersionFailsClosed(t *testing.T) {
 	if err.Code != contract.CodeCatalogVersionMissing {
 		t.Errorf("code = %q, want %q", err.Code, contract.CodeCatalogVersionMissing)
 	}
-	if !strings.Contains(err.Message, "8.3.8") {
+	if !strings.Contains(err.Message, "8.3.8, 8.3.10") {
 		t.Errorf("message = %q, want the carried versions named", err.Message)
 	}
 }
