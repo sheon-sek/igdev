@@ -77,14 +77,11 @@ func InstanceImages(version string) ([]string, error) {
 // no license or EULA is involved, and no file is unpacked on disk beyond one
 // archive at a time in scratch.
 func ReadImage(image, scratch string) ([]bundle, error) {
-	var stdout, stderr bytes.Buffer
-	create := exec.Command("docker", "create", "--entrypoint", "true", image)
-	create.Stdout, create.Stderr = &stdout, &stderr
-	if err := create.Run(); err != nil {
-		return nil, &EngineError{Action: "docker create " + image, Output: stderr.String(), Err: err}
+	id, err := createContainer(image)
+	if err != nil {
+		return nil, err
 	}
-	id := strings.TrimSpace(stdout.String())
-	defer func() { _ = exec.Command("docker", "rm", "--force", id).Run() }()
+	defer removeContainer(id)
 	core, err := copyOut(id, imageCore, func(r io.Reader) ([]bundle, error) { return readCoreTar(r, scratch) })
 	if err != nil {
 		return nil, err
@@ -96,8 +93,21 @@ func ReadImage(image, scratch string) ([]bundle, error) {
 	return append(core, modules...), nil
 }
 
+// createContainer creates a container of image without starting it.
+func createContainer(image string) (string, error) {
+	var stdout, stderr bytes.Buffer
+	create := exec.Command("docker", "create", "--entrypoint", "true", image)
+	create.Stdout, create.Stderr = &stdout, &stderr
+	if err := create.Run(); err != nil {
+		return "", &EngineError{Action: "docker create " + image, Output: stderr.String(), Err: err}
+	}
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+func removeContainer(id string) { _ = exec.Command("docker", "rm", "--force", id).Run() }
+
 // copyOut streams one container directory as a tar archive into read.
-func copyOut(id, dir string, read func(io.Reader) ([]bundle, error)) ([]bundle, error) {
+func copyOut[T any](id, dir string, read func(io.Reader) ([]T, error)) ([]T, error) {
 	var stderr bytes.Buffer
 	cmd := exec.Command("docker", "cp", id+":"+dir, "-")
 	cmd.Stderr = &stderr

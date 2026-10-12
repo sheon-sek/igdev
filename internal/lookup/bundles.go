@@ -186,7 +186,7 @@ func eachTarFile(r io.Reader, suffix string, fn func(name string, body io.Reader
 
 // withTempArchive spills one archive to a scratch file so it can be opened as a
 // zip without holding it in memory, then removes it.
-func withTempArchive(scratch string, body io.Reader, size int64, fn func(*zip.Reader) ([]bundle, error)) ([]bundle, error) {
+func withTempArchive[T any](scratch string, body io.Reader, size int64, fn func(*zip.Reader) ([]T, error)) ([]T, error) {
 	tmp, err := os.CreateTemp(scratch, "archive-*")
 	if err != nil {
 		return nil, err
