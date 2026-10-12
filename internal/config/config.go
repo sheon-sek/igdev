@@ -14,6 +14,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/sheon-sek/igdev/internal/catalog"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/jython"
 )
@@ -61,8 +62,8 @@ type Key struct {
 // update notice.
 const ReleaseAPIEndpoint = "https://api.github.com/repos/sheon-sek/igdev/releases/latest"
 
-// IgnitionTarget is the Ignition version igdev 0.1 knows about.
-const IgnitionTarget = "8.3.8"
+// IgnitionTarget is the default Ignition version, defined once in catalog.Target.
+const IgnitionTarget = catalog.Target
 
 // Schema is the frozen key table for the CLI Contract Version in force.
 var Schema = []Key{

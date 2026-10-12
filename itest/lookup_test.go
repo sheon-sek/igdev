@@ -197,12 +197,12 @@ func TestLookupReadsAnIgdevGatewayImageWhenTheOfficialOneIsMissing(t *testing.T)
 	envelope := testrig.Envelope(t, missing.Stdout)
 	testrig.WantCode(t, envelope, contract.CodeDocker)
 	testrig.WantRemediation(t, envelope, "igdev gateway ensure")
-	testrig.WantRemediation(t, envelope, "docker pull inductiveautomation/ignition:8.3.8")
+	testrig.WantRemediation(t, envelope, "docker pull inductiveautomation/ignition:8.3.10")
 	// The REST side needs no image.
 	rest := env.Run(testrig.Run{Dir: dir, Args: []string{"lookup", "import project", "--kind", "rest", "--json"}, Env: []string{"IGDEV_SHIM_IMAGE_MISSING=1"}})
 	testrig.WantExit(t, rest, contract.ExitOK)
 
-	env.SetBaseEnv("IGDEV_SHIM_IMAGES=igdev-0badc0de:8.3.8")
+	env.SetBaseEnv("IGDEV_SHIM_IMAGES=igdev-0badc0de:8.3.10")
 	res := env.RunIn(dir, "lookup", "read tag values", "--json")
 	testrig.WantExit(t, res, contract.ExitOK)
 	var report struct {
@@ -214,7 +214,7 @@ func TestLookupReadsAnIgdevGatewayImageWhenTheOfficialOneIsMissing(t *testing.T)
 		Results []lookupResult `json:"results"`
 	}
 	testrig.DataOf(t, res.Stdout, &report)
-	if report.Indexes.Functions.Image != "igdev-0badc0de:8.3.8" || !topN(report.Results, "system.tag.readBlocking", 3) {
+	if report.Indexes.Functions.Image != "igdev-0badc0de:8.3.10" || !topN(report.Results, "system.tag.readBlocking", 3) {
 		t.Errorf("image = %q, results = %+v", report.Indexes.Functions.Image, report.Results)
 	}
 }

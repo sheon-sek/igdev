@@ -245,7 +245,7 @@ The write is atomic and prints a unified diff, exactly like a Contract write.`,
 		Example: `  igdev catalog import-openapi openapi.json
   igdev catalog import-openapi openapi.json --json
   igdev catalog import-openapi openapi.json --prune
-  igdev catalog import-openapi /tmp/openapi.json --ignition-version 8.3.8 --output catalog/rest-overlay.tsv`,
+  igdev catalog import-openapi /tmp/openapi.json --ignition-version 8.3.10 --output catalog/rest-overlay.tsv`,
 		Args: func(_ *cobra.Command, args []string) error {
 			switch len(args) {
 			case 0:

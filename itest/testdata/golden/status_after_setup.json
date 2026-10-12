@@ -13,7 +13,7 @@
       "present": true,
       "schema_version": 1,
       "schema_supported": true,
-      "digest": "sha256:a32217ae0353d26ea41813462a40a4811c8136a42ef0947c14b370c8214c719c"
+      "digest": "sha256:cb6dc6a649d4da618c6a6fc72348468e45167fb6b8bc01954f7313bd00c61bb6"
     },
     "setup": {
       "present": true,
@@ -71,7 +71,7 @@
         },
         {
           "key": "ignition.version",
-          "value": "8.3.8",
+          "value": "8.3.10",
           "source": "contract"
         },
         {

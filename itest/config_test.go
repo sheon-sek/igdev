@@ -60,7 +60,7 @@ version = "8.1.21"
 		}
 		res := env.RunIn(root, "status", "--json")
 		testrig.WantExit(t, res, contract.ExitOK)
-		wantSource(t, res, key, "8.3.8", "default")
+		wantSource(t, res, key, "8.3.10", "default")
 	})
 }
 

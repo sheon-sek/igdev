@@ -246,8 +246,8 @@ func TestModuleRequireUnknownCapability(t *testing.T) {
 		want       string
 	}{
 		{name: "function", capability: "system.tag.readBlokcing", want: "unknown or non-Gateway Ignition 8.3 native function"},
-		{name: "rest path", capability: "/data/api/v1/not-a-real-endpoint", want: "REST operation is not present in the Ignition 8.3.8 catalog"},
-		{name: "rest method", capability: "POST /data/api/v1/gateway-info", want: "REST operation is not present in the Ignition 8.3.8 catalog"},
+		{name: "rest path", capability: "/data/api/v1/not-a-real-endpoint", want: "REST operation is not present in the Ignition 8.3.10 catalog"},
+		{name: "rest method", capability: "POST /data/api/v1/gateway-info", want: "REST operation is not present in the Ignition 8.3.10 catalog"},
 		{name: "alias", capability: "acme.unknown.thing", want: "no mapping for acme.unknown.thing"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -4,7 +4,7 @@ a unified diff — on stderr for humans, inside data for agents — so contract 
 stay reviewable.
 
 The first run in a repository writes igdev.toml with the schema v1 defaults:
-Ignition 8.3.8, Jython 2.7.4, edition standard, 2048 MiB of Gateway heap, timezone UTC,
+Ignition 8.3.10, Jython 2.7.4, edition standard, 2048 MiB of Gateway heap, timezone UTC,
 sample scan paths. It also adds the managed .igdev/ entry to .gitignore and
 maintains a minimal, version-free managed block in AGENTS.md. A later run is an edit: a
 flag overrides the value it names, everything else the contract already holds is
@@ -58,7 +58,7 @@ Flags:
       --edition string                   Ignition module edition (default standard)
       --gateway-memory-mb int            Gateway heap in MiB (default 2048)
       --gateway-timezone string          Gateway timezone, e.g. UTC (default UTC)
-      --ignition-version string          Ignition version this checkout targets, e.g. 8.3.8 (default 8.3.8)
+      --ignition-version string          Ignition version this checkout targets (default 8.3.10)
   -i, --interactive                      run the Wizard even when every value is already supplied
       --jython-version string            Jython version the compatibility checker targets (default 2.7.4)
       --modules strings                  module ids to enable, comma-separated or repeated (default: all modules)

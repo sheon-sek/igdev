@@ -148,7 +148,7 @@ func TestUnknownCapabilities(t *testing.T) {
 	if _, err := eff.Resolve("system.tag.readBlokcing"); !strings.Contains(err.Message, "unknown or non-Gateway Ignition 8.3 native function") {
 		t.Errorf("native function message = %q, want the legacy wording", err.Message)
 	}
-	if _, err := eff.Resolve("/data/api/v1/not-a-real-endpoint"); !strings.Contains(err.Message, "REST operation is not present in the Ignition 8.3.8 catalog") {
+	if _, err := eff.Resolve("/data/api/v1/not-a-real-endpoint"); !strings.Contains(err.Message, "REST operation is not present in the Ignition 8.3.10 catalog") {
 		t.Errorf("REST message = %q, want the legacy wording", err.Message)
 	}
 	if _, err := eff.Resolve("some.unknown.thing"); err.Message != "no mapping for some.unknown.thing" {

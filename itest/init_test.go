@@ -36,7 +36,7 @@ func TestInitCreatesContractAndGitignore(t *testing.T) {
 	for _, want := range []string{
 		"schema = 1",
 		"[ignition]",
-		`version = "8.3.8"`,
+		`version = "8.3.10"`,
 		`jython_version = "2.7.4"`,
 		`edition = "standard"`,
 		`enabled = []`,
@@ -133,7 +133,7 @@ func TestInitSecondRunEditsAndPrintsDiff(t *testing.T) {
 	if data.Contract.Action != "updated" {
 		t.Errorf("contract action = %q, want updated", data.Contract.Action)
 	}
-	if !strings.Contains(data.Contract.Diff, `-version = "8.3.8"`) ||
+	if !strings.Contains(data.Contract.Diff, `-version = "8.3.10"`) ||
 		!strings.Contains(data.Contract.Diff, `+version = "8.1.21"`) {
 		t.Errorf("diff does not show the edit:\n%s", data.Contract.Diff)
 	}
