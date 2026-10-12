@@ -16,7 +16,7 @@
       }
     },
     "versions": {
-      "cli": "0.2.0",
+      "cli": "0.3.0",
       "cli_contract": "2",
       "ignition": "8.3.10",
       "jython": "2.7.4"
