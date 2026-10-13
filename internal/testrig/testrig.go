@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -146,11 +147,17 @@ type Run struct {
 	Stdin string
 	// SampleRSS polls /proc for the child's peak resident set while it runs.
 	SampleRSS bool
+	// Stderr, for Start only, is the file the child writes its stderr to instead
+	// of a buffer Wait collects: a pipe nobody reads, say.
+	Stderr *os.File
 }
 
 // Result is everything an outside observer can see of one invocation.
 type Result struct {
-	Exit     int
+	Exit int
+	// Signal is the signal that ended the process (Exit is then -1), zero when
+	// it exited on its own.
+	Signal   syscall.Signal
 	Stdout   string
 	Stderr   string
 	Duration time.Duration

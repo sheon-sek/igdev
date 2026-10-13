@@ -1,6 +1,7 @@
 package cleanup
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -27,8 +28,9 @@ type fakeEngine struct {
 	volumes    []string // name\tproject
 	networks   []string
 	images     []string
-	inUse      map[string]bool // images a foreign container holds
-	fail       error           // every call fails with this
+	inUse      map[string]bool   // images a foreign container holds
+	refuse     map[string]string // object name -> what the engine says when removing it fails
+	fail       error             // every call fails with this
 	failOutput string
 	calls      [][]string
 }
@@ -38,13 +40,27 @@ func (f *fakeEngine) run(args ...string) (string, string, error) {
 	if f.fail != nil {
 		return "", f.failOutput, f.fail
 	}
+	if args[0] == "rm" || (len(args) > 1 && args[1] == "rm") {
+		if output, ok := f.refuse[args[len(args)-1]]; ok {
+			return "", output, errors.New("exit status 1")
+		}
+	}
 	switch {
+	case args[0] == "ps" && len(args) > 3 && args[1] == "--all" && args[2] == "--filter":
+		if f.inUse[strings.TrimPrefix(args[3], "ancestor=")] {
+			return "foreign-container", "", nil
+		}
+		return "", "", nil
 	case args[0] == "ps":
 		return strings.Join(f.containers, "\n"), "", nil
 	case args[0] == "volume" && args[1] == "ls":
 		return strings.Join(f.volumes, "\n"), "", nil
 	case args[0] == "network" && args[1] == "ls":
 		return strings.Join(f.networks, "\n"), "", nil
+	case args[0] == "image" && args[1] == "inspect":
+		ref := args[2]
+		raw, _ := json.Marshal([]map[string]any{{"Id": ref, "RepoTags": []string{ref}, "Config": map[string]any{"Labels": map[string]string{}}}})
+		return string(raw), "", nil
 	case args[0] == "image" && args[1] == "ls":
 		return strings.Join(f.images, "\n"), "", nil
 	case args[0] == "rm":
@@ -197,6 +213,126 @@ func TestCheckoutScopeFindsInstanceWithoutSetup(t *testing.T) {
 	}
 	if !contains(refs(plan, WouldRemove), nsA+"_gateway-data") {
 		t.Fatalf("volume not found by working dir: %+v", plan.Items)
+	}
+}
+
+func itemOf(plan Plan, kind, ref string) *Item {
+	for _, item := range plan.Items {
+		if item.Kind == kind && item.Ref == ref {
+			return item
+		}
+	}
+	return nil
+}
+
+// rerun plans a checkout cleanup the way the CLI does: the namespace comes from
+// whatever Setup the checkout still holds, never from the caller.
+func rerun(t *testing.T, root string, engine *fakeEngine) Plan {
+	t.Helper()
+	plan, fault := Build(options(root, recordedNamespace(root), engine))
+	if fault != nil {
+		t.Fatal(fault)
+	}
+	return plan
+}
+
+// Once an Instance's containers are gone, the Setup is the only thing a
+// checkout cleanup finds that Instance by. A Docker object of it that fails to
+// go keeps the Setup, so the re-run the failure asks for removes the rest.
+func TestFailedDockerItemKeepsSetup(t *testing.T) {
+	for _, tc := range []struct{ kind, ref string }{
+		{KindContainer, nsA + "-gateway-1"},
+		{KindNetwork, nsA + "_default"},
+		{KindVolume, nsA + "_gateway-data"},
+		{KindImage, nsA + ":8.3.8"},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			root := checkout(t, idA)
+			other := checkout(t, idB)
+			setup := filepath.Join(root, ".igdev")
+			engine := &fakeEngine{refuse: map[string]string{
+				tc.ref: "Error response from daemon: remove " + tc.ref + ": in use by an external container"}}
+			engine.instance(nsA, idA, root)
+			engine.instance(nsB, idB, other)
+
+			plan := rerun(t, root, engine)
+			plan.Execute()
+			if item := itemOf(plan, tc.kind, tc.ref); item == nil || item.Action != Failed ||
+				!strings.Contains(item.Reason, "in use") {
+				t.Fatalf("%s %s = %+v, want failed with the engine's reason", tc.kind, tc.ref, item)
+			}
+			item := itemOf(plan, KindSetup, setup)
+			if item == nil || item.Action != Kept || !strings.Contains(item.Reason, nsA) ||
+				!strings.Contains(item.Reason, tc.kind+" "+tc.ref) {
+				t.Fatalf("Setup = %+v, want kept naming %s and the failed %s", item, nsA, tc.kind)
+			}
+			if !exists(setup) {
+				t.Fatal(".igdev/ was removed while an object of its Instance remains")
+			}
+			if plan.Count(Failed) != 1 || plan.Count(Removed) != 4 {
+				t.Fatalf("every other item must still be attempted: %+v", plan.Items)
+			}
+
+			delete(engine.refuse, tc.ref)
+			again := rerun(t, root, engine)
+			if got := refs(again, WouldRemove); !contains(got, tc.ref) || !contains(got, setup) {
+				t.Fatalf("a re-run must find the leftover %s through the Setup: %v", tc.ref, got)
+			}
+			again.Execute()
+			if again.Count(Failed) != 0 || exists(setup) {
+				t.Fatalf("the re-run left work behind: %+v", again.Items)
+			}
+			if third := rerun(t, root, engine); third.Pending() != 0 {
+				t.Fatalf("a third run still has work: %+v", third.Items)
+			}
+			if len(engine.containers) != 2 || len(engine.volumes) != 1 || len(engine.networks) != 1 ||
+				len(engine.images) != 1 || !exists(filepath.Join(other, ".igdev")) {
+				t.Fatalf("another Instance was touched: %v %v %v %v", engine.containers, engine.volumes,
+					engine.networks, engine.images)
+			}
+		})
+	}
+}
+
+// A machine cleanup keeps only the Setup of the Instance that failed; every
+// other Instance goes completely in the same run.
+func TestMachineScopeKeepsOnlyTheFailingInstanceSetup(t *testing.T) {
+	failing := checkout(t, idA)
+	succeeding := checkout(t, idB)
+	engine := &fakeEngine{refuse: map[string]string{nsA + "_gateway-data": "Error response from daemon: volume is in use"}}
+	engine.instance(nsA, idA, failing)
+	engine.instance(nsB, idB, succeeding)
+
+	opts := options(succeeding, "", engine)
+	opts.Root, opts.Machine = "", true
+	plan, fault := Build(opts)
+	if fault != nil {
+		t.Fatal(fault)
+	}
+	plan.Execute()
+	if item := itemOf(plan, KindSetup, filepath.Join(failing, ".igdev")); item == nil || item.Action != Kept {
+		t.Fatalf("the failing Instance's Setup = %+v, want kept", item)
+	}
+	if item := itemOf(plan, KindSetup, filepath.Join(succeeding, ".igdev")); item == nil || item.Action != Removed {
+		t.Fatalf("the succeeding Instance's Setup = %+v, want removed", item)
+	}
+	for _, row := range append(append(append(engine.containers, engine.volumes...), engine.networks...), engine.images...) {
+		if strings.HasPrefix(row, nsB) {
+			t.Errorf("the succeeding Instance left %s", row)
+		}
+	}
+	if !exists(filepath.Join(failing, ".igdev")) || exists(filepath.Join(succeeding, ".igdev")) {
+		t.Fatal("wrong Setup kept")
+	}
+
+	delete(engine.refuse, nsA+"_gateway-data")
+	again := rerun(t, failing, engine)
+	if !contains(refs(again, WouldRemove), nsA+"_gateway-data") {
+		t.Fatalf("a checkout re-run must find the leftover volume: %+v", again.Items)
+	}
+	again.Execute()
+	if again.Count(Failed) != 0 || exists(filepath.Join(failing, ".igdev")) || len(engine.volumes) != 0 {
+		t.Fatalf("the re-run left work behind: %+v %v", again.Items, engine.volumes)
 	}
 }
 
