@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -158,6 +159,7 @@ func Ensure(s Spec) (string, *contract.Fault) {
 		return "", fetchFault(err)
 	}
 	defer release()
+	defer pruneCorrupt(s.JarPath())
 
 	jar := s.JarPath()
 	if sum, err := digestOf(jar); err == nil && sum == expected {
@@ -231,8 +233,7 @@ func (s Spec) download(jar string) (string, error) {
 }
 
 // quarantine moves a rejected artifact beside itself, named for when it was
-// rejected. It is a rename, not a deletion: the bytes stay inspectable, and the
-// cache directory still reclaims all of them when deleted.
+// rejected. The two newest samples stay inspectable after Ensure releases its lock.
 func quarantine(path string, now time.Time) {
 	if _, err := os.Stat(path); err != nil {
 		return
@@ -283,4 +284,27 @@ func mismatchFault(s Spec, want, got string) *contract.Fault {
 			Command: "igdev doctor",
 			Why:     "audit the toolchain and download prerequisites igdev needs",
 		})
+}
+
+// pruneCorrupt runs under the existing per-version lock. Only regular files
+// with quarantine timestamps are eligible; the verified jar is never a candidate.
+func pruneCorrupt(jar string) {
+	entries, err := os.ReadDir(filepath.Dir(jar))
+	if err != nil {
+		return
+	}
+	prefix := filepath.Base(jar) + ".corrupt-"
+	var names []string
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() || !strings.HasPrefix(entry.Name(), prefix) {
+			continue
+		}
+		if _, err := time.Parse("20060102T150405.000000000Z", strings.TrimPrefix(entry.Name(), prefix)); err == nil {
+			names = append(names, entry.Name())
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	for _, name := range names[min(2, len(names)):] {
+		_ = os.Remove(filepath.Join(filepath.Dir(jar), name))
+	}
 }
