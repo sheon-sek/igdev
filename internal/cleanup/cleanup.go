@@ -6,8 +6,9 @@
 // binary — plus the things igdev leaves alone on purpose, reported as kept so a
 // person knows what remains. Execute then removes the plan's items in order:
 // Docker objects first, files last, so a failure part-way still leaves the
-// Instance ID on disk for a re-run to find the rest. Nothing is removed by Plan,
-// which is what `--dry-run` reports.
+// Instance ID on disk for a re-run to find the rest: a Checkout Setup whose
+// Instance kept a Docker object stays, reported kept, until a run removes them
+// all. Nothing is removed by Plan, which is what `--dry-run` reports.
 package cleanup
 
 import (
@@ -66,6 +67,11 @@ type Item struct {
 	Diff string `json:"diff,omitempty"`
 
 	remove func() error
+	// namespace is the Instance a Docker object belongs to.
+	namespace string
+	// records is the Instance namespace a Checkout Setup records: the one thing
+	// a checkout re-run finds that Instance by once its containers are gone.
+	records string
 	// keepOn turns a removal error into Kept with this explanation, for an
 	// object the engine refuses to remove because something else still uses it.
 	keepOn func(error) (string, bool)
@@ -177,10 +183,20 @@ func Build(opts Options) (Plan, *contract.Fault) {
 
 // Execute removes the plan's items in order and records each outcome. It never
 // stops early: every item is attempted, so one stuck object does not leave the
-// rest behind.
+// rest behind. The one exception is a Checkout Setup recording an Instance
+// whose Docker object failed to go: it is kept, so the re-run the failure calls
+// for still finds that Instance. The plan puts every Docker object before
+// every Setup, so each failure is known by the time its Setup comes up.
 func (p Plan) Execute() {
+	stuck := map[string][]string{}
 	for _, item := range p.Items {
 		if item.remove == nil {
+			continue
+		}
+		if left := stuck[item.records]; item.records != "" && len(left) > 0 {
+			item.Action, item.Reason = Kept, fmt.Sprintf(
+				"records Instance %s, whose %s failed to go: kept so the next cleanup still finds it",
+				item.records, strings.Join(left, ", "))
 			continue
 		}
 		err := item.remove()
@@ -195,6 +211,9 @@ func (p Plan) Execute() {
 			item.Action, item.Reason = Failed, err.Error()
 		default:
 			item.Action, item.Reason = Failed, err.Error()
+		}
+		if item.Action == Failed && item.namespace != "" {
+			stuck[item.namespace] = append(stuck[item.namespace], item.Kind+" "+item.Ref)
 		}
 	}
 }
@@ -227,7 +246,8 @@ func setupItem(root string) *Item {
 	if _, err := os.Lstat(dir); err != nil {
 		return nil
 	}
-	return &Item{Kind: KindSetup, Ref: dir, Action: WouldRemove, remove: func() error { return os.RemoveAll(dir) }}
+	return &Item{Kind: KindSetup, Ref: dir, Action: WouldRemove, records: recordedNamespace(root),
+		remove: func() error { return os.RemoveAll(dir) }}
 }
 
 // machineItems are igdev's XDG directories and global skills, plus the things on
