@@ -1,6 +1,7 @@
 package cleanup
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -45,12 +46,21 @@ func (f *fakeEngine) run(args ...string) (string, string, error) {
 		}
 	}
 	switch {
+	case args[0] == "ps" && len(args) > 3 && args[1] == "--all" && args[2] == "--filter":
+		if f.inUse[strings.TrimPrefix(args[3], "ancestor=")] {
+			return "foreign-container", "", nil
+		}
+		return "", "", nil
 	case args[0] == "ps":
 		return strings.Join(f.containers, "\n"), "", nil
 	case args[0] == "volume" && args[1] == "ls":
 		return strings.Join(f.volumes, "\n"), "", nil
 	case args[0] == "network" && args[1] == "ls":
 		return strings.Join(f.networks, "\n"), "", nil
+	case args[0] == "image" && args[1] == "inspect":
+		ref := args[2]
+		raw, _ := json.Marshal([]map[string]any{{"Id": ref, "RepoTags": []string{ref}, "Config": map[string]any{"Labels": map[string]string{}}}})
+		return string(raw), "", nil
 	case args[0] == "image" && args[1] == "ls":
 		return strings.Join(f.images, "\n"), "", nil
 	case args[0] == "rm":
