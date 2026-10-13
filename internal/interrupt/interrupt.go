@@ -42,7 +42,10 @@ type handler struct {
 	// is nil. The handler runs them newest first, as defer would.
 	cleanups []*cleanup
 	holds    int
-	signal   os.Signal
+	// reports counts the holds that are a result being written, not a child: the
+	// interrupt path waits for them too, but has no child to announce.
+	reports int
+	signal  os.Signal
 }
 
 type cleanup struct {
@@ -70,7 +73,7 @@ func Defer(fn func()) (release func()) { return std.deferFn(fn) }
 // child igdev started, or the creation of temporary state together with its
 // Defer — and returns the release that ends it. ok is false once a signal has
 // arrived: the caller must not start the section and returns ErrInterrupted.
-func Hold() (release func(), ok bool) { return std.hold() }
+func Hold() (release func(), ok bool) { return std.hold(false) }
 
 // Run runs cmd as a held section: the interrupt path waits for the child to exit
 // rather than leaving it running unobserved.
@@ -97,6 +100,19 @@ func MkdirTemp(dir, pattern string) (path string, remove func(), err error) {
 		return "", nil, err
 	}
 	return path, Defer(func() { _ = os.RemoveAll(path) }), nil
+}
+
+// Report writes a command's result with write, unless a signal has arrived: an
+// interrupted run reports nothing, so after a signal Report never returns, as
+// Settle does not. A signal that arrives while write runs waits for it, so a
+// result is written whole or not at all.
+func Report(write func()) {
+	release, ok := std.hold(true)
+	if !ok {
+		select {}
+	}
+	defer release()
+	write()
 }
 
 // Interrupted reports whether a signal has arrived.
@@ -148,18 +164,24 @@ func (h *handler) deferFn(fn func()) func() {
 	}
 }
 
-func (h *handler) hold() (func(), bool) {
+func (h *handler) hold(report bool) (func(), bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.signal != nil {
 		return nil, false
 	}
 	h.holds++
+	if report {
+		h.reports++
+	}
 	var once sync.Once
 	return func() {
 		once.Do(func() {
 			h.mu.Lock()
 			h.holds--
+			if report {
+				h.reports--
+			}
 			if h.holds == 0 {
 				h.idle.Broadcast()
 			}
@@ -205,7 +227,7 @@ func (h *handler) watch(signals <-chan os.Signal, stderr io.Writer, exit func(os
 		defer close(done)
 		h.runCleanups()
 		h.mu.Lock()
-		waiting := h.holds > 0
+		waiting := h.holds > h.reports
 		h.mu.Unlock()
 		if waiting {
 			fmt.Fprintf(stderr, "[igdev] waiting for the running child process to exit; interrupt again to stop waiting\n")

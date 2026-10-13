@@ -129,7 +129,7 @@ func TestSignalCleansUpBeforeWaitingForAHeldChild(t *testing.T) {
 	h := newHandler()
 	cleaned := make(chan struct{})
 	h.deferFn(func() { close(cleaned) })
-	release, ok := h.hold()
+	release, ok := h.hold(false)
 	if !ok {
 		t.Fatal("hold refused before any signal")
 	}
@@ -146,7 +146,7 @@ func TestSignalCleansUpBeforeWaitingForAHeldChild(t *testing.T) {
 		t.Fatal("the handler exited while a child was still held")
 	case <-time.After(100 * time.Millisecond):
 	}
-	if _, ok := h.hold(); ok {
+	if _, ok := h.hold(false); ok {
 		t.Error("a new section started after the signal")
 	}
 	late := false
@@ -164,7 +164,7 @@ func TestSignalCleansUpBeforeWaitingForAHeldChild(t *testing.T) {
 // A second signal stops the wait for a child that does not exit.
 func TestSecondSignalStopsTheWait(t *testing.T) {
 	h := newHandler()
-	if _, ok := h.hold(); !ok {
+	if _, ok := h.hold(false); !ok {
 		t.Fatal("hold refused")
 	}
 	signals, stderr, exited := watching(h)
@@ -185,7 +185,7 @@ func TestNoSignalLeavesTheNormalPathAlone(t *testing.T) {
 	h := newHandler()
 	ran := false
 	release := h.deferFn(func() { ran = true })
-	held, ok := h.hold()
+	held, ok := h.hold(false)
 	if !ok {
 		t.Fatal("hold refused")
 	}

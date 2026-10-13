@@ -13,6 +13,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/config"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/gate"
+	"github.com/sheon-sek/igdev/internal/interrupt"
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/xdg"
 )
@@ -113,7 +114,7 @@ checkout, so they need ` + "`--yes`" + `: in a terminal cleanup asks once instea
 			if res.IsJSON() {
 				a.writeEnvelope(contract.Success(data))
 			} else {
-				a.printCleanup(data)
+				interrupt.Report(func() { a.printCleanup(data) })
 			}
 			return nil
 		},

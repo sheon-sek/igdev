@@ -174,8 +174,9 @@ no envelope — but igdev first cleans up what the run created: `ci-local
 --with-gateway`'s token files, a lookup index build's scratch directory and temporary
 container. stderr says so (`[igdev] interrupted by SIGINT: cleaning up before exit`).
 When igdev is waiting on a child it started (act, a Compose run, a lookup `docker
-cp`), it then waits for that child to exit before it dies, and says it is waiting; a
-second signal stops the wait. igdev never signals a child itself: a terminal's Ctrl-C
+cp`), it then waits for that child to exit before it dies, and says it is waiting —
+still printing no envelope, even when that child succeeds; a second signal stops the
+wait. igdev never signals a child itself: a terminal's Ctrl-C
 already reaches the whole process group, while a SIGTERM sent to igdev alone leaves
 the child to finish. A signal the process was started with ignored stays ignored, and
 SIGKILL runs no cleanup at all.
