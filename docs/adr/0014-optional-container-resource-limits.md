@@ -100,7 +100,7 @@ Each key renders only when set; `memory_swap` is never derived from `memory`, so
 introduces no swap default. Absent keys render nothing, so the Compose file is
 byte-identical to today's when no limit is set.
 
-The keys are read by a bespoke machine-local reader, like `config.LoadPort`, not added to
+The keys are read by a bespoke machine-local reader, like `localconfig.LoadPort`, not added to
 the frozen `config.Schema`: `status --json` `config.resolved` is built from that schema,
 so new schema keys would change the `status` golden.
 
@@ -109,11 +109,15 @@ Setup Stamp today covers only the contract digest, seed digest, schema and CLI c
 (`internal/gate/gate.go`), so a limit edited after setup would be silently ignored by
 `gateway up`. The follow-up must close that gap: setup records a digest of the resolved
 limits (from `.igdev/local.toml` and `IGDEV_*`) in the Setup Stamp, and the existing
-staleness gate recomputes it on every gated command, so any change, file or environment,
-fails with the existing `IGDEV_E_SETUP_STALE` until `igdev setup` re-renders. Limit
-environment variables are therefore setup-time inputs, unlike per-run variables such as
-`IGDEV_GATEWAY_PORT`, but a change between runs is detected rather than dropped. This
-reuses an existing code and exit level, so it is not a CLI Contract change.
+staleness gate recomputes it on every gated command. Any change, file or environment,
+makes the Checkout Setup stale (`IGDEV_E_SETUP_STALE`), and the Gate repairs that as it
+does today (ADR 0012; `App.requireSetup`, `repairableBySetup` in `internal/cli`): setup
+re-runs automatically, re-renders the Compose file, and the command continues. Only a
+failed refresh fails the command, through the existing setup error path. Limit
+environment variables are therefore setup-time inputs, like `IGDEV_GATEWAY_PORT`
+(`gatewayPortPin`), and a change between runs is applied rather than dropped. This adds
+an input to an existing digest and reuses existing codes, exit levels and refresh
+behavior, so it is not a CLI Contract change.
 
 **Validation, warning-only.** When a Gateway memory limit is set, igdev warns (does not
 refuse) if it is below `-m` plus a non-heap floor, because that configuration will be
@@ -124,9 +128,17 @@ limits are documented as slowing startup, module installation and builds.
 **Unsupported hosts.** When the engine rejects a limit (Compose or `docker` error), the
 start fails with the engine's message through the existing error path; igdev does not
 silently drop a limit the person asked for. When the engine accepts but ignores it
-(rootless without cgroup v2 delegation, cgroup v1 without the controller), igdev reports the effective values from
-`docker inspect` in `gateway status` and warns when they differ from the configured
-ones. It never retries without the limit. On Docker Desktop the limit is still enforced
+(for example rootless without cgroup v2 delegation, or cgroup v1 without the controller),
+`docker inspect` HostConfig still shows the requested values: Docker's rootless mode
+drops the resources from the OCI runtime spec without touching HostConfig. HostConfig is
+therefore reported in `gateway status` only as the *configured* limit and never as proof
+of enforcement. Enforcement is established from the container's own cgroup, read through
+`igdev gateway exec` (cgroup v2 `memory.max`, `memory.swap.max`, `cpu.max`, `pids.max`,
+or the v1 equivalents), optionally preceded by an engine capability check (`docker info`
+cgroup version, driver and rootless security option). When the cgroup value matches the
+request the limit is reported as enforced; when it differs, is `max`, or cannot be read,
+`gateway status` warns that the limit is unsupported or unverified on this host. It never
+retries without the limit. On Docker Desktop the limit is still enforced
 by the cgroups inside the VM; the VM's own size is a separate, host-level bound that
 igdev neither sets nor reports.
 
