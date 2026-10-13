@@ -120,6 +120,10 @@ type soak struct {
 	// the soak created: the teardown checks all of them.
 	ns         string
 	namespaces []string
+	// foreign is set when a Setup the soak made names an Instance that was on the
+	// engine before it started. The checkout's cleanup would then remove that
+	// Instance, so the teardown runs none.
+	foreign string
 
 	// before is every engine object present when the soak started.
 	before soakEngine
@@ -341,19 +345,38 @@ func (s *soak) phaseInit() {
 // setup materializes the Checkout Setup and records the Instance it names.
 func (s *soak) setup(phase string) {
 	s.must(phase, "setup", "--json")
-	s.ns = setupStampOf(s.t, s.dir).Namespace()
-	if s.ns == "" {
+	ns := setupStampOf(s.t, s.dir).Namespace()
+	if ns == "" {
 		s.t.Fatal("the Checkout Setup names no Instance")
 	}
-	if !slices.Contains(s.namespaces, s.ns) {
-		if found := soakPreexisting(s.ns, s.before); len(found) > 0 {
-			ns := s.ns
-			s.ns = ""
-			s.t.Fatalf("the soak's Setup names Instance %s, which was on the engine before the soak started (%s); "+
-				"the soak only ever works on an Instance it minted", ns, strings.Join(found, ", "))
-		}
-		s.namespaces = append(s.namespaces, s.ns)
+	if err := s.claim(ns); err != nil {
+		s.t.Fatal(err)
 	}
+}
+
+// claim records ns, the Instance the checkout's Setup now names, as the soak's.
+// A namespace new to the soak must be one it minted. When it already had objects
+// on the engine, the Setup is already written and names someone else's Instance:
+// claim marks it foreign, so the teardown runs no cleanup in this checkout, and
+// refuses.
+func (s *soak) claim(ns string) error {
+	if !slices.Contains(s.namespaces, ns) {
+		if found := soakPreexisting(ns, s.before); len(found) > 0 {
+			s.ns, s.foreign = "", ns
+			return fmt.Errorf("the soak's Setup names Instance %s, which was on the engine before the soak started (%s); "+
+				"the soak only ever works on an Instance it minted, so its teardown runs no cleanup", ns, strings.Join(found, ", "))
+		}
+		s.namespaces = append(s.namespaces, ns)
+	}
+	s.ns = ns
+	return nil
+}
+
+// cleansAtTeardown reports whether the teardown may run `igdev cleanup` in the
+// checkout: only when the soak minted an Instance and the checkout's Setup does
+// not name a foreign one.
+func (s *soak) cleansAtTeardown() bool {
+	return s.foreign == "" && len(s.namespaces) > 0
 }
 
 // phaseCycles repeats up, wait, down, up from the kept volume, and cleanup with a
@@ -601,14 +624,18 @@ func (s *soak) teardown() {
 		}
 		t.Logf("soak report: %s", filepath.Join(s.cfg.reportDir, "summary.md"))
 	}()
-	if t.Failed() && s.setupPresent() {
+	if s.foreign != "" {
+		// Diagnostics and cleanup both run in the checkout, whose Setup names an
+		// Instance the soak did not create: neither may touch it.
+		s.note("teardown ran no diagnostics and no cleanup: the checkout's Setup names %s, which was on the engine before the soak; do not run igdev cleanup in %s", s.foreign, s.dir)
+	} else if t.Failed() && s.setupPresent() {
 		s.diagnostics()
 	}
 	if len(s.namespaces) == 0 {
 		leftovers = &soakOwned{}
 		return
 	}
-	if _, err := os.Stat(s.dir); err == nil {
+	if _, err := os.Stat(s.dir); err == nil && s.cleansAtTeardown() {
 		s.cleanup("teardown", false)
 	}
 	left := soakOwned{}
@@ -616,7 +643,10 @@ func (s *soak) teardown() {
 		left = left.plus(s.ownedBy(ns))
 	}
 	leftovers = &left
-	if left.total() != 0 {
+	switch {
+	case left.total() != 0 && s.foreign != "":
+		t.Errorf("the soak left %s; its checkout's Setup names the foreign Instance %s, so remove them with docker by hand, never with igdev cleanup in %s", left, s.foreign, s.dir)
+	case left.total() != 0:
 		t.Errorf("the soak left %s; remove them with: cd %s && igdev cleanup", left, s.dir)
 	}
 	s.checkDoctor()

@@ -141,9 +141,11 @@ containers).
   own checkout. The soak's own docker calls are refused unless they are inspection
   verbs (`soakDockerReadOnly`).
 - **Only its own Instance.** The soak creates its report directory and checkout
-  exclusively, so `init` and `setup` mint a new Instance; it fails before any cleanup
-  if a Setup ever names an Instance that had a container, volume or image on the
-  engine before it started.
+  exclusively, outside every igdev project, so `init` writes only the checkout's
+  contract and `setup` mints a new Instance. If a Setup ever names an Instance that
+  had a container, volume or image on the engine before it started, the soak fails,
+  and its teardown runs neither diagnostics nor `igdev cleanup` in that checkout, so
+  the foreign Instance is never touched (`TestSoakClaimForeignInstanceSkipsTeardownCleanup`).
 - **Only its own objects go.** Every cleanup it runs is checkout-scoped (never
   `--machine`). Each removed item is checked against the Instances the soak minted,
   the images attributed to them just before, and the official tags that existed before

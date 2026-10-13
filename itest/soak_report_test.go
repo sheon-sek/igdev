@@ -423,3 +423,40 @@ func TestSoakCheckRootRefusesACheckoutInsideAProject(t *testing.T) {
 		t.Errorf("after init: %v", err)
 	}
 }
+
+// A Setup that names an Instance already on the engine is written before the
+// guard can see it, so the guard must also stop the teardown from running
+// cleanup in that checkout: the cleanup would remove the foreign Instance. The
+// Instances the soak did mint stay its own.
+func TestSoakClaimForeignInstanceSkipsTeardownCleanup(t *testing.T) {
+	own, foreign := "igdev-0123abcd", "igdev-7bfb3a52"
+	s := &soak{before: soakEngine{
+		containers: map[string]string{"c1": "/" + foreign + "-gateway-1 running 2026-10-01T00:00:00Z"},
+		volumes:    map[string]bool{foreign + "_gateway-data": true},
+		tags:       map[string]bool{},
+	}}
+	if s.cleansAtTeardown() {
+		t.Error("a soak that minted nothing cleans at teardown")
+	}
+	if err := s.claim(own); err != nil {
+		t.Fatalf("claim of a freshly minted Instance: %v", err)
+	}
+	if !s.cleansAtTeardown() || s.ns != own {
+		t.Fatalf("after minting %s: ns %q, cleansAtTeardown %v; want it current and cleaned", own, s.ns, s.cleansAtTeardown())
+	}
+	// A re-setup that keeps the soak's Instance is not a new claim.
+	if err := s.claim(own); err != nil {
+		t.Fatalf("re-claim of the soak's own Instance: %v", err)
+	}
+	// After a cycle's cleanup the next setup mints again, and names a foreign one.
+	err := s.claim(foreign)
+	if err == nil || !strings.Contains(err.Error(), foreign) {
+		t.Fatalf("claim of a pre-existing Instance = %v, want a refusal naming %s", err, foreign)
+	}
+	if s.cleansAtTeardown() {
+		t.Error("the teardown would run igdev cleanup in a checkout whose Setup names a foreign Instance")
+	}
+	if s.ns != "" || s.foreign != foreign || !slices.Equal(s.namespaces, []string{own}) {
+		t.Errorf("after the refusal: ns %q, foreign %q, namespaces %v; want none current, %s foreign, only %s owned", s.ns, s.foreign, s.namespaces, foreign, own)
+	}
+}
