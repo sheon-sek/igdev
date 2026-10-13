@@ -179,6 +179,35 @@ func TestSecondSignalStopsTheWait(t *testing.T) {
 	}
 }
 
+// blockedWriter is a stderr that never takes a write: a full pipe nobody reads.
+type blockedWriter struct{}
+
+func (blockedWriter) Write([]byte) (int, error) { select {} }
+
+// A stderr that blocks every write holds up neither the cleanups nor the second
+// signal's exit.
+func TestBlockedStderrBlocksNeitherCleanupNorExit(t *testing.T) {
+	h := newHandler()
+	cleaned := make(chan struct{})
+	h.deferFn(func() { close(cleaned) })
+	if _, ok := h.hold(false); !ok {
+		t.Fatal("hold refused")
+	}
+	signals := make(chan os.Signal, 2)
+	exited := make(chan os.Signal, 1)
+	go h.watch(signals, blockedWriter{}, func(sig os.Signal) { exited <- sig })
+	signals <- syscall.SIGTERM
+	select {
+	case <-cleaned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a blocked stderr held the cleanup up")
+	}
+	signals <- syscall.SIGTERM
+	if got := waitExit(t, exited); got != syscall.SIGTERM {
+		t.Errorf("exited by %v, want SIGTERM", got)
+	}
+}
+
 // Without a signal nothing changes: a held section runs, a cleanup waits for its
 // release, and Settle returns.
 func TestNoSignalLeavesTheNormalPathAlone(t *testing.T) {

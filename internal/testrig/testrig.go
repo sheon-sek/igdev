@@ -147,6 +147,9 @@ type Run struct {
 	Stdin string
 	// SampleRSS polls /proc for the child's peak resident set while it runs.
 	SampleRSS bool
+	// Stderr, for Start only, is the file the child writes its stderr to instead
+	// of a buffer Wait collects: a pipe nobody reads, say.
+	Stderr *os.File
 }
 
 // Result is everything an outside observer can see of one invocation.

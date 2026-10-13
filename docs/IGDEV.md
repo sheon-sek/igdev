@@ -178,8 +178,10 @@ cp`), it then waits for that child to exit before it dies, and says it is waitin
 still printing no envelope, even when that child succeeds; a second signal stops the
 wait. igdev never signals a child itself: a terminal's Ctrl-C
 already reaches the whole process group, while a SIGTERM sent to igdev alone leaves
-the child to finish. A signal the process was started with ignored stays ignored, and
-SIGKILL runs no cleanup at all.
+the child to finish. These stderr lines never hold the exit up: a stderr nobody reads
+(a full pipe) delays neither the cleanup nor the second signal, and loses the lines. A
+signal the process was started with ignored stays ignored, and SIGKILL runs no cleanup
+at all.
 
 `igdev help`, `igdev <command> --help`, and a bare `igdev` are documentation, and in
 machine mode they are envelopes too: the rendered reference arrives in `data.help`

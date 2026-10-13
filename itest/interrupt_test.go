@@ -70,6 +70,13 @@ func wantDiedBy(t *testing.T, res testrig.Result, sig syscall.Signal, name strin
 // once act is running with the token files written.
 func startCILocal(t *testing.T, hold string) (*testrig.Env, string, *testrig.Proc) {
 	t.Helper()
+	return startCILocalTo(t, hold, nil)
+}
+
+// startCILocalTo is startCILocal with igdev's stderr going to stderr when that is
+// not nil.
+func startCILocalTo(t *testing.T, hold string, stderr *os.File) (*testrig.Env, string, *testrig.Proc) {
+	t.Helper()
 	env := testrig.NewEnv(t)
 	env.ShimAct()
 	env.ShimDocker()
@@ -78,7 +85,7 @@ func startCILocal(t *testing.T, hold string) (*testrig.Env, string, *testrig.Pro
 	testrig.ServeGateway(t, stamp.Ports.HTTP, map[string]int{"/data/api/v1/gateway-info": 200})
 
 	proc := env.Start(testrig.Run{Dir: dir, Args: []string{"ci-local", "--job", "e2e", "--with-gateway", "--json"},
-		Env: []string{"IGDEV_SHIM_ACT_HOLD=" + hold}})
+		Env: []string{"IGDEV_SHIM_ACT_HOLD=" + hold}, Stderr: stderr})
 	testrig.WaitForFile(t, env.Path("state", "act-holding"), interruptWait)
 	if got := tempEntries(t, env, "igdev-ci-local-"); len(got) != 1 {
 		t.Fatalf("igdev-ci-local-* while act runs = %v, want one directory", got)
@@ -144,6 +151,68 @@ func TestInterruptSecondSignalStopsTheWait(t *testing.T) {
 	wantDiedBy(t, res, syscall.SIGTERM, "SIGTERM")
 	if !strings.Contains(res.Stderr, "[igdev] interrupted again by SIGTERM: exiting without waiting") {
 		t.Errorf("stderr does not report the second signal: %q", res.Stderr)
+	}
+	env.AssertTempDirEmpty(t)
+}
+
+// fullPipe returns a pipe whose buffer is already full, and so blocks every
+// write to it until its reader drains it, and fill, which tops the buffer up
+// again: a stderr a supervisor stopped reading. The test owns both ends.
+func fullPipe(t *testing.T) (r, w *os.File, fill func()) {
+	t.Helper()
+	var fds [2]int
+	if err := syscall.Pipe(fds[:]); err != nil {
+		t.Fatal(err)
+	}
+	r, w = os.NewFile(uintptr(fds[0]), "stderr-r"), os.NewFile(uintptr(fds[1]), "stderr-w")
+	t.Cleanup(func() { r.Close(); w.Close() })
+	fill = func() {
+		t.Helper()
+		// O_NONBLOCK belongs to the open pipe, which igdev shares: it is set
+		// only while the buffer fills, when igdev is waiting on act and silent.
+		if err := syscall.SetNonblock(fds[1], true); err != nil {
+			t.Fatal(err)
+		}
+		chunk := make([]byte, 4096)
+		for {
+			if _, err := syscall.Write(fds[1], chunk); err == syscall.EAGAIN {
+				break
+			} else if err != nil {
+				t.Fatalf("fill stderr pipe: %v", err)
+			}
+		}
+		// A partly filled page can still take a short line: fill it byte by byte.
+		for {
+			if _, err := syscall.Write(fds[1], chunk[:1]); err == syscall.EAGAIN {
+				break
+			} else if err != nil {
+				t.Fatalf("fill stderr pipe: %v", err)
+			}
+		}
+		if err := syscall.SetNonblock(fds[1], false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return r, w, fill
+}
+
+// A stderr nobody reads must not hold the interrupt path up: with igdev's
+// stderr a full pipe, a SIGTERM still removes the token files at once, and a
+// second SIGTERM still ends the wait for act. The diagnostics are lost.
+func TestInterruptBlockedStderrDoesNotBlockCleanupOrExit(t *testing.T) {
+	_, w, fill := fullPipe(t)
+	env, _, proc := startCILocalTo(t, "60", w)
+	fill()
+	proc.Signal(syscall.SIGTERM)
+	waitTempGone(t, env, "igdev-ci-local-")
+	proc.Signal(syscall.SIGTERM)
+	res := proc.Wait(interruptWait)
+
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if res.Signal != syscall.SIGTERM {
+		t.Fatalf("igdev ended with exit %d signal %v, want death by SIGTERM", res.Exit, res.Signal)
 	}
 	env.AssertTempDirEmpty(t)
 }

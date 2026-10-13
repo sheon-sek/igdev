@@ -37,6 +37,9 @@ func (e *Env) Start(r Run) *Proc {
 	p.cmd.Env = e.EnvOverlay(r.Env...)
 	p.cmd.Stdout = &p.out
 	p.cmd.Stderr = &p.errBuf
+	if r.Stderr != nil {
+		p.cmd.Stderr = r.Stderr
+	}
 	p.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	p.res = Result{env: e, before: e.Snapshot()}
 	p.started = time.Now()

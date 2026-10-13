@@ -13,6 +13,10 @@
 // interrupted run prints no envelope, exactly as before. A second signal stops the
 // wait and exits at once.
 //
+// The diagnostics never hold that exit up: a stderr nobody reads (a full pipe)
+// delays neither the cleanups nor the second signal, and a line it has not taken
+// within diagnosticFlush of the exit is lost.
+//
 // The handler never signals a child itself. A terminal Ctrl-C already reaches the
 // whole foreground process group; forwarding a parent-only SIGTERM, process-group
 // isolation and timeouts are a separate, reviewed change (issue #149, phase 2).
@@ -26,6 +30,7 @@ import (
 	"os/exec"
 	"sync"
 	"syscall"
+	"time"
 )
 
 // ErrInterrupted is what Hold's callers return when a signal already arrived: no
@@ -214,13 +219,63 @@ func (h *handler) waitIdle() {
 	h.mu.Unlock()
 }
 
+// diagnosticFlush is how long the exit waits for stderr to take the lines the
+// handler wrote.
+const diagnosticFlush = 500 * time.Millisecond
+
+// diagnostics writes the handler's lines to stderr, in order, from a goroutine of
+// its own, so that a write stderr blocks never blocks the handler.
+type diagnostics chan diagnostic
+
+type diagnostic struct {
+	line    string
+	flushed chan struct{}
+}
+
+func writeDiagnostics(stderr io.Writer) diagnostics {
+	d := make(diagnostics, 8)
+	go func() {
+		for item := range d {
+			if item.flushed != nil {
+				close(item.flushed)
+				continue
+			}
+			_, _ = io.WriteString(stderr, item.line)
+		}
+	}()
+	return d
+}
+
+// say queues a line. It never blocks: the handler says at most three.
+func (d diagnostics) say(format string, args ...any) {
+	select {
+	case d <- diagnostic{line: fmt.Sprintf(format, args...)}:
+	default:
+	}
+}
+
+// flush waits up to diagnosticFlush for stderr to take every line queued so far.
+func (d diagnostics) flush() {
+	flushed := make(chan struct{})
+	select {
+	case d <- diagnostic{flushed: flushed}:
+	default:
+		return
+	}
+	select {
+	case <-flushed:
+	case <-time.After(diagnosticFlush):
+	}
+}
+
 // watch handles the first signal on signals and ends the process through exit.
 func (h *handler) watch(signals <-chan os.Signal, stderr io.Writer, exit func(os.Signal)) {
 	sig := <-signals
 	h.mu.Lock()
 	h.signal = sig
 	h.mu.Unlock()
-	fmt.Fprintf(stderr, "[igdev] interrupted by %s: cleaning up before exit\n", name(sig))
+	diag := writeDiagnostics(stderr)
+	diag.say("[igdev] interrupted by %s: cleaning up before exit\n", name(sig))
 
 	done := make(chan struct{})
 	go func() {
@@ -230,7 +285,7 @@ func (h *handler) watch(signals <-chan os.Signal, stderr io.Writer, exit func(os
 		waiting := h.holds > h.reports
 		h.mu.Unlock()
 		if waiting {
-			fmt.Fprintf(stderr, "[igdev] waiting for the running child process to exit; interrupt again to stop waiting\n")
+			diag.say("[igdev] waiting for the running child process to exit; interrupt again to stop waiting\n")
 		}
 		h.waitIdle()
 		// A section that was held when the signal came may have registered its
@@ -240,8 +295,9 @@ func (h *handler) watch(signals <-chan os.Signal, stderr io.Writer, exit func(os
 	select {
 	case <-done:
 	case again := <-signals:
-		fmt.Fprintf(stderr, "[igdev] interrupted again by %s: exiting without waiting\n", name(again))
+		diag.say("[igdev] interrupted again by %s: exiting without waiting\n", name(again))
 	}
+	diag.flush()
 	exit(sig)
 }
 
