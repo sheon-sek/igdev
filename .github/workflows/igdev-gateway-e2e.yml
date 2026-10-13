@@ -37,7 +37,9 @@ jobs:
     env:
       IGNITION_VERSION: ${{ github.event.inputs.ignition_version || '8.3.10' }}
       WAIT_TIMEOUT: ${{ github.event.inputs.wait_timeout || '420' }}
-      CHECKOUT: ${{ github.workspace }}/e2e-checkout
+      # Outside the igdev checkout: its own dogfood igdev.toml would otherwise be
+      # the project init and every later command find (#19).
+      CHECKOUT: /tmp/igdev-e2e-checkout
     steps:
       - uses: actions/checkout@v4
 
