@@ -22,8 +22,11 @@ effective on a given host was not verified, and this design does not assume eith
   the volume's `Size`). Docker computes it only for some drivers and may return `-1` or
   omit it; that is `unknown`.
 - `docker_root_free_bytes`: free space on the filesystem holding the engine's data root
-  (`docker info` `DockerRootDir`). On Docker Desktop, rootless, or remote engines the
-  path is inside a VM or another host and is not statable from the CLI; that is `unknown`.
+  (`docker info` `DockerRootDir`), measured only when that path is local and accessible
+  to the invoking user. A local rootless engine keeps it under the user's home
+  (`~/.local/share/docker`) and is measured normally. On Docker Desktop or remote engines
+  the path is inside a VM or on another host and is not statable from the CLI; that, or
+  any root the CLI cannot stat, is `unknown`.
 
 Every metric is either a measured number or the explicit value `unknown` with a reason
 (driver does not report size, data root not reachable, engine did not answer, timed out).
