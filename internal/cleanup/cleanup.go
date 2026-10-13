@@ -91,6 +91,10 @@ type Options struct {
 	Deinit    bool
 	Machine   bool
 	Uninstall bool
+	// ObsoleteImages plans only the images a version change left behind, and
+	// keeps the Instance; IgnitionVersion is the current [ignition].version.
+	ObsoleteImages  bool
+	IgnitionVersion string
 
 	// Home and Dirs locate the machine-level files.
 	Home string
@@ -129,6 +133,15 @@ func Build(opts Options) (Plan, *contract.Fault) {
 	engine, fault := snapshot(opts.Docker)
 	if fault != nil {
 		return plan, fault
+	}
+	if opts.ObsoleteImages {
+		if opts.Namespace == "" || opts.IgnitionVersion == "" {
+			// Without both, every unattributed image or the current one would match.
+			return plan, contract.NewFault(contract.CodeInternal, contract.ExitFailure,
+				"obsolete-image cleanup needs the Instance namespace and the current [ignition].version")
+		}
+		plan.Items = engine.obsoleteItems(opts.Namespace, opts.IgnitionVersion, opts.Docker)
+		return plan, nil
 	}
 
 	namespaces := map[string]bool{}

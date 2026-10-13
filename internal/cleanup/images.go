@@ -17,6 +17,9 @@ type Image struct {
 	ID      string
 	Tags    []string
 	Project string
+	// layers are the image's RootFS layer digests, base first: an image built
+	// FROM another starts with all of its layers.
+	layers []string
 }
 
 // Namespace attributes an image to one Instance. A non-igdev Compose label
@@ -72,6 +75,9 @@ func inspectImage(run Runner, id string) (Image, error) {
 		Config struct {
 			Labels map[string]string `json:"Labels"`
 		} `json:"Config"`
+		RootFS struct {
+			Layers []string `json:"Layers"`
+		} `json:"RootFS"`
 	}
 	if err := json.Unmarshal([]byte(out), &rows); err != nil {
 		return Image{}, err
@@ -81,7 +87,7 @@ func inspectImage(run Runner, id string) (Image, error) {
 	}
 	tags := rows[0].Tags
 	sort.Strings(tags)
-	return Image{ID: id, Tags: tags, Project: rows[0].Config.Labels[labelProject]}, nil
+	return Image{ID: id, Tags: tags, Project: rows[0].Config.Labels[labelProject], layers: rows[0].RootFS.Layers}, nil
 }
 
 func noSuchImage(err error) bool {
