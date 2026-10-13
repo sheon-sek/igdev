@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sheon-sek/igdev/internal/cleanup"
 	"github.com/sheon-sek/igdev/internal/doctor"
 )
 
@@ -25,7 +26,19 @@ prerequisite is not present.
 
 doctor never fails: the exit level stays 0 and the audit is the payload, so an agent
 reads the report instead of an error string. Probing touches nothing: no file is
-written and no container is created.`,
+written and no container is created, stopped or removed.
+
+data.instances.items lists every igdev Instance the Docker engine holds containers for, with
+the checkout its containers were created from and whether that path still exists:
+active (the checkout's Setup records this Instance), needs_review (the path exists but
+its Setup is missing or names another Instance), or checkout_missing. A missing path is
+an observation, not proof the Instance is unwanted: a moved checkout keeps its old path
+until its next up. Each container is running, restartable (the engine is restarting
+it), or unknown (stopped; the engine does not say whether an operator stopped it). An
+engine that cannot be asked is reported as unknown, never as zero Instances. A
+non-active Instance carries a suggestion — docker compose -p <namespace> stop — that
+stops only its containers without its Compose file and keeps its data volume; doctor
+never runs it.`,
 		Example: "  igdev doctor\n  igdev doctor --json",
 		Args:    rejectArgs("doctor"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -34,6 +47,7 @@ written and no container is created.`,
 				return err
 			}
 			report := doctor.Audit(doctor.System)
+			report.Instances = cleanup.TakeInventory(cleanup.Exec)
 			a.emit(res, report, func() { a.printDoctor(report) })
 			return nil
 		},
@@ -56,6 +70,26 @@ func (a *App) printDoctor(report doctor.Report) {
 		fmt.Fprintf(a.Stdout, "  %-8s %-8s %-8s %s\n", entry.Name, requirement, entry.State, detail)
 		if entry.Warning != "" {
 			fmt.Fprintf(a.Stdout, "  %-8s warning: %s\n", "", entry.Warning)
+		}
+	}
+	a.printInventory(report.Instances)
+}
+
+// printInventory lists each Instance with its checkout and containers, and the
+// suggestion for one that is not active.
+func (a *App) printInventory(inv cleanup.Inventory) {
+	if inv.Engine != cleanup.EngineAvailable {
+		fmt.Fprintf(a.Stdout, "instances: unknown (%s)\n", inv.Error)
+		return
+	}
+	fmt.Fprintf(a.Stdout, "instances: %d\n", len(inv.Instances))
+	for _, in := range inv.Instances {
+		fmt.Fprintf(a.Stdout, "  %s  %s  %s (%s)\n", in.Namespace, in.Classification, in.Checkout, in.PathState)
+		for _, s := range in.Services {
+			fmt.Fprintf(a.Stdout, "    %-12s %-10s restart: %s\n", s.Service, s.State, s.Restart)
+		}
+		if in.Suggestion != "" {
+			fmt.Fprintf(a.Stdout, "    suggestion (not run): %s\n", in.Suggestion)
 		}
 	}
 }

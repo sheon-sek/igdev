@@ -22,11 +22,11 @@ type ModuleFile struct {
 // ImageModules lists the module archives an image ships in user-lib/modules,
 // sorted by id. An archive without a readable module.xml is skipped.
 func ImageModules(image, scratch string) ([]ModuleFile, error) {
-	id, err := createContainer(image)
+	id, remove, err := createContainer(image)
 	if err != nil {
 		return nil, err
 	}
-	defer removeContainer(id)
+	defer remove()
 	modules, err := copyOut(id, imageModules, func(r io.Reader) ([]ModuleFile, error) { return readModuleIDsTar(r, scratch) })
 	if err != nil {
 		return nil, err

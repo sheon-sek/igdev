@@ -16,6 +16,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/docker"
 	"github.com/sheon-sek/igdev/internal/gate"
+	"github.com/sheon-sek/igdev/internal/interrupt"
 	"github.com/sheon-sek/igdev/internal/lookup"
 	"github.com/sheon-sek/igdev/internal/modules"
 	"github.com/sheon-sek/igdev/internal/project"
@@ -296,11 +297,11 @@ func (a *App) loadFunctions(lc *lookupContext, found project.Found, records []mo
 			return err
 		}
 		a.stage("reading the documentation bundles of %s into the lookup index", image)
-		scratch, err := os.MkdirTemp("", "igdev-lookup-")
+		scratch, removeScratch, err := interrupt.MkdirTemp("", "igdev-lookup-")
 		if err != nil {
 			return contract.NewFault(contract.CodeInternal, contract.ExitFailure, "cannot create a scratch directory: "+err.Error()).WithCause(err)
 		}
-		defer os.RemoveAll(scratch)
+		defer removeScratch()
 		idx, err = lookup.BuildImageIndex(lc.version, image, imageID, known, scratch)
 		if err != nil {
 			return imageFault(lc.version, err)
@@ -329,12 +330,12 @@ func (a *App) loadFunctions(lc *lookupContext, found project.Found, records []mo
 		key := lookup.ModuleKey(sha, known)
 		mod, ok := lc.store.LoadModule(key)
 		if !ok || refresh {
-			scratch, err := os.MkdirTemp("", "igdev-lookup-")
+			scratch, removeScratch, err := interrupt.MkdirTemp("", "igdev-lookup-")
 			if err != nil {
 				continue
 			}
 			mod, err = lookup.BuildModuleIndex(file, sha, key, known, scratch)
-			os.RemoveAll(scratch)
+			removeScratch()
 			if err != nil {
 				continue
 			}

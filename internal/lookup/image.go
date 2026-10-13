@@ -7,8 +7,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/sheon-sek/igdev/internal/interrupt"
 )
 
 // Install is where the Ignition image keeps the jars the function index reads.
@@ -78,11 +81,11 @@ func InstanceImages(version string) ([]string, error) {
 // no license or EULA is involved, and no file is unpacked on disk beyond one
 // archive at a time in scratch.
 func ReadImage(image, scratch string) ([]bundle, error) {
-	id, err := createContainer(image)
+	id, remove, err := createContainer(image)
 	if err != nil {
 		return nil, err
 	}
-	defer removeContainer(id)
+	defer remove()
 	core, err := copyOut(id, imageCore, func(r io.Reader) ([]bundle, error) { return readCoreTar(r, scratch) })
 	if err != nil {
 		return nil, err
@@ -94,16 +97,34 @@ func ReadImage(image, scratch string) ([]bundle, error) {
 	return append(core, modules...), nil
 }
 
-// createContainer creates a container of image without starting it.
-func createContainer(image string) (string, error) {
+// createContainer creates a container of image without starting it and returns
+// the release that removes it. The removal is registered with the interrupt
+// handler before the creation is released, so a Ctrl-C or SIGTERM at any point
+// after `docker create` succeeds still removes the container; one that makes it
+// fail after it printed the container's id removes it at once.
+func createContainer(image string) (string, func(), error) {
+	held, ok := interrupt.Hold()
+	if !ok {
+		return "", nil, interrupt.ErrInterrupted
+	}
+	defer held()
 	var stdout, stderr bytes.Buffer
 	create := exec.Command("docker", "create", "--label", "dev.igdev.purpose=lookup", "--entrypoint", "true", image)
 	create.Stdout, create.Stderr = &stdout, &stderr
 	if err := create.Run(); err != nil {
-		return "", &EngineError{Action: "docker create " + image, Output: stderr.String(), Err: err}
+		// A Ctrl-C can reach docker create after the engine created the
+		// container and the CLI printed its id, but before the CLI exited.
+		if id := strings.TrimSpace(stdout.String()); containerID.MatchString(id) {
+			removeContainer(id)
+		}
+		return "", nil, &EngineError{Action: "docker create " + image, Output: stderr.String(), Err: err}
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	id := strings.TrimSpace(stdout.String())
+	return id, interrupt.Defer(func() { removeContainer(id) }), nil
 }
+
+// containerID is the full id docker create prints for the container it created.
+var containerID = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func removeContainer(id string) {
 	output, err := exec.Command("docker", "rm", "--force", id).CombinedOutput()
@@ -121,6 +142,12 @@ func copyOut[T any](id, dir string, read func(io.Reader) ([]T, error)) ([]T, err
 	if err != nil {
 		return nil, err
 	}
+	// The interrupt path waits for docker cp to exit before it ends the process.
+	held, ok := interrupt.Hold()
+	if !ok {
+		return nil, interrupt.ErrInterrupted
+	}
+	defer held()
 	if err := cmd.Start(); err != nil {
 		return nil, &EngineError{Action: "docker cp " + dir, Err: err}
 	}
