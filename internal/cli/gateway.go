@@ -462,6 +462,9 @@ func (a *App) newGatewayUpCmd() *cobra.Command {
 that builds when the image is not current, for this Instance's project, with the
 recorded ports and the generated admin credentials. The Gateway is not waited for —
 use ` + "`igdev gateway wait`" + `, which is also the last step of ` + "`igdev gateway reset`" + `.
+A Gateway whose volume already exists loads only the modules it registered, so
+` + "`gateway wait`" + ` installs a module staged since then through the REST API, as
+` + "`igdev module install`" + ` does.
 
 Low free memory is a warning on stderr, never a refusal; --force is accepted and only
 changes the wording of that warning.
@@ -662,6 +665,9 @@ names the endpoint that failed.`,
 				return err
 			}
 			if err := a.waitForGateway(g, timeout); err != nil {
+				return err
+			}
+			if err := a.registerStagedModules(g, timeout); err != nil {
 				return err
 			}
 			if smoke {
