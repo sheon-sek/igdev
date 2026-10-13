@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"time"
 
 	"github.com/sheon-sek/igdev/internal/atomicfile"
 )
@@ -102,7 +104,11 @@ func (s Store) LoadModule(key string) (*ModuleIndex, bool) {
 // SaveModule writes a private module index in one rename.
 func (s Store) SaveModule(idx *ModuleIndex) error {
 	idx.Format = FormatVersion
-	return save(s.ModulePath(idx.Key), idx)
+	if err := save(s.ModulePath(idx.Key), idx); err != nil {
+		return err
+	}
+	s.pruneModules(time.Now())
+	return nil
 }
 
 // LoadREST reads the cached REST index.
@@ -180,4 +186,30 @@ func BuildModuleIndex(file, sha, key string, known []string, scratch string) (*M
 		Artifact:  filepath.Base(file),
 		Functions: buildFunctions(bundles, known, true),
 	}, nil
+}
+
+// Module indexes expire 90 days after their last atomic save. This machine-wide
+// policy never uses a checkout's staged modules as evidence for deletion.
+const moduleIndexMaxAge = 90 * 24 * time.Hour
+
+var moduleIndexName = regexp.MustCompile("^[0-9a-f]{1,32}-[0-9a-f]{12}\\.json$")
+
+func (s Store) pruneModules(now time.Time) {
+	dir := filepath.Join(s.Dir, "modules")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() || !moduleIndexName.MatchString(entry.Name()) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || !info.ModTime().Before(now.Add(-moduleIndexMaxAge)) {
+			continue
+		}
+		// A racing reader treats a missing index as a cache miss and rebuilds.
+		// Failure to reclaim an index must never fail the save or lookup.
+		_ = os.Remove(filepath.Join(dir, entry.Name()))
+	}
 }
