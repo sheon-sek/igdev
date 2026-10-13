@@ -481,9 +481,11 @@ func TestGatewayStatusReportsComposeState(t *testing.T) {
 	if want := fmt.Sprintf("http://127.0.0.1:%d", stamp.Ports.HTTP); data.URL != want {
 		t.Errorf("url = %q, want the recorded %q", data.URL, want)
 	}
-	// The published port the engine reports is the recorded one, not 8088.
-	if len(data.Services) != 1 || data.Services[0].Service != "gateway" || data.Services[0].State != "running" {
-		t.Errorf("services = %+v, want the running gateway service", data.Services)
+	// The published port the engine reports is the recorded one, not 8088. Every
+	// service is listed, the trial keeper the default contract runs included.
+	if len(data.Services) != 2 || data.Services[0].Service != "gateway" || data.Services[0].State != "running" ||
+		data.Services[1].Service != "trial-keeper" {
+		t.Errorf("services = %+v, want the running gateway and trial-keeper services", data.Services)
 	}
 
 	testrig.WantExit(t, env.RunIn(dir, "gateway", "down", "--volumes"), contract.ExitOK)

@@ -26,21 +26,24 @@ const (
 
 // cleanupData is the `igdev cleanup` result.
 type cleanupData struct {
-	Scope     string          `json:"scope"`
-	Deinit    bool            `json:"deinit"`
-	Uninstall bool            `json:"uninstall"`
-	DryRun    bool            `json:"dry_run"`
-	Root      string          `json:"project_root"`
-	Namespace string          `json:"namespace"`
-	Items     []*cleanup.Item `json:"items"`
-	Removed   int             `json:"removed"`
-	Pending   int             `json:"would_remove"`
-	Kept      int             `json:"kept"`
-	Failed    int             `json:"failed"`
+	Scope     string `json:"scope"`
+	Deinit    bool   `json:"deinit"`
+	Uninstall bool   `json:"uninstall"`
+	// ObsoleteImages is a run that removes only the images a version change
+	// left behind and keeps the Instance (ADR 0017).
+	ObsoleteImages bool            `json:"obsolete_images"`
+	DryRun         bool            `json:"dry_run"`
+	Root           string          `json:"project_root"`
+	Namespace      string          `json:"namespace"`
+	Items          []*cleanup.Item `json:"items"`
+	Removed        int             `json:"removed"`
+	Pending        int             `json:"would_remove"`
+	Kept           int             `json:"kept"`
+	Failed         int             `json:"failed"`
 }
 
 func (a *App) newCleanupCmd() *cobra.Command {
-	var deinit, machine, uninstall, dryRun, yes bool
+	var deinit, machine, uninstall, obsolete, dryRun, yes bool
 	cmd := &cobra.Command{
 		Use:   "cleanup",
 		Short: "Remove everything igdev created, for this checkout or the whole machine",
@@ -63,14 +66,26 @@ Things igdev uses but does not own stay and are listed as kept: the Docker build
 act's images and cache, files IGDEV_CONSENT_FILE names, and tracked content the
 contract points at (overlays, the seed). Every run is idempotent; ` + "`--dry-run`" + ` lists
 the plan and changes nothing. ` + "`--machine`" + ` and ` + "`--uninstall`" + ` reach beyond this
-checkout, so they need ` + "`--yes`" + `: in a terminal cleanup asks once instead.`,
+checkout, so they need ` + "`--yes`" + `: in a terminal cleanup asks once instead.
+
+` + "`--obsolete-images`" + ` keeps this checkout's Instance, its data volume, the Checkout
+Setup and the Consent record, and removes only the images an [ignition].version change
+left behind: this Instance's images not built for the current version, and each
+official Ignition tag an obsolete image of this Instance was built from, unless another
+image, a container or the current contract still uses it. Every other official tag is
+listed as kept. Nothing is forced and the Docker build cache is never pruned.`,
 		Example: `  igdev cleanup
   igdev cleanup --dry-run --json
   igdev cleanup --deinit
+  igdev cleanup --obsolete-images --dry-run
   igdev cleanup --machine --yes
   igdev cleanup --uninstall --yes`,
 		Args: rejectArgs("cleanup"),
 		RunE: func(_ *cobra.Command, _ []string) error {
+			if obsolete && (deinit || machine || uninstall) {
+				return contract.UsageFault("cleanup --obsolete-images keeps the Instance, so it combines with neither --deinit, --machine nor --uninstall",
+					contract.Remediation{Command: "igdev cleanup --obsolete-images", Why: "remove only the images a version change left behind"})
+			}
 			if uninstall {
 				machine = true
 			}
@@ -84,6 +99,13 @@ checkout, so they need ` + "`--yes`" + `: in a terminal cleanup asks once instea
 			}
 			opts, data := a.cleanupOptions(found, deinit, machine, uninstall)
 			data.DryRun = dryRun
+			if obsolete {
+				version, fault := a.currentIgnitionVersion(found, opts)
+				if fault != nil {
+					return fault
+				}
+				opts.ObsoleteImages, opts.IgnitionVersion, data.ObsoleteImages = true, version, true
+			}
 			plan, fault := cleanup.Build(opts)
 			if fault != nil {
 				return fault
@@ -103,10 +125,14 @@ checkout, so they need ` + "`--yes`" + `: in a terminal cleanup asks once instea
 			}
 			data = summarize(data, plan)
 			if data.Failed > 0 {
+				retry := cleanupCommand(deinit, machine, uninstall, true)
+				if obsolete {
+					retry = "igdev cleanup --obsolete-images"
+				}
 				return contract.NewFault(contract.CodeCleanupPartial, contract.ExitFailure,
 					fmt.Sprintf("cleanup removed %d items but %d failed; items[] carries each reason", data.Removed, data.Failed)).
 					WithData(data).
-					WithRemediation(contract.Remediation{Command: cleanupCommand(deinit, machine, uninstall, true),
+					WithRemediation(contract.Remediation{Command: retry,
 						Why: "fix what the failed items name, then run cleanup again: it is idempotent"})
 			}
 			// No update notice: it caches its answer under ~/.cache/igdev, which
@@ -125,6 +151,8 @@ checkout, so they need ` + "`--yes`" + `: in a terminal cleanup asks once instea
 		"clean every igdev Instance and igdev's machine-level files, not only this checkout")
 	cmd.Flags().BoolVar(&uninstall, "uninstall", false,
 		"also remove the igdev binary and install.sh's PATH entry (implies --machine)")
+	cmd.Flags().BoolVar(&obsolete, "obsolete-images", false,
+		"remove only the images an Ignition version change left behind, and keep the Instance")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "list what would be removed and change nothing")
 	cmd.Flags().BoolVar(&yes, "yes", false, "confirm --machine or --uninstall without asking")
 	return cmd
@@ -140,6 +168,28 @@ func (a *App) resolvedForCleanup(found project.Found) (*config.Resolution, error
 	}
 	in.ContractTOML, in.ContractPath, in.LocalTOML, in.LocalPath = nil, "", nil, ""
 	return config.Resolve(in)
+}
+
+// currentIgnitionVersion is the [ignition].version --obsolete-images keeps. It
+// needs the Project Contract and the Instance the Checkout Setup names, and reads
+// them strictly: a tier cleanup would drop as unreadable could name the version
+// in use, so guessing the default would plan the running Instance's images.
+func (a *App) currentIgnitionVersion(found project.Found, opts cleanup.Options) (string, *contract.Fault) {
+	if found.Root == "" {
+		return "", contract.NewFault(contract.CodeNotInitialized, contract.ExitFailure,
+			"cleanup --obsolete-images needs this checkout's igdev.toml: it names the current [ignition].version").
+			WithRemediation(contract.Remediation{Command: "igdev status", Why: "find the Project Root"})
+	}
+	if opts.Namespace == "" {
+		return "", contract.NewFault(contract.CodeSetupRequired, contract.ExitFailure,
+			"cleanup --obsolete-images needs the Checkout Setup: it names this checkout's Instance").
+			WithRemediation(contract.Remediation{Command: "igdev setup", Why: "re-create the Checkout Setup"})
+	}
+	res, err := config.Resolve(a.configInput(found))
+	if err != nil {
+		return "", contract.AsFault(err)
+	}
+	return res.String("ignition.version"), nil
 }
 
 // cleanupOptions finds the checkout cleanup acts on. It deliberately bypasses the
@@ -241,8 +291,16 @@ func (a *App) printCleanup(data cleanupData) {
 			fmt.Fprint(a.Stderr, item.Diff)
 		}
 	}
+	scope := data.Scope + " scope"
+	if data.ObsoleteImages {
+		scope += ", obsolete images only"
+	}
 	if len(data.Items) == 0 {
-		fmt.Fprintf(a.Stdout, "cleanup:  nothing igdev created is left (%s scope)\n", data.Scope)
+		if data.ObsoleteImages {
+			fmt.Fprintf(a.Stdout, "cleanup:  no obsolete images (%s)\n", scope)
+		} else {
+			fmt.Fprintf(a.Stdout, "cleanup:  nothing igdev created is left (%s)\n", scope)
+		}
 		return
 	}
 	for _, item := range data.Items {
@@ -253,8 +311,8 @@ func (a *App) printCleanup(data cleanupData) {
 		fmt.Fprintln(a.Stdout, line)
 	}
 	if data.DryRun {
-		fmt.Fprintf(a.Stdout, "cleanup:  %d would be removed, %d kept (dry run, %s scope)\n", data.Pending, data.Kept, data.Scope)
+		fmt.Fprintf(a.Stdout, "cleanup:  %d would be removed, %d kept (dry run, %s)\n", data.Pending, data.Kept, scope)
 		return
 	}
-	fmt.Fprintf(a.Stdout, "cleanup:  %d removed, %d kept, %d failed (%s scope)\n", data.Removed, data.Kept, data.Failed, data.Scope)
+	fmt.Fprintf(a.Stdout, "cleanup:  %d removed, %d kept, %d failed (%s)\n", data.Removed, data.Kept, data.Failed, scope)
 }

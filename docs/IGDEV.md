@@ -1041,6 +1041,8 @@ igdev cleanup --machine --yes    every igdev Instance on the engine (orphans too
                                  official Ignition image no container uses, the XDG
                                  directories, global skills
 igdev cleanup --uninstall --yes  + the binary under an install.sh prefix and its PATH entry
+igdev cleanup --obsolete-images  only the images an [ignition].version change left behind;
+                                 the Instance, its volume, .igdev/ and Consent stay
 ```
 
 An object is igdev's when its compose project is `igdev-` plus eight hex digits, or its
@@ -1048,7 +1050,16 @@ container carries `dev.igdev.instance`. Docker objects go first, files last, and
 that does not answer stops the run before anything is removed. Cleanup never runs the
 Gate's Setup refresh. `--machine` and `--uninstall` need `--yes`: a terminal asks once,
 any other run gets the plan back at exit 2. A failed item is `IGDEV_E_CLEANUP_PARTIAL`
-with every outcome in `data.items`; the same command run again picks up what is left.
+with every outcome in `data.items`; the same command run again picks up what is left,
+because a Docker item that fails keeps its Instance's `.igdev/`, reported `kept`, until a
+run removes them all.
+
+`--obsolete-images` reclaims disk after version changes without touching the running
+Instance (ADR 0017). It plans this Instance's images not built for the current
+`[ignition].version`, and an official `inductiveautomation/ignition` tag only when an
+obsolete image of this Instance was built from it and no other image, container or the
+current contract still references it; every other official tag is listed as kept. Every
+image goes by its immutable ID, never forced, and an image with several tags is kept.
 
 ## Host prerequisites
 
