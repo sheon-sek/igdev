@@ -98,6 +98,11 @@ func imageProtection(run Runner, image Image, leaving map[string]bool) (string, 
 			return "image carries a tag outside the Instance: " + tag, nil
 		}
 	}
+	// Removal is by immutable ID only; untagging first would act on mutable
+	// references, and the engine refuses an unforced ID removal of several tags.
+	if len(image.Tags) > 1 {
+		return "image carries several tags: " + strings.Join(image.Tags, ", "), nil
+	}
 	out, stderr, err := run("ps", "--all", "--filter", "ancestor="+image.ID, "--format", "{{.Names}}")
 	if err != nil {
 		return "", fmt.Errorf("checking image users: %s: %w", strings.TrimSpace(out+stderr), err)
@@ -158,13 +163,6 @@ func imageItem(image Image, run Runner, leaving map[string]bool) *Item {
 		}
 		if reason != "" {
 			return protectedImage{reason}
-		}
-		// Every tag is the Instance's own: untag each by reference, since the
-		// engine refuses an unforced ID removal of a multi-tagged image.
-		for _, tag := range current.Tags {
-			if err := dockerErr(run("image", "rm", tag)); err != nil {
-				return err
-			}
 		}
 		return dockerErr(run("image", "rm", image.ID))
 	}

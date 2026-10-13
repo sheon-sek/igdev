@@ -37,7 +37,7 @@ func TestImageInventoryScopesAndProtections(t *testing.T) {
 				return "foreign-container", "", nil
 			}
 		case args[0] == "image" && args[1] == "rm":
-			if len(args) != 3 {
+			if len(args) != 3 || !strings.HasPrefix(args[2], "sha256:") {
 				t.Fatalf("unsafe removal: %v", args)
 			}
 			if args[2] == "sha256:old" && failed {
@@ -67,7 +67,7 @@ func TestImageInventoryScopesAndProtections(t *testing.T) {
 		if (counts["sha256:other"] == 1) != machine || counts["sha256:foreign"] != 0 || counts["sha256:unknown"] != 0 {
 			t.Fatalf("scope inventory: %v", counts)
 		}
-		for _, id := range []string{"sha256:used", "sha256:shared"} {
+		for _, id := range []string{"sha256:new", "sha256:used", "sha256:shared"} {
 			if !contains(refs(p, Kept), id) {
 				t.Errorf("%s not kept", id)
 			}
@@ -84,7 +84,7 @@ func TestImageInventoryScopesAndProtections(t *testing.T) {
 	if !contains(removed, "sha256:old") {
 		t.Fatal("failed image not retryable")
 	}
-	if contains(removed, "sha256:used") || contains(removed, "sha256:shared") {
+	if contains(removed, "sha256:new") || contains(removed, "sha256:used") || contains(removed, "sha256:shared") {
 		t.Fatal("protected image removed")
 	}
 }
@@ -166,7 +166,7 @@ func TestImageInventoryInspectionFailure(t *testing.T) {
 func TestImageUsedOnlyByOwnContainerIsRemoved(t *testing.T) {
 	gone := false
 	var removed []string
-	image := Image{ID: "sha256:img", Project: nsA, Tags: []string{nsA + ":8.3.8", nsA + ":latest"}}
+	image := Image{ID: "sha256:img", Project: nsA, Tags: []string{nsA + ":8.3.8"}}
 	run := func(args ...string) (string, string, error) {
 		switch {
 		case args[0] == "ps" && args[1] == "--all" && len(args) > 2 && args[2] == "--filter":
@@ -199,7 +199,7 @@ func TestImageUsedOnlyByOwnContainerIsRemoved(t *testing.T) {
 		t.Fatalf("own image not planned: %+v", p.Items)
 	}
 	p.Execute()
-	if !contains(refs(p, Removed), "sha256:img") || !contains(removed, nsA+":latest") || !contains(removed, "sha256:img") {
+	if !contains(refs(p, Removed), "sha256:img") || strings.Join(removed, ",") != "sha256:img" {
 		t.Fatalf("removed=%v items=%+v", removed, p.Items)
 	}
 }
@@ -214,5 +214,47 @@ func TestImageInventoryToleratesConcurrentRemoval(t *testing.T) {
 	images, fault := InventoryImages(run)
 	if fault != nil || len(images) != 0 {
 		t.Fatalf("images=%v fault=%v", images, fault)
+	}
+}
+
+// Tags are mutable, so execution never removes by tag: a tag moved to another
+// image is not followed, and a tag added since planning keeps the image.
+func TestImageRemovalNeverUsesTags(t *testing.T) {
+	for _, change := range []string{"tag moved away", "owned tag added"} {
+		t.Run(change, func(t *testing.T) {
+			changed := false
+			var removed []string
+			image := Image{ID: "sha256:owned", Project: nsA, Tags: []string{nsA + ":current"}}
+			run := func(args ...string) (string, string, error) {
+				switch {
+				case args[0] == "image" && args[1] == "inspect":
+					current := image
+					if changed && change == "tag moved away" {
+						current.Tags = nil
+					}
+					if changed && change == "owned tag added" {
+						current.Tags = append(current.Tags, nsA+":latest")
+					}
+					raw, _ := json.Marshal([]map[string]any{{"Id": current.ID, "RepoTags": current.Tags, "Config": map[string]any{"Labels": map[string]string{labelProject: current.Project}}}})
+					return string(raw), "", nil
+				case args[0] == "image" && args[1] == "rm":
+					removed = append(removed, args[2:]...)
+				}
+				return "", "", nil
+			}
+			item := imageItem(image, run, nil)
+			changed = true
+			Plan{Items: []*Item{item}}.Execute()
+			switch change {
+			case "tag moved away":
+				if item.Action != Removed || strings.Join(removed, ",") != image.ID {
+					t.Fatalf("removed=%v item=%+v", removed, item)
+				}
+			case "owned tag added":
+				if item.Action != Kept || len(removed) != 0 {
+					t.Fatalf("removed=%v item=%+v", removed, item)
+				}
+			}
+		})
 	}
 }
