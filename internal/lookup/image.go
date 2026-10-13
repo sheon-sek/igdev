@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"regexp"
 	"sort"
@@ -108,7 +109,7 @@ func createContainer(image string) (string, func(), error) {
 	}
 	defer held()
 	var stdout, stderr bytes.Buffer
-	create := exec.Command("docker", "create", "--entrypoint", "true", image)
+	create := exec.Command("docker", "create", "--label", "dev.igdev.purpose=lookup", "--entrypoint", "true", image)
 	create.Stdout, create.Stderr = &stdout, &stderr
 	if err := create.Run(); err != nil {
 		// A Ctrl-C can reach docker create after the engine created the
@@ -125,7 +126,12 @@ func createContainer(image string) (string, func(), error) {
 // containerID is the full id docker create prints for the container it created.
 var containerID = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-func removeContainer(id string) { _ = exec.Command("docker", "rm", "--force", id).Run() }
+func removeContainer(id string) {
+	output, err := exec.Command("docker", "rm", "--force", id).CombinedOutput()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: removing lookup container %s failed: %v: %s\n", id, err, strings.TrimSpace(string(output)))
+	}
+}
 
 // copyOut streams one container directory as a tar archive into read.
 func copyOut[T any](id, dir string, read func(io.Reader) ([]T, error)) ([]T, error) {
