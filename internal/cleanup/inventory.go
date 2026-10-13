@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/sheon-sek/igdev/internal/docker"
+	"github.com/sheon-sek/igdev/internal/instance"
 )
 
 // The inventory is the read-only audit of every igdev Instance the engine still
@@ -111,6 +112,7 @@ func TakeInventory(run Runner) Inventory {
 	inv := Inventory{Engine: EngineAvailable, Instances: []InventoryInstance{}}
 	byNS := map[string]*InventoryInstance{}
 	dirs := map[string]map[string]bool{}
+	identities := map[string]map[string]bool{}
 	for _, line := range strings.Split(stdout, "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -127,9 +129,10 @@ func TakeInventory(run Runner) Inventory {
 			in = &InventoryInstance{Namespace: ns}
 			byNS[ns] = in
 			dirs[ns] = map[string]bool{}
+			identities[ns] = map[string]bool{}
 		}
-		if in.Instance == "" {
-			in.Instance = id
+		if id != "" {
+			identities[ns][id] = true
 		}
 		if wd != "" {
 			dirs[ns][checkoutOf(wd)] = true
@@ -138,7 +141,11 @@ func TakeInventory(run Runner) Inventory {
 	}
 	for ns, in := range byNS {
 		sort.Slice(in.Services, func(i, j int) bool { return in.Services[i].Container < in.Services[j].Container })
-		classify(in, sortedKeys(dirs[ns]))
+		ids := sortedKeys(identities[ns])
+		if len(ids) == 1 {
+			in.Instance = ids[0]
+		}
+		classify(in, sortedKeys(dirs[ns]), len(ids) > 1)
 		inv.Instances = append(inv.Instances, *in)
 	}
 	sort.Slice(inv.Instances, func(i, j int) bool { return inv.Instances[i].Namespace < inv.Instances[j].Namespace })
@@ -147,7 +154,7 @@ func TakeInventory(run Runner) Inventory {
 
 // classify sets the checkout, its path state, the classification and, for a
 // non-active Instance, the suggested remediation.
-func classify(in *InventoryInstance, checkouts []string) {
+func classify(in *InventoryInstance, checkouts []string, conflictingIdentity bool) {
 	in.PathState, in.Classification = PathUnknown, ClassUnknown
 	switch len(checkouts) {
 	case 0:
@@ -158,7 +165,14 @@ func classify(in *InventoryInstance, checkouts []string) {
 		case PathMissing:
 			in.Classification = ClassCheckoutMissing
 		case PathPresent:
-			if recordedNamespace(in.Checkout) == in.Namespace {
+			recorded := recordedInstance(in.Checkout)
+			// Full identities take precedence. Only legacy containers with no
+			// identity labels fall back to the namespace recorded by Setup.
+			matches := recorded != "" && instance.Namespace(recorded) == in.Namespace
+			if in.Instance != "" {
+				matches = matches && recorded == in.Instance
+			}
+			if matches && !conflictingIdentity {
 				in.Classification = ClassActive
 			} else {
 				in.Classification = ClassNeedsReview
@@ -168,6 +182,10 @@ func classify(in *InventoryInstance, checkouts []string) {
 		// Containers created from more than one directory: nothing says which
 		// one owns the Instance now.
 		in.Checkout = checkouts[0]
+		in.Classification = ClassNeedsReview
+	}
+	if conflictingIdentity {
+		// No single identity describes this namespace, regardless of row order.
 		in.Classification = ClassNeedsReview
 	}
 	if in.Classification != ClassActive {

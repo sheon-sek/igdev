@@ -15,6 +15,11 @@ We decided to add an additive `data.instances` object to `igdev doctor`:
   projects are ignored. Each carries `namespace`, `instance`, `checkout` (from the
   `working_dir` label), `path_state` (`present`, `missing`, `unknown`), `classification`
   (`active`, `needs_review`, `checkout_missing`, `unknown`) and per-container `services`.
+- A present checkout is active only when its Setup identity matches the container's
+  full Instance UUID and namespace. Different UUIDs sharing a namespace prefix need
+  review. Conflicting service identity labels also need review, and `instance` is
+  empty because no single UUID describes them. For legacy containers with no identity
+  labels, matching the Setup's namespace remains the explicit fallback.
 - A container's `restart` is `running`, `restartable` (engine state `restarting`), or
   `unknown`. `docker inspect` on Docker 29.8.1 exposes no field that says whether an
   operator stopped an exited container, so igdev does not guess between "stays stopped"

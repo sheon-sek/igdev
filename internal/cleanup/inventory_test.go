@@ -95,6 +95,11 @@ func TestInventoryClassifiesWorktrees(t *testing.T) {
 func TestInventoryMovedCheckout(t *testing.T) {
 	root := t.TempDir()
 	old := filepath.Join(root, "old")
+	moved := filepath.Join(root, "moved")
+	setUp(t, old, idA)
+	if err := os.Rename(old, moved); err != nil {
+		t.Fatal(err)
+	}
 	reused := filepath.Join(root, "reused")
 	setUp(t, reused, idB) // another Instance now lives where nsA was created
 	bare := filepath.Join(root, "no-setup")
@@ -107,12 +112,15 @@ func TestInventoryMovedCheckout(t *testing.T) {
 		psRow(nsC+"-gateway-1", "running", nsC, bare, "", "gateway"),
 	)
 	got := byNamespace(inv)
+	if recordedInstance(moved) != idA {
+		t.Fatal("moved checkout lost its Instance identity")
+	}
 	if got[nsA].Classification != ClassCheckoutMissing {
 		t.Errorf("stale label = %+v, want checkout_missing (an observation, not deletion)", got[nsA])
 	}
-	// reused records idB, whose namespace is nsB: active.
-	if got[nsB].Classification != ClassActive {
-		t.Errorf("reused = %+v, want active", got[nsB])
+	// The container records idA, but the reused path records idB.
+	if got[nsB].Classification != ClassNeedsReview {
+		t.Errorf("reused = %+v, want needs_review", got[nsB])
 	}
 	if got[nsC].Classification != ClassNeedsReview || got[nsC].Suggestion == "" {
 		t.Errorf("checkout without its Setup = %+v, want needs_review with a suggestion", got[nsC])
@@ -178,5 +186,42 @@ func assertReadOnly(t *testing.T, calls [][]string) {
 	t.Helper()
 	if len(calls) != 1 || calls[0][0] != "ps" {
 		t.Errorf("calls = %v, want one docker ps", calls)
+	}
+}
+
+// UUIDs sharing a namespace prefix still identify different Instances.
+func TestInventoryFullIdentity(t *testing.T) {
+	const collision = "aaaaaaaa-1111-4111-8111-111111111111"
+	for _, tc := range []struct {
+		name   string
+		ids    []string
+		want   string
+		wantID string
+	}{
+		{"same identity", []string{idA, idA}, ClassActive, idA},
+		{"same prefix different UUID", []string{collision}, ClassNeedsReview, collision},
+		{"conflicting services", []string{idA, collision}, ClassNeedsReview, ""},
+		{"conflicting services reversed", []string{collision, idA}, ClassNeedsReview, ""},
+		{"legacy without labels", []string{"", ""}, ClassActive, ""},
+		{"mixed legacy and matching", []string{"", idA}, ClassActive, idA},
+		{"mixed legacy and mismatching", []string{"", collision}, ClassNeedsReview, collision},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			setUp(t, dir, idA)
+			var rows []string
+			for i, id := range tc.ids {
+				rows = append(rows, psRow([]string{"gateway", "keeper"}[i], "running", nsA, dir, id, "service"))
+			}
+			inv, calls := inventoryOf(t, rows...)
+			in := inv.Instances[0]
+			if in.Classification != tc.want || in.Instance != tc.wantID || in.PathState != PathPresent {
+				t.Fatalf("inventory = %+v, want %s with identity %q", in, tc.want, tc.wantID)
+			}
+			if (in.Suggestion == "") != (tc.want == ClassActive) {
+				t.Errorf("suggestion = %q for %s", in.Suggestion, tc.want)
+			}
+			assertReadOnly(t, calls)
+		})
 	}
 }
