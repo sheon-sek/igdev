@@ -232,6 +232,14 @@ func samePath(a, b string) bool {
 // namespace, in the order they can be removed: containers before what they use.
 func (e engine) instanceItems(namespaces []string, run Runner) []*Item {
 	var containers, networks, volumes, images []*Item
+	leaving := map[string]bool{}
+	for _, ns := range namespaces {
+		for _, c := range e.containers {
+			if c.project == ns {
+				leaving[c.name] = true
+			}
+		}
+	}
 	for _, ns := range namespaces {
 		for _, c := range e.containers {
 			if c.project == ns {
@@ -256,7 +264,7 @@ func (e engine) instanceItems(namespaces []string, run Runner) []*Item {
 		}
 		for _, image := range e.images {
 			if image.Namespace() == ns {
-				images = append(images, imageItem(image, run))
+				images = append(images, imageItem(image, run, leaving))
 			}
 		}
 	}

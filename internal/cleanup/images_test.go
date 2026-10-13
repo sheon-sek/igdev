@@ -133,7 +133,7 @@ func TestImageRemovalRechecksReferences(t *testing.T) {
 				}
 				return "", "", nil
 			}
-			item := imageItem(image, run)
+			item := imageItem(image, run, nil)
 			changed = true
 			Plan{Items: []*Item{item}}.Execute()
 			want := Kept
@@ -158,5 +158,61 @@ func TestImageInventoryInspectionFailure(t *testing.T) {
 		if _, fault := InventoryImages(run); fault == nil {
 			t.Fatalf("accepted %s", out)
 		}
+	}
+}
+
+// An Instance's own Gateway container uses its image at plan time; the same
+// plan removes that container first, so the image is removed, not kept.
+func TestImageUsedOnlyByOwnContainerIsRemoved(t *testing.T) {
+	gone := false
+	var removed []string
+	image := Image{ID: "sha256:img", Project: nsA, Tags: []string{nsA + ":8.3.8", nsA + ":latest"}}
+	run := func(args ...string) (string, string, error) {
+		switch {
+		case args[0] == "ps" && args[1] == "--all" && len(args) > 2 && args[2] == "--filter":
+			if !gone {
+				return "gw", "", nil
+			}
+			return "", "", nil
+		case args[0] == "ps":
+			if gone {
+				return "", "", nil
+			}
+			return "gw\t" + nsA + "\t\t", "", nil
+		case args[0] == "rm":
+			gone = true
+		case args[0] == "image" && args[1] == "ls":
+			return image.ID, "", nil
+		case args[0] == "image" && args[1] == "inspect":
+			raw, _ := json.Marshal([]map[string]any{{"Id": image.ID, "RepoTags": image.Tags, "Config": map[string]any{"Labels": map[string]string{labelProject: image.Project}}}})
+			return string(raw), "", nil
+		case args[0] == "image" && args[1] == "rm":
+			removed = append(removed, args[2])
+		}
+		return "", "", nil
+	}
+	p, f := Build(Options{Namespace: nsA, Docker: run})
+	if f != nil {
+		t.Fatal(f)
+	}
+	if !contains(refs(p, WouldRemove), "sha256:img") {
+		t.Fatalf("own image not planned: %+v", p.Items)
+	}
+	p.Execute()
+	if !contains(refs(p, Removed), "sha256:img") || !contains(removed, nsA+":latest") || !contains(removed, "sha256:img") {
+		t.Fatalf("removed=%v items=%+v", removed, p.Items)
+	}
+}
+
+func TestImageInventoryToleratesConcurrentRemoval(t *testing.T) {
+	run := func(args ...string) (string, string, error) {
+		if args[1] == "ls" {
+			return "sha256:gone", "", nil
+		}
+		return "", "Error: No such image: sha256:gone", errors.New("exit 1")
+	}
+	images, fault := InventoryImages(run)
+	if fault != nil || len(images) != 0 {
+		t.Fatalf("images=%v fault=%v", images, fault)
 	}
 }

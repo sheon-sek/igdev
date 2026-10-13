@@ -50,6 +50,9 @@ func InventoryImages(run Runner) ([]Image, *contract.Fault) {
 	var images []Image
 	for _, id := range sortedKeys(ids) {
 		image, err := inspectImage(run, id)
+		if noSuchImage(err) {
+			continue // removed concurrently between ls and inspect
+		}
 		if err != nil {
 			return nil, docker.Fault("docker image inspect", err.Error(), err)
 		}
@@ -81,7 +84,13 @@ func inspectImage(run Runner, id string) (Image, error) {
 	return Image{ID: id, Tags: tags, Project: rows[0].Config.Labels[labelProject]}, nil
 }
 
-func imageProtection(run Runner, image Image) (string, error) {
+func noSuchImage(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "no such image")
+}
+
+// imageProtection reports why an image must be kept. Containers named in
+// leaving are ones the same plan removes first, so they do not protect it.
+func imageProtection(run Runner, image Image, leaving map[string]bool) (string, error) {
 	ns := image.Namespace()
 	for _, tag := range image.Tags {
 		owner, _, ok := imageNamespace(tag)
@@ -93,8 +102,14 @@ func imageProtection(run Runner, image Image) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("checking image users: %s: %w", strings.TrimSpace(out+stderr), err)
 	}
-	if strings.TrimSpace(out) != "" {
-		return "still used by a container: " + strings.TrimSpace(out), nil
+	var users []string
+	for _, name := range strings.Fields(out) {
+		if !leaving[name] {
+			users = append(users, name)
+		}
+	}
+	if len(users) > 0 {
+		return "still used by a container: " + strings.Join(users, ", "), nil
 	}
 	return "", nil
 }
@@ -114,9 +129,11 @@ func imageConflict(err error) (string, bool) {
 	return "", false
 }
 
-func imageItem(image Image, run Runner) *Item {
+// imageItem plans one image. leaving names the containers this plan removes
+// before its images; the execute-time recheck is authoritative.
+func imageItem(image Image, run Runner, leaving map[string]bool) *Item {
 	item := &Item{Kind: KindImage, Ref: image.ID, Action: WouldRemove, keepOn: imageConflict}
-	reason, err := imageProtection(run, image)
+	reason, err := imageProtection(run, image, leaving)
 	if err != nil {
 		item.Action, item.Reason = Kept, "cannot verify image references: "+err.Error()
 		return item
@@ -135,12 +152,19 @@ func imageItem(image Image, run Runner) *Item {
 		if current.Namespace() != image.Namespace() {
 			return protectedImage{"image ownership changed since planning"}
 		}
-		reason, err := imageProtection(run, current)
+		reason, err := imageProtection(run, current, nil)
 		if err != nil {
 			return err
 		}
 		if reason != "" {
 			return protectedImage{reason}
+		}
+		// Every tag is the Instance's own: untag each by reference, since the
+		// engine refuses an unforced ID removal of a multi-tagged image.
+		for _, tag := range current.Tags {
+			if err := dockerErr(run("image", "rm", tag)); err != nil {
+				return err
+			}
 		}
 		return dockerErr(run("image", "rm", image.ID))
 	}
