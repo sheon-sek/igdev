@@ -1035,6 +1035,15 @@ Gate's Setup refresh. `--machine` and `--uninstall` need `--yes`: a terminal ask
 any other run gets the plan back at exit 2. A failed item is `IGDEV_E_CLEANUP_PARTIAL`
 with every outcome in `data.items`; the same command run again picks up what is left.
 
+What cleanup keeps is not igdev's to remove. The Docker build cache is shared with every
+image build on the machine: igdev never prunes it, in any scope, and the operator owns its
+growth with Docker's own tools and settings (`docker builder du`, `docker builder prune`,
+the engine's builder GC configuration). igdev makes no claim about whether that GC is
+enabled on a given host. Gateway data lives in each Instance's named volume, which Docker
+log rotation does not bound; a volume with no running container may be data kept on
+purpose, and only the named verbs (`gateway down --volumes`, `gateway reset`, `cleanup`)
+remove one. ADR 0016 records the proposed read-only volume and disk reporting.
+
 ## Host prerequisites
 
 `igdev doctor` audits the host read-only and never fails: the exit level stays 0 and
