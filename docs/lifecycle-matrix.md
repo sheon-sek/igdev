@@ -59,7 +59,9 @@ from a rising series alone.
   100 µs default. The soak samples every 20 ms, because its commands run for minutes.
   `VmHWM` is a high-water mark, so a slower poll still reads the peak. The poller keeps
   a running maximum for the whole command, not a bounded queue of its first readings,
-  so a peak reached minutes in is still measured (`TestRSSPollKeepsLatePeak`).
+  so a peak reached minutes in is still measured (`TestRSSPollKeepsLatePeak`). A peak
+  in the last poll interval before the process exits (under 20 ms) can still be missed,
+  which is fine for trends.
 - `AssertNoDockerOrphans` and the leak assertions are reused unchanged. The orphan
   tally tracks containers, networks and volumes, not images. Image accounting is L2,
   so it lives in the fake-engine unit tests of #145 and #153 and in the soak's

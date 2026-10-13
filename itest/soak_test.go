@@ -204,6 +204,9 @@ func newSoak(t *testing.T, cfg soakConfig) *soak {
 	signal.Notify(s.signal, os.Interrupt, syscall.SIGTERM)
 	t.Cleanup(s.teardown)
 	t.Logf("soak report: %s", cfg.reportDir)
+	if !strings.HasPrefix(s.cfg.dockerHost, "unix://") && !strings.HasPrefix(s.cfg.dockerHost, "npipe://") {
+		s.note("the Docker endpoint %s is not a local socket; the soak's cleanups stay scoped to its own Instances, but make sure it is a development engine", s.cfg.dockerHost)
+	}
 	return s
 }
 
