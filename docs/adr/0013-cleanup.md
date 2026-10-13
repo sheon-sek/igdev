@@ -47,3 +47,16 @@ nothing left to remove.
 
 Consequences: the y/N prompt is the one prompt outside the Wizards (CONTEXT.md). The CLI
 Contract Version stays 2: the verb, its flags, the label and the code only add.
+
+## Amendment 1: a failed Docker item keeps the record that finds it (2026-10-13, igdev#142)
+
+Once an Instance's containers are gone, its Checkout Setup is the only thing a checkout
+cleanup finds it by, and a run that removed the containers, failed on the volume, and
+then deleted `.igdev/` left the re-run nothing to find. So a Checkout Setup is removed
+only when every Docker item of the Instance it records was removed this run; otherwise
+it is reported `kept`, with a reason naming the Instance and the item that failed, and
+the run still ends `IGDEV_E_CLEANUP_PARTIAL` through that failed item. Every other item,
+another Instance's Setup included, is attempted as before. `kept` is an existing
+outcome, not a new one: it stays on purpose, and nothing about it needs fixing, so
+reporting it `failed` would count one failure twice. The CLI Contract Version is
+unchanged.

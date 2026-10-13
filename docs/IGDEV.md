@@ -1035,7 +1035,9 @@ container carries `dev.igdev.instance`. Docker objects go first, files last, and
 that does not answer stops the run before anything is removed. Cleanup never runs the
 Gate's Setup refresh. `--machine` and `--uninstall` need `--yes`: a terminal asks once,
 any other run gets the plan back at exit 2. A failed item is `IGDEV_E_CLEANUP_PARTIAL`
-with every outcome in `data.items`; the same command run again picks up what is left.
+with every outcome in `data.items`; the same command run again picks up what is left,
+because a Docker item that fails keeps its Instance's `.igdev/`, reported `kept`, until a
+run removes them all.
 
 `--obsolete-images` reclaims disk after version changes without touching the running
 Instance (ADR 0017). It plans this Instance's images not built for the current
