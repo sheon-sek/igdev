@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -98,7 +99,8 @@ func ReadImage(image, scratch string) ([]bundle, error) {
 // createContainer creates a container of image without starting it and returns
 // the release that removes it. The removal is registered with the interrupt
 // handler before the creation is released, so a Ctrl-C or SIGTERM at any point
-// after `docker create` succeeds still removes the container.
+// after `docker create` succeeds still removes the container; one that makes it
+// fail after it printed the container's id removes it at once.
 func createContainer(image string) (string, func(), error) {
 	held, ok := interrupt.Hold()
 	if !ok {
@@ -109,11 +111,19 @@ func createContainer(image string) (string, func(), error) {
 	create := exec.Command("docker", "create", "--entrypoint", "true", image)
 	create.Stdout, create.Stderr = &stdout, &stderr
 	if err := create.Run(); err != nil {
+		// A Ctrl-C can reach docker create after the engine created the
+		// container and the CLI printed its id, but before the CLI exited.
+		if id := strings.TrimSpace(stdout.String()); containerID.MatchString(id) {
+			removeContainer(id)
+		}
 		return "", nil, &EngineError{Action: "docker create " + image, Output: stderr.String(), Err: err}
 	}
 	id := strings.TrimSpace(stdout.String())
 	return id, interrupt.Defer(func() { removeContainer(id) }), nil
 }
+
+// containerID is the full id docker create prints for the container it created.
+var containerID = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func removeContainer(id string) { _ = exec.Command("docker", "rm", "--force", id).Run() }
 

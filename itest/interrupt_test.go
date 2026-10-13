@@ -197,6 +197,24 @@ func TestInterruptLookupCtrlCRemovesScratchAndContainer(t *testing.T) {
 	wantContainerRemoved(t, env)
 }
 
+// Ctrl-C can reach `docker create` after the engine created the container and
+// the CLI printed its id, but before the CLI exits: create then fails, and
+// igdev still removes the container whose id it read.
+func TestInterruptLookupCtrlCDuringCreateRemovesTheContainer(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.ShimDocker()
+	lookupImage(t, env)
+	proc := env.Start(testrig.Run{Dir: env.Mkdir("elsewhere"), Args: []string{"lookup", "read tag values", "--json"},
+		Env: []string{"IGDEV_SHIM_DOCKER_CREATE_HOLD=30"}})
+	testrig.WaitForFile(t, env.Path("state", "docker-create-holding"), interruptWait)
+	proc.SignalGroup(syscall.SIGINT)
+	res := proc.Wait(interruptWait)
+
+	wantDiedBy(t, res, syscall.SIGINT, "SIGINT")
+	env.AssertTempDirEmpty(t)
+	wantContainerRemoved(t, env)
+}
+
 // A SIGTERM to igdev alone during a lookup index build does the same, after the
 // copy it was waiting on finishes.
 func TestInterruptLookupSIGTERMRemovesScratchAndContainer(t *testing.T) {

@@ -81,6 +81,9 @@ fi
 # keeps cp running that many seconds first, like a large copy: it touches
 # "docker-cp-holding" beside the call log, "docker-cp-held" when it finishes on
 # its own, and SIGINT or SIGTERM ends it with 130 or 143.
+# IGDEV_SHIM_DOCKER_CREATE_HOLD does the same for create once it has printed the
+# container's id, touching "docker-create-holding": the engine created the
+# container, but the CLI has not exited yet.
 if [ "$1" = "image" ] && [ "$2" = "inspect" ]; then
   image="$5"
   present=yes
@@ -138,6 +141,14 @@ if [ "$1" = "run" ] && [ "$3" = "--entrypoint" ] && [ "$4" = "cat" ]; then
 fi
 if [ "$1" = "run" ] || [ "$1" = "create" ]; then
   printf '%064x\n' "$n"
+  if [ "$1" = "create" ] && [ -n "$IGDEV_SHIM_DOCKER_CREATE_HOLD" ] && [ -n "$state" ]; then
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    : > "$(dirname "$state")/docker-create-holding"
+    i=0
+    while [ "$i" -lt $((IGDEV_SHIM_DOCKER_CREATE_HOLD * 10)) ]; do sleep 0.1; i=$((i+1)); done
+    trap - INT TERM
+  fi
   exit "${IGDEV_SHIM_DOCKER_EXIT:-0}"
 fi
 # igdev cleanup reads the engine's objects with ps/volume ls and removes them
