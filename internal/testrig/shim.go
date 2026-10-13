@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -144,7 +145,31 @@ if [ -n "$home" ] && [ "$1" = "volume" ] && [ "$2" = "ls" ]; then
   done
   exit 0
 fi
+# The trial-keeper reconciliation lists a project's keeper containers by their
+# Compose labels; the shim answers from the containers compose up recorded, by
+# project and service. IGDEV_SHIM_KEEPER_FAIL=1 makes starting or removing a
+# keeper fail the way the engine would.
+if [ -n "$home" ] && [ "$1" = "container" ] && [ "$2" = "ls" ]; then
+  want_project=""; want_service=""
+  for a in "$@"; do
+    case "$a" in
+      label=com.docker.compose.project=*) want_project="${a#label=com.docker.compose.project=}" ;;
+      label=com.docker.compose.service=*) want_service="${a#label=com.docker.compose.service=}" ;;
+    esac
+  done
+  for f in "$home"/containers/*; do
+    [ -f "$f" ] || continue
+    [ -z "$want_project" ] || [ "$(sed -n 's/^project=//p' "$f")" = "$want_project" ] || continue
+    service="$(sed -n 's/^service=//p' "$f")"
+    [ -z "$want_service" ] || [ "${service:-gateway}" = "$want_service" ] || continue
+    printf '%s\n' "$(basename "$f")"
+  done
+  exit 0
+fi
 if [ -n "$home" ] && [ "$1" = "rm" ]; then
+  if [ -n "$IGDEV_SHIM_KEEPER_FAIL" ]; then
+    case " $* " in *-trial-keeper-*) echo "Error response from daemon: cannot remove container: shim keeper failure" >&2; exit 1 ;; esac
+  fi
   for a in "$@"; do rm -f "$home/containers/$a"; done
   exit 0
 fi
@@ -176,20 +201,44 @@ if [ -z "$project" ] && [ -n "$file" ] && [ -f "$file" ]; then
   project="$(sed -n 's/^name:[[:space:]]*\(.*\)$/\1/p' "$file" | head -n 1)"
 fi
 container="$project-gateway-1"
+keeper="$project-trial-keeper-1"
 volume="${project}_gateway-data"
 mkdir -p "$home/containers" "$home/volumes"
 case "$verb" in
   up)
-    ports="$(sed -n 's/.*127\.0\.0\.1:\([0-9][0-9]*\):[0-9][0-9]*.*/\1/p' "$file" 2>/dev/null | tr '\n' ' ')"
-    # Compose labels a container with the directory of its first Compose file.
-    printf 'project=%s\nports=%s\ndir=%s\n' "$project" "$ports" "$(cd "$(dirname "$file")" && pwd)" > "$home/containers/$container"
-    printf 'project=%s\n' "$project" > "$home/volumes/$volume"
-    printf ' Container %s  Started\n' "$container"
+    # The services named after the flags; none names every service, which for
+    # the shim is the Gateway.
+    gateway=no; with_keeper=no; named=no
+    for a in "$@"; do
+      case "$a" in
+        -*) ;;
+        gateway) gateway=yes; named=yes ;;
+        trial-keeper) with_keeper=yes; named=yes ;;
+        *) named=yes ;;
+      esac
+    done
+    [ "$named" = no ] && gateway=yes
+    if [ "$with_keeper" = yes ] && [ "$gateway" = no ] && [ -n "$IGDEV_SHIM_KEEPER_FAIL" ]; then
+      echo "Error response from daemon: shim keeper failure" >&2
+      exit 1
+    fi
+    dir="$(cd "$(dirname "$file")" && pwd)"
+    if [ "$gateway" = yes ]; then
+      ports="$(sed -n 's/.*127\.0\.0\.1:\([0-9][0-9]*\):[0-9][0-9]*.*/\1/p' "$file" 2>/dev/null | tr '\n' ' ')"
+      # Compose labels a container with the directory of its first Compose file.
+      printf 'project=%s\nports=%s\ndir=%s\n' "$project" "$ports" "$dir" > "$home/containers/$container"
+      printf 'project=%s\n' "$project" > "$home/volumes/$volume"
+      printf ' Container %s  Started\n' "$container"
+    fi
+    if [ "$with_keeper" = yes ]; then
+      printf 'project=%s\nservice=trial-keeper\ndir=%s\n' "$project" "$dir" > "$home/containers/$keeper"
+      printf ' Container %s  Started\n' "$keeper"
+    fi
     ;;
   down)
     volumes=no
     for a in "$@"; do [ "$a" = "--volumes" ] && volumes=yes; done
-    rm -f "$home/containers/$container"
+    rm -f "$home/containers/$container" "$home/containers/$keeper"
     [ "$volumes" = yes ] && rm -f "$home/volumes/$volume"
     printf ' Container %s  Removed\n' "$container"
     ;;
@@ -202,6 +251,12 @@ case "$verb" in
     for f in "$home"/containers/*; do
       [ -f "$f" ] || continue
       [ "$(sed -n 's/^project=//p' "$f")" = "$project" ] || continue
+      service="$(sed -n 's/^service=//p' "$f")"
+      if [ -n "$service" ]; then
+        printf '%s{"Name":"%s","Service":"%s","State":"running","Health":"","ExitCode":0,"Status":"Up 1 second","Publishers":[]}' "$sep" "$(basename "$f")" "$service"
+        sep=","
+        continue
+      fi
       ports="$(sed -n 's/^ports=//p' "$f")"
       http="$(printf '%s' "$ports" | cut -d' ' -f1)"
       https="$(printf '%s' "$ports" | cut -d' ' -f2)"
@@ -232,6 +287,8 @@ case "$verb" in
     sep=""
     for f in "$home"/containers/*; do
       [ -f "$f" ] || continue
+      # One row per project: a keeper is not a project of its own.
+      [ -z "$(sed -n 's/^service=//p' "$f")" ] || continue
       printf '%s{"Name":"%s","Status":"running(1)","ConfigFiles":"-"}' "$sep" "$(sed -n 's/^project=//p' "$f")"
       sep=","
     done
@@ -678,12 +735,23 @@ func (e *Env) DockerOrphans(t *testing.T) Orphans {
 				continue
 			}
 			container := ComposeContainer(project)
+			keeper := ComposeKeeperContainer(project)
 			volume := ComposeVolume(project)
 			switch ComposeVerb(argv[1:]) {
 			case "up":
-				alive["container:"+container] = objectRef{kind: "container", id: container}
-				alive["volume:"+volume] = objectRef{kind: "volume", id: volume}
+				// The keeper alone (`up --no-deps trial-keeper`) leaves the
+				// Gateway as it is; any other up starts it.
+				keeperOnly := hasFlag(argv, "--no-deps") && slices.Contains(argv, "trial-keeper") &&
+					!slices.Contains(argv, "gateway")
+				if !keeperOnly {
+					alive["container:"+container] = objectRef{kind: "container", id: container}
+					alive["volume:"+volume] = objectRef{kind: "volume", id: volume}
+				}
+				if slices.Contains(argv, "trial-keeper") {
+					alive["container:"+keeper] = objectRef{kind: "container", id: keeper}
+				}
 			case "down":
+				delete(alive, "container:"+keeper)
 				retire("container", container, call.N)
 				if hasFlag(argv, "--volumes") {
 					retire("volume", volume, call.N)
@@ -780,6 +848,9 @@ func firstPositional(argv []string) string {
 // ComposeContainer and ComposeVolume are the names a compose project's objects
 // carry, which is what the orphan tally and the docker shim both register.
 func ComposeContainer(project string) string { return project + "-gateway-1" }
+
+// ComposeKeeperContainer is the name of a compose project's trial-keeper container.
+func ComposeKeeperContainer(project string) string { return project + "-trial-keeper-1" }
 
 // ComposeVolume is the named volume the gateway service mounts.
 func ComposeVolume(project string) string { return project + "_gateway-data" }

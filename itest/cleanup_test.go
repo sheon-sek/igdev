@@ -33,8 +33,8 @@ func (r cleanupResult) has(kind, ref, action string) bool {
 	return false
 }
 
-// A started Gateway and its Checkout Setup leave nothing behind, and a second
-// run finds nothing to do.
+// A started Gateway, its trial keeper, and its Checkout Setup leave nothing
+// behind, and a second run finds nothing to do.
 func TestCleanupRemovesTheInstanceAndSetup(t *testing.T) {
 	env := testrig.NewEnv(t)
 	env.ShimDocker()
@@ -46,8 +46,8 @@ func TestCleanupRemovesTheInstanceAndSetup(t *testing.T) {
 	testrig.WantExit(t, dry, contract.ExitOK)
 	var plan cleanupResult
 	testrig.DataOf(t, dry.Stdout, &plan)
-	if !plan.DryRun || plan.Pending != 3 || plan.Removed != 0 {
-		t.Fatalf("dry run = %+v, want 3 items pending and none removed", plan)
+	if !plan.DryRun || plan.Pending != 4 || plan.Removed != 0 {
+		t.Fatalf("dry run = %+v, want 4 items pending and none removed", plan)
 	}
 	if _, err := os.Stat(filepath.Join(dir, project.StateDir)); err != nil {
 		t.Fatalf("a dry run removed .igdev/: %v", err)
@@ -57,12 +57,13 @@ func TestCleanupRemovesTheInstanceAndSetup(t *testing.T) {
 	testrig.WantExit(t, res, contract.ExitOK)
 	var data cleanupResult
 	testrig.DataOf(t, res.Stdout, &data)
-	if data.Scope != "checkout" || data.Removed != 3 || data.Failed != 0 {
+	if data.Scope != "checkout" || data.Removed != 4 || data.Failed != 0 {
 		t.Fatalf("cleanup = %+v", data)
 	}
 	if !data.has("container", testrig.ComposeContainer(stamp.Namespace()), "removed") ||
+		!data.has("container", testrig.ComposeKeeperContainer(stamp.Namespace()), "removed") ||
 		!data.has("volume", testrig.ComposeVolume(stamp.Namespace()), "removed") {
-		t.Fatalf("the Instance's container and volume were not reported removed: %+v", data.Items)
+		t.Fatalf("the Instance's containers and volume were not reported removed: %+v", data.Items)
 	}
 	if _, err := os.Stat(filepath.Join(dir, project.StateDir)); !os.IsNotExist(err) {
 		t.Fatalf(".igdev/ survived cleanup: %v", err)

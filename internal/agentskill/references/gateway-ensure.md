@@ -13,6 +13,10 @@ Instance's Gateway when that is healthy, and starts or resets it otherwise:
            trial_reset = "off", its trial has less left than --min-trial:
            `reset`, which discards its data.
 
+Every path leaves the trial keeper as the contract asks: a reused Gateway gets a
+missing or exited keeper started next to it, and loses one the contract no longer
+runs, without a build, a restart, or a reset of the Gateway itself.
+
 The report names the action and the reason, the URL, the Gateway container, the
 address the Gateway reaches the host by, and the trial. Under the default
 trial_reset = "auto" the trial keeper resets an expired trial in place, so
