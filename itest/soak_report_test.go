@@ -2,12 +2,18 @@ package itest
 
 import (
 	"fmt"
+	"io/fs"
 	"math"
+	"os"
+	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sheon-sek/igdev/internal/project"
 )
 
 // The real-Gateway soak (soak_test.go) records observations, never verdicts about
@@ -250,5 +256,115 @@ func TestSoakForeignRemovals(t *testing.T) {
 	}
 	if got := soakForeignRemovals(namespaces, foreign, owned, preexisting, "/tmp/soak/checkout"); len(got) != len(foreign) {
 		t.Fatalf("foreign removals = %v, want all %d", got, len(foreign))
+	}
+}
+
+// A soak never adopts a checkout it did not create: an existing report directory,
+// a symlink in its place, or an existing checkout is refused, and the Setup and
+// data already there are left byte for byte as they were.
+func TestSoakClaimDirsRefusesAnExistingCheckout(t *testing.T) {
+	existing := filepath.Join(t.TempDir(), "report")
+	checkout := filepath.Join(existing, "checkout")
+	files := map[string]string{
+		filepath.Join(checkout, project.ContractFile):                  "[project]\nname = \"someone-else\"\n",
+		filepath.Join(checkout, project.StateDir, project.SetupRecord): `{"instance_id":"7bfb3a52"}`,
+		filepath.Join(checkout, "data", "project.json"):                "retained",
+		filepath.Join(existing, "commands.jsonl"):                      "{\"args\":[\"earlier run\"]}\n",
+	}
+	for path, body := range files {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(existing, link); err != nil {
+		t.Fatal(err)
+	}
+	dangling := filepath.Join(t.TempDir(), "dangling")
+	if err := os.Symlink(filepath.Join(t.TempDir(), "absent"), dangling); err != nil {
+		t.Fatal(err)
+	}
+	for name, dir := range map[string]string{"existing": existing, "symlink": link, "dangling symlink": dangling} {
+		if got, _, err := soakClaimDirs(dir); err == nil {
+			t.Errorf("%s: claimed %s, want a refusal", name, got)
+		}
+	}
+	var after []string
+	_ = filepath.WalkDir(existing, func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			after = append(after, path)
+		}
+		return err
+	})
+	if len(after) != len(files) {
+		t.Errorf("the existing checkout now holds %v, want only %d original files", after, len(files))
+	}
+	for path, body := range files {
+		if got, err := os.ReadFile(path); err != nil || string(got) != body {
+			t.Errorf("%s = %q, %v; want it untouched (%q)", path, got, err, body)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(filepath.Dir(dangling), "absent")); err == nil {
+		t.Error("a dangling symlink's target was created")
+	}
+}
+
+// A fresh report directory and its checkout are created empty; with none named,
+// two runs started in the same second still get directories of their own.
+func TestSoakClaimDirsCreatesFreshDirectories(t *testing.T) {
+	named := filepath.Join(t.TempDir(), "nested", "report")
+	report, checkout, err := soakClaimDirs(named)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report != named || checkout != filepath.Join(named, "checkout") {
+		t.Errorf("claimed %s and %s, want %s and its checkout", report, checkout, named)
+	}
+	if entries, err := os.ReadDir(checkout); err != nil || len(entries) != 0 {
+		t.Errorf("checkout = %v, %v; want an empty directory", entries, err)
+	}
+
+	t.Setenv("TMPDIR", t.TempDir())
+	first, _, err := soakClaimDirs("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := soakClaimDirs("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Errorf("two default runs share %s", first)
+	}
+	for _, dir := range []string{first, second} {
+		if !strings.HasPrefix(filepath.Base(dir), "igdev-soak-") || filepath.Dir(dir) != os.TempDir() {
+			t.Errorf("default report directory %s, want igdev-soak-* under $TMPDIR", dir)
+		}
+	}
+}
+
+// soakPreexisting finds a namespace's objects on the engine as the soak found it,
+// so a Setup naming an Instance the soak did not mint is refused.
+func TestSoakPreexisting(t *testing.T) {
+	ns := "igdev-0123abcd"
+	before := soakEngine{
+		containers: map[string]string{
+			"c1": "/" + ns + "-gateway-1 exited 2026-10-01T00:00:00Z",
+			"c2": "/igdev-7bfb3a52-gateway-1 running 2026-10-01T00:00:00Z",
+		},
+		volumes:  map[string]bool{ns + "_gateway-data": true, "igdev-7bfb3a52_gateway-data": true},
+		networks: map[string]bool{"0f0f": true},
+		images:   map[string]bool{"sha256:aa": true},
+		tags:     map[string]bool{ns + ":8.3.10": true, "inductiveautomation/ignition:8.3.10": true},
+	}
+	want := []string{"container /" + ns + "-gateway-1", "image " + ns + ":8.3.10", "volume " + ns + "_gateway-data"}
+	if got := soakPreexisting(ns, before); !slices.Equal(got, want) {
+		t.Errorf("soakPreexisting = %v, want %v", got, want)
+	}
+	if got := soakPreexisting("igdev-ffff0000", before); len(got) != 0 {
+		t.Errorf("a freshly minted namespace matched %v", got)
 	}
 }

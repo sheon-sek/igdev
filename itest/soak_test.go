@@ -71,9 +71,6 @@ func soakConfigFromEnv(t *testing.T) soakConfig {
 		memoryMB:          soakEnvInt(t, "IGDEV_SOAK_MEMORY_MB", 2048),
 		teardownAllowance: 15 * time.Minute,
 	}
-	if cfg.reportDir == "" {
-		cfg.reportDir = filepath.Join(os.TempDir(), "igdev-soak-"+time.Now().UTC().Format("20060102T150405Z"))
-	}
 	if cfg.consent == "" {
 		dir, err := os.UserConfigDir()
 		if err != nil {
@@ -152,10 +149,12 @@ func newSoak(t *testing.T, cfg soakConfig) *soak {
 		t.Fatalf("no Consent record at %s: consent is human-only, so a person runs `igdev setup --accept-eula` "+
 			"(or exports one with `igdev consent export`) before the soak; it never accepts the EULA itself", cfg.consent)
 	}
-	if err := os.MkdirAll(cfg.reportDir, 0o755); err != nil {
-		t.Fatalf("create the report directory: %v", err)
+	reportDir, checkout, err := soakClaimDirs(cfg.reportDir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	s := &soak{t: t, cfg: cfg, dir: filepath.Join(cfg.reportDir, "checkout"), started: time.Now()}
+	cfg.reportDir = reportDir
+	s := &soak{t: t, cfg: cfg, dir: checkout, started: time.Now()}
 
 	// The engine igdev talks to must be the one the soak inspects: igdev runs with a
 	// scratch HOME, so the invoking user's current Docker context is pinned here.
@@ -187,7 +186,7 @@ func newSoak(t *testing.T, cfg soakConfig) *soak {
 	s.env.SetBaseEnv("DOCKER_HOST=" + s.cfg.dockerHost)
 	s.env.SetBaseEnv(consent.FileEnv + "=" + cfg.consent)
 
-	commands, err := os.Create(filepath.Join(cfg.reportDir, "commands.jsonl"))
+	commands, err := os.OpenFile(filepath.Join(cfg.reportDir, "commands.jsonl"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
 		t.Fatalf("create the command log: %v", err)
 	}
@@ -204,6 +203,62 @@ func newSoak(t *testing.T, cfg soakConfig) *soak {
 	return s
 }
 
+// soakClaimDirs creates the soak's report directory and the checkout inside it,
+// both exclusively. The soak must own every Instance it touches, and a checkout
+// that already exists may hold a Setup whose Instance (and its data volume)
+// belongs to someone else: init keeps its contract, setup keeps its Instance, and
+// the soak's cleanups would then remove that Instance. So an existing report
+// directory, a symlink in its place, or an existing checkout is refused before
+// anything is written. With no report directory named, a fresh one is allocated
+// under $TMPDIR, unique even for two runs started in the same second.
+func soakClaimDirs(reportDir string) (string, string, error) {
+	if reportDir == "" {
+		dir, err := os.MkdirTemp("", "igdev-soak-"+time.Now().UTC().Format("20060102T150405Z")+"-")
+		if err != nil {
+			return "", "", fmt.Errorf("create the report directory: %w", err)
+		}
+		reportDir = dir
+	} else {
+		if err := os.MkdirAll(filepath.Dir(reportDir), 0o755); err != nil {
+			return "", "", fmt.Errorf("create the report directory's parent: %w", err)
+		}
+		if err := os.Mkdir(reportDir, 0o755); err != nil {
+			return "", "", fmt.Errorf("IGDEV_SOAK_REPORT_DIR=%s: the soak needs a directory it creates itself, so it never adopts "+
+				"an existing checkout or its Instance; name a path that does not exist yet: %w", reportDir, err)
+		}
+	}
+	checkout := filepath.Join(reportDir, "checkout")
+	if err := os.Mkdir(checkout, 0o755); err != nil {
+		return "", "", fmt.Errorf("create the soak checkout: %w", err)
+	}
+	return reportDir, checkout, nil
+}
+
+// soakPreexisting lists what the engine held of namespace ns before the soak
+// started. A namespace the soak's own Setup names must be one it minted, so any
+// object of it already on the engine means the soak is about to adopt an Instance
+// it does not own.
+func soakPreexisting(ns string, before soakEngine) []string {
+	var found []string
+	for _, desc := range before.containers {
+		if name, _, _ := strings.Cut(desc, " "); strings.HasPrefix(strings.TrimPrefix(name, "/"), ns+"-") {
+			found = append(found, "container "+name)
+		}
+	}
+	for volume := range before.volumes {
+		if strings.HasPrefix(volume, ns+"_") {
+			found = append(found, "volume "+volume)
+		}
+	}
+	for tag := range before.tags {
+		if strings.HasPrefix(tag, ns+":") {
+			found = append(found, "image "+tag)
+		}
+	}
+	sort.Strings(found)
+	return found
+}
+
 func (s *soak) run() {
 	s.phaseInit()
 	s.phaseCycles()
@@ -216,9 +271,6 @@ func (s *soak) run() {
 // phaseInit writes the soak checkout's contract and a tracked seed, and records
 // the Instance namespace the Checkout Setup names.
 func (s *soak) phaseInit() {
-	if err := os.MkdirAll(s.dir, 0o755); err != nil {
-		s.t.Fatalf("create the soak checkout: %v", err)
-	}
 	args := []string{"init", "--yes", "--json", "--name", "igdev-soak", "--gateway-memory-mb", strconv.Itoa(s.cfg.memoryMB)}
 	if s.cfg.version != "" {
 		args = append(args, "--ignition-version", s.cfg.version)
@@ -248,6 +300,12 @@ func (s *soak) setup(phase string) {
 		s.t.Fatal("the Checkout Setup names no Instance")
 	}
 	if !slices.Contains(s.namespaces, s.ns) {
+		if found := soakPreexisting(s.ns, s.before); len(found) > 0 {
+			ns := s.ns
+			s.ns = ""
+			s.t.Fatalf("the soak's Setup names Instance %s, which was on the engine before the soak started (%s); "+
+				"the soak only ever works on an Instance it minted", ns, strings.Join(found, ", "))
+		}
 		s.namespaces = append(s.namespaces, s.ns)
 	}
 }

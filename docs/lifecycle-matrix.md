@@ -49,7 +49,8 @@ from a rising series alone.
   `.igdev/`. This is L1 evidence: igdev's own bookkeeping across repetition. It extends
   the hygiene gate, which used to cover mostly `status`, and it runs in `make all`.
 - **`itest/soak_test.go`**: the opt-in real-Gateway soak described below (L2 and L4).
-  Its pure helpers (trend slope, docker size parsing, and the ownership guard) are
+  Its pure helpers (trend slope, docker size parsing, the fresh-checkout claim and the
+  ownership guards) are
   checked on every run by the `TestSoak*` unit tests in `itest/soak_report_test.go`.
 
 ### Rig extensions
@@ -119,10 +120,13 @@ Each sample records:
 The build-cache size is read at phase boundaries. Every igdev invocation is logged with
 its exit, duration and peak RSS.
 
-Everything goes to the report directory: `IGDEV_SOAK_REPORT_DIR`, default
-`$TMPDIR/igdev-soak-<UTC time>`. It holds `summary.md` (environment, workload, evidence,
-the trend table with first, last, min, max and least-squares slope per hour, and
-pre-existing host objects that changed), `samples.jsonl`, `commands.jsonl`,
+Everything goes to the report directory: `IGDEV_SOAK_REPORT_DIR`, default a fresh
+`$TMPDIR/igdev-soak-<UTC time>-<random>`. A named directory must not exist yet: the
+soak creates it and its checkout itself and refuses an existing path or a symlink, so
+it never adopts another checkout's Setup or Instance. It holds `summary.md`
+(environment, workload, evidence, the trend table with first, last, min, max and
+least-squares slope per hour, and pre-existing host objects that changed),
+`samples.jsonl`, `commands.jsonl`,
 `envelopes/` (every cleanup plan and result, in run order), and on
 failure `diagnostics/` (gateway status, last 500 log lines, doctor, cleanup plan,
 containers).
@@ -132,6 +136,10 @@ containers).
 - **Only igdev mutates.** Every change goes through an igdev verb run in the soak's
   own checkout. The soak's own docker calls are refused unless they are inspection
   verbs (`soakDockerReadOnly`).
+- **Only its own Instance.** The soak creates its report directory and checkout
+  exclusively, so `init` and `setup` mint a new Instance; it fails before any cleanup
+  if a Setup ever names an Instance that had a container, volume or image on the
+  engine before it started.
 - **Only its own objects go.** Every cleanup it runs is checkout-scoped (never
   `--machine`). Each removed item is checked against the Instances the soak minted,
   the images attributed to them just before, and the official tags that existed before
