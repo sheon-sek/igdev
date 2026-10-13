@@ -151,6 +151,14 @@ func (a *App) installModule(g *gateway, file string, timeout time.Duration) (mod
 		return moduleInstallData{}, err
 	}
 
+	return a.registerModule(g, file, staged.Path, record, raw, timeout)
+}
+
+// registerModule uploads and installs an artifact that is already staged at
+// path, then settles it: the REST half of `module install`, which is also how a
+// Gateway whose volume predates a staged artifact is brought to load it.
+func (a *App) registerModule(g *gateway, file, path string, record modules.Record, raw []byte,
+	timeout time.Duration) (moduleInstallData, error) {
 	name := filepath.Base(file)
 	a.stage("module install: uploading %s (%s %s)", name, record.ID, record.Version)
 	var upload moduleUpload
@@ -170,7 +178,7 @@ func (a *App) installModule(g *gateway, file string, timeout time.Duration) (mod
 	}
 
 	data := moduleInstallData{
-		ID: id, Name: record.Name, Version: record.Version, Source: file, Path: staged.Path, Accepted: accepted,
+		ID: id, Name: record.Name, Version: record.Version, Source: file, Path: path, Accepted: accepted,
 	}
 	state, fault := a.settleModule(g, id, record.Version, timeout)
 	if fault != nil {

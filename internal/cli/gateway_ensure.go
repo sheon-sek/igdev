@@ -282,6 +282,11 @@ func (a *App) ensureGateway(g *gateway, opts ensureOptions) (gatewayEnsureData, 
 			return data, err
 		}
 	}
+	// A reused or restarted volume loads only the modules it registered
+	// (igdev#131).
+	if err := a.registerStagedModules(g, opts.timeout); err != nil {
+		return data, err
+	}
 	data.Trial = readTrial(g.url())
 	return data, nil
 }

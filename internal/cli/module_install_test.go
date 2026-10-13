@@ -1,6 +1,10 @@
 package cli
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/sheon-sek/igdev/internal/modules"
+)
 
 func TestSameVersionReadsTheGatewayForm(t *testing.T) {
 	for _, c := range []struct {
@@ -39,5 +43,19 @@ func TestRestartReason(t *testing.T) {
 		if got := restartReason(c.modules, "a", "1.0.0") != ""; got != c.want {
 			t.Errorf("%s: restart = %v, want %v", name, got, c.want)
 		}
+	}
+}
+
+// A staged artifact the Gateway lists neither healthy nor quarantined was staged
+// after the volume existed and must be installed (igdev#131).
+func TestUnregisteredStagedModules(t *testing.T) {
+	records := []modules.Record{{ID: "a"}, {ID: "b"}, {ID: "c"}, {Artifact: "broken.modl"}}
+	state := gatewayModules{
+		Healthy:     []gatewayModule{{ID: "a"}},
+		Quarantined: []gatewayModule{{ID: "b"}},
+	}
+	got := unregistered(records, state)
+	if len(got) != 1 || got[0].ID != "c" {
+		t.Fatalf("unregistered = %+v, want only c", got)
 	}
 }
