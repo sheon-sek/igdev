@@ -208,18 +208,14 @@ func (e *Env) Run(r Run) Result {
 		res.Err = fmt.Errorf("start %s: %w", e.Binary, err)
 		return res
 	}
-	collect := func() []sample { return nil }
+	collect := func() rssPeak { return rssPeak{} }
 	if r.SampleRSS {
 		collect = startRSSPoll(cmd.Process.Pid, r.RSSInterval)
 	}
 	waitErr := cmd.Wait()
 	res.Duration = time.Since(started)
-	for _, s := range collect() {
-		res.Samples++
-		if s.peakKB > res.PeakRSSKB {
-			res.PeakRSSKB = s.peakKB
-		}
-	}
+	peak := collect()
+	res.PeakRSSKB, res.Samples = peak.peakKB, peak.samples
 	res.Stdout = out.String()
 	res.Stderr = errBuf.String()
 	if waitErr != nil {
