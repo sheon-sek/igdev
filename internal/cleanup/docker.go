@@ -244,27 +244,29 @@ func (e engine) instanceItems(namespaces []string, run Runner) []*Item {
 		for _, c := range e.containers {
 			if c.project == ns {
 				name := c.name
-				containers = append(containers, &Item{Kind: KindContainer, Ref: name, Action: WouldRemove,
+				containers = append(containers, &Item{Kind: KindContainer, Ref: name, Action: WouldRemove, namespace: ns,
 					remove: func() error { return dockerErr(run("rm", "--force", "--volumes", name)) }})
 			}
 		}
 		for _, n := range e.networks {
 			if owner(n) == ns {
 				name := n.name
-				networks = append(networks, &Item{Kind: KindNetwork, Ref: name, Action: WouldRemove,
+				networks = append(networks, &Item{Kind: KindNetwork, Ref: name, Action: WouldRemove, namespace: ns,
 					remove: func() error { return removeNetwork(run, name) }})
 			}
 		}
 		for _, v := range e.volumes {
 			if owner(v) == ns {
 				name := v.name
-				volumes = append(volumes, &Item{Kind: KindVolume, Ref: name, Action: WouldRemove,
+				volumes = append(volumes, &Item{Kind: KindVolume, Ref: name, Action: WouldRemove, namespace: ns,
 					remove: func() error { return dockerErr(run("volume", "rm", "--force", name)) }})
 			}
 		}
 		for _, image := range e.images {
 			if image.Namespace() == ns {
-				images = append(images, imageItem(image, run, leaving))
+				item := imageItem(image, run, leaving)
+				item.namespace = ns
+				images = append(images, item)
 			}
 		}
 	}
