@@ -147,6 +147,11 @@ type Run struct {
 	Stdin string
 	// SampleRSS polls /proc for the child's peak resident set while it runs.
 	SampleRSS bool
+	// RSSInterval is how often SampleRSS reads /proc; zero is every 100µs. A
+	// command that runs for minutes (the real-Gateway soak's) samples less often:
+	// VmHWM is a high-water mark, so a slower poll still reads the peak reached
+	// before its last reading.
+	RSSInterval time.Duration
 	// Stderr, for Start only, is the file the child writes its stderr to instead
 	// of a buffer Wait collects: a pipe nobody reads, say.
 	Stderr *os.File
@@ -203,18 +208,14 @@ func (e *Env) Run(r Run) Result {
 		res.Err = fmt.Errorf("start %s: %w", e.Binary, err)
 		return res
 	}
-	collect := func() []sample { return nil }
+	collect := func() rssPeak { return rssPeak{} }
 	if r.SampleRSS {
-		collect = startRSSPoll(cmd.Process.Pid)
+		collect = startRSSPoll(cmd.Process.Pid, r.RSSInterval)
 	}
 	waitErr := cmd.Wait()
 	res.Duration = time.Since(started)
-	for _, s := range collect() {
-		res.Samples++
-		if s.peakKB > res.PeakRSSKB {
-			res.PeakRSSKB = s.peakKB
-		}
-	}
+	peak := collect()
+	res.PeakRSSKB, res.Samples = peak.peakKB, peak.samples
 	res.Stdout = out.String()
 	res.Stderr = errBuf.String()
 	if waitErr != nil {

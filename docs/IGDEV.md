@@ -103,7 +103,7 @@ and `packaging/install.sh` for real against a loopback file server.
 | `internal/agentskill` | the embedded Agent Skill (`SKILL.md`, the generated `references/` that `make reference` writes, and the hand-written `references/guides/`) |
 | `internal/buildinfo` | the release version and commit stamped in at build time |
 | `internal/testrig` | seam S1 harness: scratch HOME, PATH shims, loopback server, goldens, gates |
-| `itest` | behaviour tests and the goldens that freeze the contract |
+| `itest` | behaviour tests and the goldens that freeze the contract; `soak_test.go` is the opt-in real-Gateway soak (`make soak`, docs/lifecycle-matrix.md) |
 | `packaging` | `package.sh` (linux/darwin x amd64/arm64 tarballs + `checksums.txt`), `install.sh` |
 | `.github/workflows/igdev-ci.yml` | build, vet, gofmt, goldens, resource gates |
 | `.github/workflows/igdev-gateway-e2e.yml` | the non-hermetic tier: real docker, real Ignition image, the whole Gateway lifecycle |
@@ -1123,6 +1123,13 @@ three seconds — the JVM's own cost is deferred to the real-Docker e2e tier), a
 same rules for TMPDIR. Measured here on an i7-13700KF: P95 2 ms, peak RSS
 6.4 MiB, binary 7.2 MiB.
 
+`itest/lifecycle_test.go` holds the lifecycle verbs to the same leak and orphan rules
+across repeated up/down/cleanup cycles. What a real engine does with those calls is
+the job of the opt-in real-Gateway soak (`make soak`, never part of `make all` or
+CI). [`docs/lifecycle-matrix.md`](lifecycle-matrix.md) maps each resource-lifecycle
+scenario to its owning tests and the evidence level it needs, and documents the
+soak's workload and its host guarantees.
+
 ## Working in this tree
 
 ### The one seam
@@ -1150,6 +1157,7 @@ env.DockerCalls(t)                    // each recorded call: argv, cwd, and the 
 call.GatewayEnv("GATEWAY_RESTORE_ARGS")  // the Baseline restore wiring, as the engine received it
 res := env.RunIn(root, "status", "--json")
 res := env.Run(testrig.Run{Args: …, Dir: …, Env: []string{"K=V"}, SampleRSS: true, Stdin: "…"})
+res := env.Run(testrig.Run{…, SampleRSS: true, RSSInterval: 20 * time.Millisecond})  // slower poll for long commands
 proc := env.Start(testrig.Run{…})     // in the background, leading its own process group
 proc.SignalGroup(syscall.SIGINT)      // a terminal's Ctrl-C; proc.Signal(sig) is igdev alone
 res := proc.Wait(timeout)             // res.Signal is the signal the process died by

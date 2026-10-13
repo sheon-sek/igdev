@@ -9,46 +9,49 @@ import (
 	"time"
 )
 
-// sample is one reading of a child process's peak resident set.
-type sample struct {
-	peakKB int64
+// rssPeak is what a poll of a child's /proc saw: the largest VmHWM it read, in
+// KiB, and how many reads succeeded.
+type rssPeak struct {
+	peakKB  int64
+	samples int
 }
 
+// defaultRSSInterval is how often a sampled run reads /proc: fast enough to catch
+// a command that exits within a few milliseconds.
+const defaultRSSInterval = 100 * time.Microsecond
+
 // startRSSPoll watches /proc/<pid>/status for the child's VmHWM (kernel-tracked
-// high-water mark, so a single reading is already the peak) and returns a
-// collector that stops the poller and gathers the readings.
-func startRSSPoll(pid int) func() []sample {
+// high-water mark, so a single reading is already the peak) every interval and
+// returns a collector that stops the poller and reports the peak. The poller keeps
+// a running maximum rather than a queue of readings, so a command that peaks late
+// in a run of minutes is still measured.
+func startRSSPoll(pid int, interval time.Duration) func() rssPeak {
+	if interval <= 0 {
+		interval = defaultRSSInterval
+	}
 	stop := make(chan struct{})
-	done := make(chan struct{})
-	readings := make(chan sample, 256)
+	result := make(chan rssPeak, 1)
 	go func() {
-		defer close(readings)
-		defer close(done)
+		var seen rssPeak
+		defer func() { result <- seen }()
 		path := fmt.Sprintf("/proc/%d/status", pid)
-		ticker := time.NewTicker(100 * time.Microsecond)
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-stop:
 				return
 			case <-ticker.C:
-				if s, ok := readVmHWM(path); ok {
-					select {
-					case readings <- sample{peakKB: s}:
-					default:
-					}
+				if kb, ok := readVmHWM(path); ok {
+					seen.samples++
+					seen.peakKB = max(seen.peakKB, kb)
 				}
 			}
 		}
 	}()
-	return func() []sample {
+	return func() rssPeak {
 		close(stop)
-		out := []sample{}
-		for s := range readings {
-			out = append(out, s)
-		}
-		<-done
-		return out
+		return <-result
 	}
 }
 
