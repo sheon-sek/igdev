@@ -47,6 +47,11 @@
         "version": "",
         "error": "act is not on PATH"
       }
-    ]
+    ],
+    "instances": {
+      "engine": "unknown",
+      "error": "docker is not on PATH",
+      "items": null
+    }
   }
 }

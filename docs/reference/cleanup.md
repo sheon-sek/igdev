@@ -23,6 +23,13 @@ contract points at (overlays, the seed). Every run is idempotent; `--dry-run` li
 the plan and changes nothing. `--machine` and `--uninstall` reach beyond this
 checkout, so they need `--yes`: in a terminal cleanup asks once instead.
 
+`--obsolete-images` keeps this checkout's Instance, its data volume, the Checkout
+Setup and the Consent record, and removes only the images an [ignition].version change
+left behind: this Instance's images not built for the current version, and each
+official Ignition tag an obsolete image of this Instance was built from, unless another
+image, a container or the current contract still uses it. Every other official tag is
+listed as kept. Nothing is forced and the Docker build cache is never pruned.
+
 ## Usage
 
 ```text
@@ -35,6 +42,7 @@ igdev cleanup [flags]
   igdev cleanup
   igdev cleanup --dry-run --json
   igdev cleanup --deinit
+  igdev cleanup --obsolete-images --dry-run
   igdev cleanup --machine --yes
   igdev cleanup --uninstall --yes
 ```
@@ -42,12 +50,13 @@ igdev cleanup [flags]
 ## Options
 
 ```text
-      --deinit      also remove igdev.toml, the AGENTS.md block, and the repository-scope Agent Skill
-      --dry-run     list what would be removed and change nothing
-  -h, --help        help for cleanup
-      --machine     clean every igdev Instance and igdev's machine-level files, not only this checkout
-      --uninstall   also remove the igdev binary and install.sh's PATH entry (implies --machine)
-      --yes         confirm --machine or --uninstall without asking
+      --deinit            also remove igdev.toml, the AGENTS.md block, and the repository-scope Agent Skill
+      --dry-run           list what would be removed and change nothing
+  -h, --help              help for cleanup
+      --machine           clean every igdev Instance and igdev's machine-level files, not only this checkout
+      --obsolete-images   remove only the images an Ignition version change left behind, and keep the Instance
+      --uninstall         also remove the igdev binary and install.sh's PATH entry (implies --machine)
+      --yes               confirm --machine or --uninstall without asking
 ```
 
 ## Global options

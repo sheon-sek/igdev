@@ -20,8 +20,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/sheon-sek/igdev/internal/boundedtail"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/instance"
+	"github.com/sheon-sek/igdev/internal/interrupt"
 )
 
 // GatewayServiceName is the compose service the Gateway runs as. One Instance is
@@ -87,6 +89,56 @@ func (c Compose) Up() *contract.Fault {
 	return c.faultOf("up", stdout, stderr, err)
 }
 
+// StartTrialKeeper starts the trial keeper next to a Gateway that already runs,
+// creating it when it is missing and starting it when it exited. It never builds,
+// and --no-deps keeps Compose from recreating or restarting the Gateway the keeper
+// depends on, so the Gateway's process and data are left exactly as they are.
+func (c Compose) StartTrialKeeper() *contract.Fault {
+	stdout, stderr, err := c.exec("up", "--detach", "--no-deps", "--no-build", TrialKeeperServiceName)
+	return c.faultOf("up "+TrialKeeperServiceName, stdout, stderr, err)
+}
+
+// The Compose labels that tie a container to the service Compose created it for.
+// An image Compose built carries the project and service labels too, and a
+// container created straight from that image inherits them; only a container
+// Compose created itself also carries oneoff=False.
+const (
+	labelComposeProject = "com.docker.compose.project"
+	labelComposeService = "com.docker.compose.service"
+	labelComposeOneOff  = "com.docker.compose.oneoff"
+)
+
+// RemoveStaleTrialKeeper removes this project's trial-keeper containers, running
+// or not, and reports their names. It is for a rendered project that no longer has
+// the keeper, which Compose then cannot address by service name. The match is
+// deliberately narrow — this project, the trial-keeper service, created by Compose
+// — so a Gateway container, a lookup leftover that inherited the image's labels,
+// and every other project are never touched, and no volume is removed.
+func (c Compose) RemoveStaleTrialKeeper() ([]string, *contract.Fault) {
+	stdout, stderr, err := c.engine("container", "ls", "--all",
+		"--filter", "label="+labelComposeProject+"="+c.Namespace,
+		"--filter", "label="+labelComposeService+"="+TrialKeeperServiceName,
+		"--filter", "label="+labelComposeOneOff+"=False",
+		"--format", "{{.Names}}")
+	if err != nil {
+		return nil, Fault("docker container ls", stdout+stderr, err)
+	}
+	var names []string
+	for _, line := range strings.Split(stdout, "\n") {
+		if name := strings.TrimSpace(line); name != "" {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return nil, nil
+	}
+	stdout, stderr, err = c.engine(append([]string{"rm", "--force"}, names...)...)
+	if err != nil {
+		return nil, Fault("docker rm", stdout+stderr, err)
+	}
+	return names, nil
+}
+
 // Down stops and removes the project's containers. volumes also removes the named
 // volume, which is what discards the Gateway's data.
 func (c Compose) Down(volumes bool) *contract.Fault {
@@ -133,6 +185,24 @@ func (c Compose) Logs(tail int) (string, *contract.Fault) {
 		return stdout + stderr, c.faultOf("logs", stdout, stderr, err)
 	}
 	return stdout, nil
+}
+
+// StreamLogs copies the Gateway's container log to w as the engine produces it,
+// so a long log never sits in igdev's memory. tail is as for Logs. On failure the
+// engine's diagnostic comes from a byte-bounded tail; w may already hold output.
+func (c Compose) StreamLogs(tail int, w io.Writer) *contract.Fault {
+	verb := []string{"logs"}
+	if tail > 0 {
+		verb = append(verb, "--tail", fmt.Sprint(tail))
+	}
+	verb = append(verb, GatewayServiceName)
+	cmd := exec.Command("docker", c.args(verb...)...)
+	cmd.Dir = c.Dir
+	cmd.Env = append(os.Environ(), c.Env...)
+	out, errTail := newDiagnosticTail(), newDiagnosticTail()
+	cmd.Stdout, cmd.Stderr = io.MultiWriter(w, out), errTail
+	err := interrupt.Run(cmd)
+	return c.faultOf("logs", tailText(out), tailText(errTail), err)
 }
 
 // ExecRequest is one command run inside the Gateway container.
@@ -184,25 +254,73 @@ func (c Compose) args(verb ...string) []string {
 	return append(out, verb...)
 }
 
-// exec runs compose, streaming the engine's output to Progress while also
-// capturing it: a long build or pull reports progress, and the last line is still
-// there to report when the call fails.
+// exec runs compose, streaming the engine's output to Progress while retaining a
+// byte-bounded tail of it: a long build or pull reports progress, and the last
+// line is still there to report when the call fails.
 func (c Compose) exec(verb ...string) (stdout, stderr string, err error) {
-	return c.run(c.progress(), verb...)
+	cmd := exec.Command("docker", c.args(verb...)...)
+	cmd.Dir = c.Dir
+	cmd.Env = append(os.Environ(), c.Env...)
+	out, errTail := newDiagnosticTail(), newDiagnosticTail()
+	progress := c.progress()
+	cmd.Stdout, cmd.Stderr = tee(out, progress), tee(errTail, progress)
+	// Held, so an interrupted `igdev` waits for this Compose run to exit instead
+	// of leaving it running unobserved.
+	err = interrupt.Run(cmd)
+	return tailText(out), tailText(errTail), err
+}
+
+// Diagnostic tail limits for streamed compose output: only the last non-blank
+// line reaches a fault, so a few lines of headroom are plenty. An oversized line
+// keeps its suffix.
+const (
+	diagnosticTailLines     = 64
+	diagnosticTailBytes     = 64 * 1024
+	diagnosticTailLineBytes = 16 * 1024
+)
+
+func newDiagnosticTail() *boundedtail.Tail {
+	return boundedtail.New(diagnosticTailLines, diagnosticTailBytes, diagnosticTailLineBytes)
+}
+
+// tailText renders a tail back into newline-terminated text for lastLine.
+func tailText(t *boundedtail.Tail) string {
+	lines := t.Lines()
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+// tee copies one child stream into its tail and, when streaming, into progress.
+func tee(w, progress io.Writer) io.Writer {
+	if progress == nil {
+		return w
+	}
+	return io.MultiWriter(w, progress)
 }
 
 // capture runs compose without streaming: the output is igdev's to parse, not the
 // caller's to watch.
 func (c Compose) capture(verb ...string) (stdout, stderr string, err error) {
-	return c.run(nil, verb...)
-}
-
-func (c Compose) run(progress io.Writer, verb ...string) (stdout, stderr string, err error) {
 	cmd := exec.Command("docker", c.args(verb...)...)
 	cmd.Dir = c.Dir
 	cmd.Env = append(os.Environ(), c.Env...)
 	var out, errBuf bytes.Buffer
-	cmd.Stdout, cmd.Stderr = sink(&out, progress), sink(&errBuf, progress)
+	cmd.Stdout, cmd.Stderr = &out, &errBuf
+	// Held, so an interrupted `igdev` waits for this Compose run to exit instead
+	// of leaving it running unobserved.
+	err = interrupt.Run(cmd)
+	return out.String(), errBuf.String(), err
+}
+
+// engine runs the docker CLI itself, outside compose, for the few calls Compose
+// cannot address by service: a service the rendered project no longer declares.
+func (c Compose) engine(args ...string) (stdout, stderr string, err error) {
+	cmd := exec.Command("docker", args...)
+	cmd.Dir = c.Dir
+	var out, errBuf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errBuf
 	err = cmd.Run()
 	return out.String(), errBuf.String(), err
 }
@@ -214,14 +332,6 @@ func (c Compose) progress() io.Writer {
 		return nil
 	}
 	return &lockWriter{w: c.Progress}
-}
-
-// sink tee's one child stream into its buffer and, when streaming, into progress.
-func sink(buf *bytes.Buffer, progress io.Writer) io.Writer {
-	if progress == nil {
-		return buf
-	}
-	return io.MultiWriter(buf, progress)
 }
 
 // lockWriter serializes writes from compose's two output copiers onto Progress,
