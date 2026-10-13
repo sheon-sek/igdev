@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/sheon-sek/igdev/internal/boundedtail"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/instance"
 	"github.com/sheon-sek/igdev/internal/interrupt"
@@ -186,6 +187,24 @@ func (c Compose) Logs(tail int) (string, *contract.Fault) {
 	return stdout, nil
 }
 
+// StreamLogs copies the Gateway's container log to w as the engine produces it,
+// so a long log never sits in igdev's memory. tail is as for Logs. On failure the
+// engine's diagnostic comes from a byte-bounded tail; w may already hold output.
+func (c Compose) StreamLogs(tail int, w io.Writer) *contract.Fault {
+	verb := []string{"logs"}
+	if tail > 0 {
+		verb = append(verb, "--tail", fmt.Sprint(tail))
+	}
+	verb = append(verb, GatewayServiceName)
+	cmd := exec.Command("docker", c.args(verb...)...)
+	cmd.Dir = c.Dir
+	cmd.Env = append(os.Environ(), c.Env...)
+	out, errTail := newDiagnosticTail(), newDiagnosticTail()
+	cmd.Stdout, cmd.Stderr = io.MultiWriter(w, out), errTail
+	err := interrupt.Run(cmd)
+	return c.faultOf("logs", tailText(out), tailText(errTail), err)
+}
+
 // ExecRequest is one command run inside the Gateway container.
 type ExecRequest struct {
 	// User is the container user, `ignition`, `root`, or a uid:gid.
@@ -235,25 +254,60 @@ func (c Compose) args(verb ...string) []string {
 	return append(out, verb...)
 }
 
-// exec runs compose, streaming the engine's output to Progress while also
-// capturing it: a long build or pull reports progress, and the last line is still
-// there to report when the call fails.
+// exec runs compose, streaming the engine's output to Progress while retaining a
+// byte-bounded tail of it: a long build or pull reports progress, and the last
+// line is still there to report when the call fails.
 func (c Compose) exec(verb ...string) (stdout, stderr string, err error) {
-	return c.run(c.progress(), verb...)
+	cmd := exec.Command("docker", c.args(verb...)...)
+	cmd.Dir = c.Dir
+	cmd.Env = append(os.Environ(), c.Env...)
+	out, errTail := newDiagnosticTail(), newDiagnosticTail()
+	progress := c.progress()
+	cmd.Stdout, cmd.Stderr = tee(out, progress), tee(errTail, progress)
+	// Held, so an interrupted `igdev` waits for this Compose run to exit instead
+	// of leaving it running unobserved.
+	err = interrupt.Run(cmd)
+	return tailText(out), tailText(errTail), err
+}
+
+// Diagnostic tail limits for streamed compose output: only the last non-blank
+// line reaches a fault, so a few lines of headroom are plenty. An oversized line
+// keeps its suffix.
+const (
+	diagnosticTailLines     = 64
+	diagnosticTailBytes     = 64 * 1024
+	diagnosticTailLineBytes = 16 * 1024
+)
+
+func newDiagnosticTail() *boundedtail.Tail {
+	return boundedtail.New(diagnosticTailLines, diagnosticTailBytes, diagnosticTailLineBytes)
+}
+
+// tailText renders a tail back into newline-terminated text for lastLine.
+func tailText(t *boundedtail.Tail) string {
+	lines := t.Lines()
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+// tee copies one child stream into its tail and, when streaming, into progress.
+func tee(w, progress io.Writer) io.Writer {
+	if progress == nil {
+		return w
+	}
+	return io.MultiWriter(w, progress)
 }
 
 // capture runs compose without streaming: the output is igdev's to parse, not the
 // caller's to watch.
 func (c Compose) capture(verb ...string) (stdout, stderr string, err error) {
-	return c.run(nil, verb...)
-}
-
-func (c Compose) run(progress io.Writer, verb ...string) (stdout, stderr string, err error) {
 	cmd := exec.Command("docker", c.args(verb...)...)
 	cmd.Dir = c.Dir
 	cmd.Env = append(os.Environ(), c.Env...)
 	var out, errBuf bytes.Buffer
-	cmd.Stdout, cmd.Stderr = sink(&out, progress), sink(&errBuf, progress)
+	cmd.Stdout, cmd.Stderr = &out, &errBuf
 	// Held, so an interrupted `igdev` waits for this Compose run to exit instead
 	// of leaving it running unobserved.
 	err = interrupt.Run(cmd)
@@ -278,14 +332,6 @@ func (c Compose) progress() io.Writer {
 		return nil
 	}
 	return &lockWriter{w: c.Progress}
-}
-
-// sink tee's one child stream into its buffer and, when streaming, into progress.
-func sink(buf *bytes.Buffer, progress io.Writer) io.Writer {
-	if progress == nil {
-		return buf
-	}
-	return io.MultiWriter(buf, progress)
 }
 
 // lockWriter serializes writes from compose's two output copiers onto Progress,

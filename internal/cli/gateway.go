@@ -767,6 +767,14 @@ then carry nothing but the envelope.`,
 			if err := g.requireRuntimeFiles(); err != nil {
 				return err
 			}
+			if !g.res.IsJSON() {
+				// Human mode streams, so a long log never sits in memory whole.
+				if fault := g.compose.StreamLogs(tail, a.Stdout); fault != nil {
+					return fault
+				}
+				a.updateNotice(g.res)
+				return nil
+			}
 			out, fault := g.compose.Logs(tail)
 			if fault != nil {
 				return fault

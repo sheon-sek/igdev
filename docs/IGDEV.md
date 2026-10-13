@@ -433,6 +433,21 @@ igdev gateway data get <p> [local]  copy <p> out of the container
 igdev gateway api <METHOD> <path>   call the Gateway REST API with the Instance token
 ```
 
+Log and diagnostic budgets (decision record for #143):
+
+- Human `gateway logs` streams the engine's stdout straight to the terminal, so memory
+  stays flat however long the log is, and successful output is byte-identical to the
+  captured form. A failing `docker compose logs` may already have written part of the
+  log to stdout before igdev reports the fault.
+- `gateway logs --json` deliberately keeps full capture into `data.logs`: the envelope
+  is unchanged and unbounded. Its cost is a few multiples of the log size in memory (up
+  to the engine's ~60 MiB rotation budget with `--tail 0`), so prefer a bounded
+  `--tail N` when an agent only needs recent lines.
+- Lifecycle commands (`up`, `down`, `restart`) pass every byte to progress but retain
+  only a diagnostic tail per stream for fault reporting: the last 64 lines, at most
+  64 KiB, each line capped at 16 KiB keeping its suffix. There is no truncation marker,
+  so a fault detail may begin mid-line.
+
 Working on the running Gateway without losing its data (ADR 0011):
 
 ```text
