@@ -180,3 +180,26 @@ func TestCleanupObsoleteImagesKeepsTheInstance(t *testing.T) {
 		testrig.WantCode(t, testrig.Envelope(t, res.Stdout), contract.CodeUsage)
 	}
 }
+
+// --obsolete-images reads the current version from igdev.toml and the Instance
+// from the Checkout Setup: either missing is a project-state fault, not a usage
+// error.
+func TestCleanupObsoleteImagesNeedsTheProject(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.ShimDocker()
+	for _, tc := range []struct {
+		name, body  string
+		code        contract.Code
+		remediation string
+	}{
+		{"plain", "", contract.CodeNotInitialized, "igdev status"},
+		{"repo", testrig.MinimalContract, contract.CodeSetupRequired, "igdev setup"},
+	} {
+		dir := env.Project(tc.name, tc.body)
+		res := env.RunIn(dir, "cleanup", "--obsolete-images", "--json")
+		testrig.WantExit(t, res, contract.ExitFailure)
+		envelope := testrig.Envelope(t, res.Stdout)
+		testrig.WantCode(t, envelope, tc.code)
+		testrig.WantRemediation(t, envelope, tc.remediation)
+	}
+}

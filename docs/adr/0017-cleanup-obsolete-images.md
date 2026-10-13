@@ -10,7 +10,8 @@ part of igdev#140).
 
 We decided to add `igdev cleanup --obsolete-images`. It plans Docker images only, so the
 Instance's containers, data volume and network, the Checkout Setup and the Consent record
-are never items. It needs the Checkout Setup, which names the Instance, and reads
+are never items. It needs the Checkout Setup, which names the Instance (`IGDEV_E_SETUP_REQUIRED`, exit 1,
+without it; `IGDEV_E_NOT_INITIALIZED` without `igdev.toml`), and reads
 `igdev.toml` strictly for the current version: guessing a default could plan the running
 Instance's image. It combines with neither `--deinit`, `--machine` nor `--uninstall`
 (`IGDEV_E_USAGE`, exit 2), and acts when named without `--yes`, like a checkout cleanup:
@@ -36,8 +37,9 @@ Every image is removed by the immutable ID inventoried at planning, never by tag
 with `--force`, following #145: an image with several tags is kept, and execution
 reinspects the ID and keeps it when its tags, its references or its container users
 changed. An engine refusal, such as dependent child images under the legacy builder, is
-reported as kept. Official images go first, and an Instance image built from one whose
-removal failed is held back, so a retry can still attribute it. Nothing prunes: no
+reported as kept. Official images go first, and an Instance image built from one that
+was not removed is held back, so a retry can still attribute it; one the engine refused
+because of dependent child images is tried again after the Instance images built from it. Nothing prunes: no
 `docker image prune`, `system prune` or build-cache removal.
 
 Consequences: the cleanup envelope's `data` gains `obsolete_images`, and the command gains

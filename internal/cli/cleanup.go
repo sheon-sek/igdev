@@ -175,12 +175,14 @@ func (a *App) resolvedForCleanup(found project.Found) (*config.Resolution, error
 // in use, so guessing the default would plan the running Instance's images.
 func (a *App) currentIgnitionVersion(found project.Found, opts cleanup.Options) (string, *contract.Fault) {
 	if found.Root == "" {
-		return "", contract.UsageFault("cleanup --obsolete-images needs this checkout's igdev.toml: it names the current [ignition].version",
-			contract.Remediation{Command: "igdev status", Why: "find the Project Root"})
+		return "", contract.NewFault(contract.CodeNotInitialized, contract.ExitFailure,
+			"cleanup --obsolete-images needs this checkout's igdev.toml: it names the current [ignition].version").
+			WithRemediation(contract.Remediation{Command: "igdev status", Why: "find the Project Root"})
 	}
 	if opts.Namespace == "" {
-		return "", contract.UsageFault("cleanup --obsolete-images needs the Checkout Setup: it names this checkout's Instance",
-			contract.Remediation{Command: "igdev setup", Why: "re-create the Checkout Setup"})
+		return "", contract.NewFault(contract.CodeSetupRequired, contract.ExitFailure,
+			"cleanup --obsolete-images needs the Checkout Setup: it names this checkout's Instance").
+			WithRemediation(contract.Remediation{Command: "igdev setup", Why: "re-create the Checkout Setup"})
 	}
 	res, err := config.Resolve(a.configInput(found))
 	if err != nil {
@@ -288,13 +290,17 @@ func (a *App) printCleanup(data cleanupData) {
 			fmt.Fprint(a.Stderr, item.Diff)
 		}
 	}
-	if len(data.Items) == 0 {
-		fmt.Fprintf(a.Stdout, "cleanup:  nothing igdev created is left (%s scope)\n", data.Scope)
-		return
-	}
 	scope := data.Scope + " scope"
 	if data.ObsoleteImages {
 		scope += ", obsolete images only"
+	}
+	if len(data.Items) == 0 {
+		if data.ObsoleteImages {
+			fmt.Fprintf(a.Stdout, "cleanup:  no obsolete images (%s)\n", scope)
+		} else {
+			fmt.Fprintf(a.Stdout, "cleanup:  nothing igdev created is left (%s)\n", scope)
+		}
+		return
 	}
 	for _, item := range data.Items {
 		line := fmt.Sprintf("%-13s %-15s %s", item.Action, item.Kind, item.Ref)
