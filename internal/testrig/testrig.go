@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -150,7 +151,10 @@ type Run struct {
 
 // Result is everything an outside observer can see of one invocation.
 type Result struct {
-	Exit     int
+	Exit int
+	// Signal is the signal that ended the process (Exit is then -1), zero when
+	// it exited on its own.
+	Signal   syscall.Signal
 	Stdout   string
 	Stderr   string
 	Duration time.Duration

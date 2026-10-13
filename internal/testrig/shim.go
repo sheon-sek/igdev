@@ -77,7 +77,10 @@ fi
 # fixed id for every image, for none with IGDEV_SHIM_IMAGE_MISSING=1, or only for
 # the images IGDEV_SHIM_IMAGES lists (space-separated), which image ls then
 # lists too; "cp <id>:<dir> -" streams <dir> from IGDEV_SHIM_DOCKER_CP_ROOT as a
-# tar of its base name, the shape the engine writes.
+# tar of its base name, the shape the engine writes. IGDEV_SHIM_DOCKER_CP_HOLD
+# keeps cp running that many seconds first, like a large copy: it touches
+# "docker-cp-holding" beside the call log, "docker-cp-held" when it finishes on
+# its own, and SIGINT or SIGTERM ends it with 130 or 143.
 if [ "$1" = "image" ] && [ "$2" = "inspect" ]; then
   image="$5"
   present=yes
@@ -99,6 +102,15 @@ if [ "$1" = "image" ] && [ "$2" = "ls" ]; then
   exit 0
 fi
 if [ "$1" = "cp" ]; then
+  if [ -n "$IGDEV_SHIM_DOCKER_CP_HOLD" ] && [ -n "$state" ]; then
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    : > "$(dirname "$state")/docker-cp-holding"
+    i=0
+    while [ "$i" -lt $((IGDEV_SHIM_DOCKER_CP_HOLD * 10)) ]; do sleep 0.1; i=$((i+1)); done
+    trap - INT TERM
+    : > "$(dirname "$state")/docker-cp-held"
+  fi
   src="${2#*:}"
   if [ -z "$IGDEV_SHIM_DOCKER_CP_ROOT" ] || [ ! -d "$IGDEV_SHIM_DOCKER_CP_ROOT$src" ]; then
     echo "Error response from daemon: Could not find the file $src in container" >&2
@@ -410,6 +422,11 @@ const ShimActFile = "act"
 // one canned stdout line, IGDEV_SHIM_ACT_ERR one stderr line, and
 // IGDEV_SHIM_ACT_EXIT the exit code act reports (0 by default). Nothing else
 // runs: no docker, no network, no workflow.
+//
+// IGDEV_SHIM_ACT_HOLD keeps act running for that many seconds first, the way a
+// long job does: it touches "act-holding" beside the call log when it starts
+// holding and "act-held" when it finishes on its own, and a SIGINT or SIGTERM
+// that reaches it ends it with 130 or 143, as it ends a real act.
 const actShimScript = `#!/bin/sh
 state="$IGDEV_SHIM_ACT_STATE"
 if [ -n "$state" ]; then
@@ -436,6 +453,15 @@ if [ -n "$state" ]; then
   done
   printf '{"n":%s,"cwd":"%s","exit":%s,"argv":[%s],"env":{"IGDEV_ACT_OFFLINE":"%s"},"env_file_keys":"%s","secret_file_keys":"%s"}\n' \
     "$n" "$(escape "$PWD")" "${IGDEV_SHIM_ACT_EXIT:-0}" "$argv" "$(escape "$IGDEV_ACT_OFFLINE")" "$envkeys" "$secretkeys" >> "$state"
+fi
+if [ -n "$IGDEV_SHIM_ACT_HOLD" ] && [ -n "$state" ]; then
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  : > "$(dirname "$state")/act-holding"
+  i=0
+  while [ "$i" -lt $((IGDEV_SHIM_ACT_HOLD * 10)) ]; do sleep 0.1; i=$((i+1)); done
+  trap - INT TERM
+  : > "$(dirname "$state")/act-held"
 fi
 if [ -n "$IGDEV_SHIM_ACT_LINES" ]; then
   i=1

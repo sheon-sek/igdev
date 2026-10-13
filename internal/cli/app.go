@@ -18,6 +18,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/consent"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/gate"
+	"github.com/sheon-sek/igdev/internal/interrupt"
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/projectseed"
 	"github.com/sheon-sek/igdev/internal/updater"
@@ -66,6 +67,9 @@ func Execute(args []string, app *App) int {
 	root.SetErr(app.Stderr)
 
 	cmd, err := root.ExecuteC()
+	// An interrupted command reports nothing: the interrupt handler cleans up and
+	// ends the process by the signal.
+	interrupt.Settle()
 	if err != nil {
 		fault := classify(cmd, err)
 		app.report(fault)
