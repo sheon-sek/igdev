@@ -3,6 +3,7 @@ package itest
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sheon-sek/igdev/internal/contract"
@@ -134,4 +135,72 @@ func TestCleanupMachineNeedsYes(t *testing.T) {
 	res = env.RunIn(dir, "cleanup", "--machine", "--yes", "--json")
 	testrig.WantExit(t, res, contract.ExitOK)
 	env.AssertNoDockerOrphans(t)
+}
+
+// --obsolete-images keeps the running Instance, its data volume and the Checkout
+// Setup: it plans images only, and combines with no scope that removes more.
+func TestCleanupObsoleteImagesKeepsTheInstance(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.ShimDocker()
+	env.ShimMeminfo(65536)
+	dir, _ := gatewayFixture(t, env, testrig.MinimalContract)
+	testrig.WantExit(t, env.RunIn(dir, "gateway", "up"), contract.ExitOK)
+	before := len(env.DockerCalls(t))
+
+	res := env.RunIn(dir, "cleanup", "--obsolete-images", "--json")
+	testrig.WantExit(t, res, contract.ExitOK)
+	var data struct {
+		cleanupResult
+		ObsoleteImages bool `json:"obsolete_images"`
+	}
+	testrig.DataOf(t, res.Stdout, &data)
+	if !data.ObsoleteImages || data.Scope != "checkout" || data.Failed != 0 {
+		t.Fatalf("cleanup --obsolete-images = %+v", data)
+	}
+	for _, item := range data.Items {
+		if item.Kind != "image" && item.Kind != "base_image" {
+			t.Errorf("--obsolete-images planned a %s: %s", item.Kind, item.Ref)
+		}
+	}
+	for _, call := range env.DockerCalls(t)[before:] {
+		argv := strings.Join(call.Argv, " ")
+		if strings.HasPrefix(argv, "rm ") || strings.HasPrefix(argv, "volume rm") || strings.HasPrefix(argv, "network rm") || strings.HasPrefix(argv, "compose ") {
+			t.Errorf("--obsolete-images touched the Instance: %v", call.Argv)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, project.StateDir)); err != nil {
+		t.Fatalf("--obsolete-images removed .igdev/: %v", err)
+	}
+	if orphans := env.DockerOrphans(t); len(orphans.Containers) == 0 || len(orphans.Volumes) == 0 {
+		t.Fatal("--obsolete-images removed the Instance's container or volume")
+	}
+
+	for _, flag := range []string{"--machine", "--deinit", "--uninstall"} {
+		res := env.RunIn(dir, "cleanup", "--obsolete-images", flag, "--yes", "--json")
+		testrig.WantExit(t, res, contract.ExitUsage)
+		testrig.WantCode(t, testrig.Envelope(t, res.Stdout), contract.CodeUsage)
+	}
+}
+
+// --obsolete-images reads the current version from igdev.toml and the Instance
+// from the Checkout Setup: either missing is a project-state fault, not a usage
+// error.
+func TestCleanupObsoleteImagesNeedsTheProject(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.ShimDocker()
+	for _, tc := range []struct {
+		name, body  string
+		code        contract.Code
+		remediation string
+	}{
+		{"plain", "", contract.CodeNotInitialized, "igdev status"},
+		{"repo", testrig.MinimalContract, contract.CodeSetupRequired, "igdev setup"},
+	} {
+		dir := env.Project(tc.name, tc.body)
+		res := env.RunIn(dir, "cleanup", "--obsolete-images", "--json")
+		testrig.WantExit(t, res, contract.ExitFailure)
+		envelope := testrig.Envelope(t, res.Stdout)
+		testrig.WantCode(t, envelope, tc.code)
+		testrig.WantRemediation(t, envelope, tc.remediation)
+	}
 }

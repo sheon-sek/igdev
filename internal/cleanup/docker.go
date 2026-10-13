@@ -67,12 +67,12 @@ type engine struct {
 	containers []container
 	volumes    []labelled
 	networks   []labelled
-	images     []string // repository:tag
+	images     []Image // immutable IDs and ownership metadata
 }
 
 const tab = `{{"\t"}}`
 
-// snapshot lists containers, volumes, networks and images in four calls. No
+// snapshot lists containers, volumes, networks and inspects image IDs. No
 // docker CLI at all means there is nothing Docker-side to clean; an engine that
 // does not answer is a fault, so the plan never silently omits its objects.
 func snapshot(run Runner) (engine, *contract.Fault) {
@@ -120,14 +120,9 @@ func snapshot(run Runner) (engine, *contract.Fault) {
 		f := fields(row, 2)
 		e.networks = append(e.networks, labelled{name: f[0], project: f[1]})
 	}
-	rows, fault, _ = list("image", "ls", "--format", "{{.Repository}}:{{.Tag}}")
+	e.images, fault = InventoryImages(run)
 	if fault != nil {
 		return e, fault
-	}
-	for _, row := range rows {
-		if !strings.HasSuffix(row, ":<none>") {
-			e.images = append(e.images, strings.TrimSpace(row))
-		}
 	}
 	return e, nil
 }
@@ -177,8 +172,8 @@ func (e engine) namespaces() []string {
 			set[ns] = true
 		}
 	}
-	for _, ref := range e.images {
-		if ns, _, ok := imageNamespace(ref); ok {
+	for _, image := range e.images {
+		if ns := image.Namespace(); ns != "" {
 			set[ns] = true
 		}
 	}
@@ -237,33 +232,41 @@ func samePath(a, b string) bool {
 // namespace, in the order they can be removed: containers before what they use.
 func (e engine) instanceItems(namespaces []string, run Runner) []*Item {
 	var containers, networks, volumes, images []*Item
+	leaving := map[string]bool{}
+	for _, ns := range namespaces {
+		for _, c := range e.containers {
+			if c.project == ns {
+				leaving[c.name] = true
+			}
+		}
+	}
 	for _, ns := range namespaces {
 		for _, c := range e.containers {
 			if c.project == ns {
 				name := c.name
-				containers = append(containers, &Item{Kind: KindContainer, Ref: name, Action: WouldRemove,
+				containers = append(containers, &Item{Kind: KindContainer, Ref: name, Action: WouldRemove, namespace: ns,
 					remove: func() error { return dockerErr(run("rm", "--force", "--volumes", name)) }})
 			}
 		}
 		for _, n := range e.networks {
 			if owner(n) == ns {
 				name := n.name
-				networks = append(networks, &Item{Kind: KindNetwork, Ref: name, Action: WouldRemove,
+				networks = append(networks, &Item{Kind: KindNetwork, Ref: name, Action: WouldRemove, namespace: ns,
 					remove: func() error { return removeNetwork(run, name) }})
 			}
 		}
 		for _, v := range e.volumes {
 			if owner(v) == ns {
 				name := v.name
-				volumes = append(volumes, &Item{Kind: KindVolume, Ref: name, Action: WouldRemove,
+				volumes = append(volumes, &Item{Kind: KindVolume, Ref: name, Action: WouldRemove, namespace: ns,
 					remove: func() error { return dockerErr(run("volume", "rm", "--force", name)) }})
 			}
 		}
-		for _, ref := range e.images {
-			if owner, _, ok := imageNamespace(ref); ok && owner == ns {
-				ref := ref
-				images = append(images, &Item{Kind: KindImage, Ref: ref, Action: WouldRemove,
-					remove: func() error { return dockerErr(run("image", "rm", "--force", ref)) }})
+		for _, image := range e.images {
+			if image.Namespace() == ns {
+				item := imageItem(image, run, leaving)
+				item.namespace = ns
+				images = append(images, item)
 			}
 		}
 	}
@@ -280,21 +283,22 @@ func (e engine) instanceItems(namespaces []string, run Runner) []*Item {
 // container still uses, which is then kept.
 func (e engine) baseImageItems(run Runner) []*Item {
 	var items []*Item
-	for _, ref := range e.images {
-		repo, _, _ := strings.Cut(ref, ":")
-		if repo != BaseImageRepository {
-			continue
+	for _, image := range e.images {
+		for _, ref := range image.Tags {
+			repo, _, _ := strings.Cut(ref, ":")
+			if repo != BaseImageRepository {
+				continue
+			}
+			ref := ref
+			items = append(items, &Item{Kind: KindBaseImage, Ref: ref, Action: WouldRemove,
+				remove: func() error { return dockerErr(run("image", "rm", ref)) },
+				keepOn: func(err error) (string, bool) {
+					if strings.Contains(err.Error(), "conflict") || strings.Contains(err.Error(), "is being used") {
+						return "still used by a container: " + err.Error(), true
+					}
+					return "", false
+				}})
 		}
-		ref := ref
-		items = append(items, &Item{Kind: KindBaseImage, Ref: ref, Action: WouldRemove,
-			// No --force: an image another container uses must stay.
-			remove: func() error { return dockerErr(run("image", "rm", ref)) },
-			keepOn: func(err error) (string, bool) {
-				if strings.Contains(err.Error(), "conflict") || strings.Contains(err.Error(), "is being used") {
-					return "still used by a container: " + err.Error(), true
-				}
-				return "", false
-			}})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Ref < items[j].Ref })
 	return items
