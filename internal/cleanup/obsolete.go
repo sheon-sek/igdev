@@ -21,7 +21,7 @@ import (
 //
 // Like every image item, an official image is removed by its immutable ID and
 // never forced, and one that carries several tags is kept. The official images
-// go first: an Instance image built from one whose removal failed is held back,
+// go first: an Instance image built from one that was not removed is held back,
 // so a retry can still attribute it.
 func (e engine) obsoleteItems(ns, version string, run Runner) []*Item {
 	current := ns + ":" + version
@@ -159,15 +159,26 @@ func baseReference(run Runner, images []Image, base Image, v string, removing ma
 	return "", nil
 }
 
-// hold keeps an Instance image whose official image failed to go: while it is on
-// the engine, a retry can still attribute that image to this Instance.
+// hold keeps an Instance image while its official image stays: while it is on
+// the engine, a retry can still attribute that image to this Instance. The one
+// exception is an engine that refused the official image because this image is
+// its child: the child goes, and the official image is tried again after it.
 func hold(image, base *Item) {
 	remove := image.remove
 	image.remove = func() error {
-		if base.Action == Failed {
-			return protectedImage{"kept so a retry can still attribute " + base.Ref + ", whose removal failed: run cleanup again"}
+		switch {
+		case base.Action == Removed:
+			return remove()
+		case base.Action == Kept && strings.Contains(base.Reason, "dependent child"):
+			if err := remove(); err != nil {
+				return err
+			}
+			if err := base.remove(); err == nil {
+				base.Action, base.Reason = Removed, "removed after the Instance images built from it"
+			}
+			return nil
 		}
-		return remove()
+		return protectedImage{"kept so a retry can still attribute " + base.Ref + ", which was not removed: run cleanup again"}
 	}
 }
 

@@ -129,6 +129,11 @@ func Build(opts Options) (Plan, *contract.Fault) {
 		return plan, fault
 	}
 	if opts.ObsoleteImages {
+		if opts.Namespace == "" || opts.IgnitionVersion == "" {
+			// Without both, every unattributed image or the current one would match.
+			return plan, contract.NewFault(contract.CodeInternal, contract.ExitFailure,
+				"obsolete-image cleanup needs the Instance namespace and the current [ignition].version")
+		}
 		plan.Items = engine.obsoleteItems(opts.Namespace, opts.IgnitionVersion, opts.Docker)
 		return plan, nil
 	}

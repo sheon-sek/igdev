@@ -241,7 +241,7 @@ func TestObsoleteImagesRetryAfterFailure(t *testing.T) {
 }
 
 func TestObsoleteBaseImageRechecksReferences(t *testing.T) {
-	for _, change := range []string{"new image", "container", "engine conflict", "dependent child", "tag moved", "tag added"} {
+	for _, change := range []string{"new image", "container", "engine conflict", "tag moved", "tag added"} {
 		t.Run(change, func(t *testing.T) {
 			f := versionChange(t)
 			plan := obsoletePlan(t, f)
@@ -252,10 +252,6 @@ func TestObsoleteBaseImageRechecksReferences(t *testing.T) {
 				f.users["sha256:b87"] = "late-container"
 			case "engine conflict":
 				f.rmFail["sha256:b87"] = "Error response from daemon: conflict: unable to delete sha256:b87 (must be forced) - image is referenced in multiple repositories"
-			case "dependent child":
-				// A builder that records parent images refuses to delete one a
-				// child still names; nothing is forced, so the image stays.
-				f.rmFail["sha256:b87"] = "Error response from daemon: conflict: unable to delete sha256:b87 (cannot be forced) - image has dependent child images"
 			case "tag moved":
 				// A re-pull moved the tag to a new image: neither is removed.
 				f.images["sha256:b87"].Tags = nil
@@ -268,7 +264,38 @@ func TestObsoleteBaseImageRechecksReferences(t *testing.T) {
 			if item.Action != Kept || item.Reason == "" || contains(f.removed, "sha256:b87") || contains(f.removed, "sha256:b87-new") {
 				t.Fatalf("item = %+v, removed = %v", item, f.removed)
 			}
+			// The Instance image stays with it, so a retry can still attribute it.
+			if image := itemFor(plan, KindImage, "sha256:old"); image.Action != Kept || f.images["sha256:old"] == nil {
+				t.Fatalf("the image attributing the kept tag was not held back: %+v", image)
+			}
 		})
+	}
+}
+
+// A builder that records parent images refuses to delete one a child still
+// names; nothing is forced, so the child goes first and the official image is
+// tried again after it, in the same run.
+func TestObsoleteBaseImageWithDependentChild(t *testing.T) {
+	f := versionChange(t)
+	plan, fault := Build(Options{Root: "/repo", Namespace: nsA, ObsoleteImages: true, IgnitionVersion: "8.3.8",
+		Docker: func(args ...string) (string, string, error) {
+			if len(args) == 3 && args[0] == "image" && args[1] == "rm" && args[2] == "sha256:b87" && f.images["sha256:old"] != nil {
+				return "", "Error response from daemon: conflict: unable to delete sha256:b87 (cannot be forced) - image has dependent child images", errors.New("exit status 1")
+			}
+			return f.run(args...)
+		}})
+	if fault != nil {
+		t.Fatal(fault)
+	}
+	plan.Execute()
+	if item := itemFor(plan, KindBaseImage, ignition+"8.3.7"); item.Action != Removed || f.images["sha256:b87"] != nil {
+		t.Fatalf("official image not retried after its child: %+v", item)
+	}
+	if item := itemFor(plan, KindImage, "sha256:old"); item.Action != Removed {
+		t.Fatalf("child image not removed: %+v", item)
+	}
+	if plan.Count(Failed) != 0 {
+		t.Fatalf("failures: %+v", plan.Items)
 	}
 }
 
@@ -312,5 +339,19 @@ func TestObsoleteBaseImageWithoutLayersIsKept(t *testing.T) {
 	item := itemFor(obsoletePlan(t, f), KindBaseImage, ignition+"8.3.7")
 	if item.Action != Kept || !strings.Contains(item.Reason, "layers are unknown") {
 		t.Fatalf("item = %+v", item)
+	}
+}
+
+// Without a namespace every unattributed image would match, and without a
+// version the current Instance image would be planned: both are refused.
+func TestObsoleteImagesRefuseEmptyScope(t *testing.T) {
+	f := versionChange(t)
+	for _, opts := range []Options{
+		{ObsoleteImages: true, IgnitionVersion: "8.3.8", Docker: f.run},
+		{ObsoleteImages: true, Namespace: nsA, Docker: f.run},
+	} {
+		if plan, fault := Build(opts); fault == nil || len(plan.Items) != 0 {
+			t.Fatalf("Build(%+v) = %+v, %v", opts, plan.Items, fault)
+		}
 	}
 }
