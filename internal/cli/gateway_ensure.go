@@ -84,6 +84,10 @@ Instance's Gateway when that is healthy, and starts or resets it otherwise:
            trial_reset = "off", its trial has less left than --min-trial:
            ` + "`reset`" + `, which discards its data.
 
+Every path leaves the trial keeper as the contract asks: a reused Gateway gets a
+missing or exited keeper started next to it, and loses one the contract no longer
+runs, without a build, a restart, or a reset of the Gateway itself.
+
 The report names the action and the reason, the URL, the Gateway container, the
 address the Gateway reaches the host by, and the trial. Under the default
 trial_reset = "auto" the trial keeper resets an expired trial in place, so
@@ -135,11 +139,7 @@ so a refusal costs nothing; low free memory only warns.`,
 // ensureDecision inspects the Instance and decides what ensure does. Nothing here
 // changes state: a Gateway that is still starting is waited for, which is the only
 // side effect, and a running Gateway is only read.
-func (a *App) ensureDecision(g *gateway, fresh bool, timeout, minTrial time.Duration, autoTrial bool) (string, string, error) {
-	services, fault := g.compose.Ps()
-	if fault != nil {
-		return "", "", fault
-	}
+func (a *App) ensureDecision(g *gateway, services []docker.Service, fresh bool, timeout, minTrial time.Duration, autoTrial bool) (string, string, error) {
 	reported := make([]gatewayService, 0, len(services))
 	for _, service := range services {
 		reported = append(reported, gatewayService{Service: service.Service, State: service.State})
@@ -253,7 +253,11 @@ func (a *App) ensureGateway(g *gateway, opts ensureOptions) (gatewayEnsureData, 
 		data.Note = `--min-trial does not apply: trial_reset = "auto" resets an expired trial in place`
 	}
 
-	action, reason, err := a.ensureDecision(g, opts.fresh, opts.timeout, opts.minTrial, autoTrial)
+	services, fault := g.compose.Ps()
+	if fault != nil {
+		return data, fault
+	}
+	action, reason, err := a.ensureDecision(g, services, opts.fresh, opts.timeout, opts.minTrial, autoTrial)
 	if err != nil {
 		return data, err
 	}
@@ -273,14 +277,16 @@ func (a *App) ensureGateway(g *gateway, opts ensureOptions) (gatewayEnsureData, 
 				return data, fault
 			}
 		}
-		a.stage("gateway ensure: starting %s (docker compose up --detach --build %s)",
-			g.stamp.Namespace(), strings.Join(g.compose.UpServices(), " "))
-		if fault := g.compose.Up(); fault != nil {
-			return data, fault
+		if err := a.startGateway(g, "ensure"); err != nil {
+			return data, err
 		}
 		if err := a.waitForGateway(g, opts.timeout); err != nil {
 			return data, err
 		}
+	} else if err := a.reconcileTrialKeeper(g, services, "ensure"); err != nil {
+		// A reused Gateway is left as it is: no build, no restart, no reset. Only
+		// the keeper next to it converges on the contract (igdev#147).
+		return data, err
 	}
 	// A reused or restarted volume loads only the modules it registered
 	// (igdev#131).
