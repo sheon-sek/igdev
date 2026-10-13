@@ -168,6 +168,21 @@ a tier is `IGDEV_E_CONFIG_INVALID` (machine or project state is wrong). `contrac
 the CLI Contract Version and bumps only when the envelope, codes, or exit levels
 break — never alongside release semver.
 
+**Interrupts.** SIGINT (Ctrl-C) and SIGTERM end a run the way they always did — the
+process dies by that signal, so a shell sees 130 or 143, and an interrupted run prints
+no envelope — but igdev first cleans up what the run created: `ci-local
+--with-gateway`'s token files, a lookup index build's scratch directory and temporary
+container. stderr says so (`[igdev] interrupted by SIGINT: cleaning up before exit`).
+When igdev is waiting on a child it started (act, a Compose run, a lookup `docker
+cp`), it then waits for that child to exit before it dies, and says it is waiting —
+still printing no envelope, even when that child succeeds; a second signal stops the
+wait. igdev never signals a child itself: a terminal's Ctrl-C
+already reaches the whole process group, while a SIGTERM sent to igdev alone leaves
+the child to finish. These stderr lines never hold the exit up: a stderr nobody reads
+(a full pipe) delays neither the cleanup nor the second signal, and loses the lines. A
+signal the process was started with ignored stays ignored, and SIGKILL runs no cleanup
+at all.
+
 `igdev help`, `igdev <command> --help`, and a bare `igdev` are documentation, and in
 machine mode they are envelopes too: the rendered reference arrives in `data.help`
 with `data.command` and `data.section`, never as raw text on a JSON stdout.
@@ -990,8 +1005,8 @@ the EULA accepted, like every verb that starts a Gateway), then puts the job con
 network (`--network igdev-<id>_default`), where the job reaches the Gateway at
 `http://gateway:8088`. The job gets `IGDEV_GATEWAY_URL` and `IGDEV_GATEWAY_TOKEN` as
 environment variables, and the token also as the act secret `IGDEV_GATEWAY_TOKEN`, so act
-prints it as `***`. Both reach act through 0600 `--env-file` and `--secret-file` files
-igdev removes after the run, never through argv; a project `.env` or `.secrets` act would
+prints it as `***`. Both reach act through 0600 `--env-file` and `--secret-file` files, never
+through argv, and igdev removes the files after the run, or at once on Ctrl-C or SIGTERM; a project `.env` or `.secrets` act would
 read by default is not read in this mode. `data.gateway` reports `action`, `reason`,
 `url` (in-network), `host_url` and `network`. A workspace-local action (`uses:
 ./actions/...`) needs act's `--bind` or an `actions/checkout` step, as always under act.
@@ -1111,6 +1126,9 @@ env.DockerCalls(t)                    // each recorded call: argv, cwd, and the 
 call.GatewayEnv("GATEWAY_RESTORE_ARGS")  // the Baseline restore wiring, as the engine received it
 res := env.RunIn(root, "status", "--json")
 res := env.Run(testrig.Run{Args: …, Dir: …, Env: []string{"K=V"}, SampleRSS: true, Stdin: "…"})
+proc := env.Start(testrig.Run{…})     // in the background, leading its own process group
+proc.SignalGroup(syscall.SIGINT)      // a terminal's Ctrl-C; proc.Signal(sig) is igdev alone
+res := proc.Wait(timeout)             // res.Signal is the signal the process died by
 env.MustRun("version")                // fails the test if the process could not launch
 testrig.WantExit(t, res, contract.ExitUsage)
 testrig.WantCode(t, testrig.Envelope(t, res.Stdout), contract.CodeUsage)
@@ -1132,7 +1150,7 @@ env.SetBaseEnv("IGDEV_NO_UPDATE_NOTIFIER=")  // turn the notice on for this env 
 testrig.RunScriptIn(root, env, "packaging/package.sh", version)
 ```
 
-`Result` carries `Exit`, `Stdout`, `Stderr`, `Duration`, `PeakRSSKB`, `Samples`.
+`Result` carries `Exit`, `Signal`, `Stdout`, `Stderr`, `Duration`, `PeakRSSKB`, `Samples`.
 `env.Snapshot()` fingerprints content and mode, so `AssertNoLeaks` sees additions,
 modifications (including a chmod), and removals; `env.Changes(base)` returns the
 typed diff. A command that is *expected* to write (setup writes the Checkout Setup and

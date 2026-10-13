@@ -22,6 +22,7 @@ import (
 
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/instance"
+	"github.com/sheon-sek/igdev/internal/interrupt"
 )
 
 // GatewayServiceName is the compose service the Gateway runs as. One Instance is
@@ -253,7 +254,9 @@ func (c Compose) run(progress io.Writer, verb ...string) (stdout, stderr string,
 	cmd.Env = append(os.Environ(), c.Env...)
 	var out, errBuf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = sink(&out, progress), sink(&errBuf, progress)
-	err = cmd.Run()
+	// Held, so an interrupted `igdev` waits for this Compose run to exit instead
+	// of leaving it running unobserved.
+	err = interrupt.Run(cmd)
 	return out.String(), errBuf.String(), err
 }
 
