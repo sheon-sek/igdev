@@ -9,7 +9,7 @@ import (
 )
 
 // fakeDocker puts a `docker` on PATH that prints far more than any diagnostic
-// budget: FAKE_OUT bytes of numbered lines on stdout, a burst on stderr, then a
+// budget: 400000 numbered lines on stdout, a burst on stderr, then a
 // final stderr line, and exits FAKE_EXIT.
 func fakeDocker(t *testing.T, exit string) {
 	t.Helper()
@@ -76,7 +76,7 @@ func TestExecRetainsBoundedTail(t *testing.T) {
 				t.Fatalf("retained %d+%d bytes", len(stdout), len(stderr))
 			}
 			if !strings.HasSuffix(stdout, "out line 400000\n") || !strings.HasSuffix(stderr, "final: engine objected\n") {
-				t.Fatalf("tail lost the last lines: %q / %q", stdout[len(stdout)-40:], stderr[len(stderr)-40:])
+				t.Fatalf("tail lost the last lines: %q / %q", lastBytes(stdout, 40), lastBytes(stderr, 40))
 			}
 			if streaming && progress.Len() < 8<<20 {
 				t.Fatalf("progress got %d bytes, want all output", progress.Len())
@@ -88,4 +88,12 @@ func TestExecRetainsBoundedTail(t *testing.T) {
 			}
 		}
 	}
+}
+
+// lastBytes returns at most n trailing bytes of s, for failure messages.
+func lastBytes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[len(s)-n:]
 }
