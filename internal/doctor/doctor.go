@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/sheon-sek/igdev/internal/cleanup"
 )
 
 // State is one prerequisite's verdict.
@@ -75,6 +77,9 @@ type Report struct {
 	// Ready is false when any required prerequisite is not present.
 	Ready         bool    `json:"ready"`
 	Prerequisites []Entry `json:"prerequisites"`
+	// Instances is the read-only inventory of igdev Instances on the engine and
+	// whether their recorded checkouts still exist. It never affects Ready.
+	Instances cleanup.Inventory `json:"instances"`
 }
 
 // Runner runs one probe and returns its combined output.

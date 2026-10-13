@@ -342,6 +342,15 @@ func missing(err error) bool {
 
 // recordedNamespace is the namespace dir's Checkout Setup records, or "".
 func recordedNamespace(dir string) string {
+	id := recordedInstance(dir)
+	if id == "" {
+		return ""
+	}
+	return instance.Namespace(id)
+}
+
+// recordedInstance is the full identity dir's Checkout Setup records, or "".
+func recordedInstance(dir string) string {
 	raw, err := os.ReadFile(filepath.Join(dir, project.StateDir, project.SetupRecord))
 	if err != nil {
 		return ""
@@ -350,5 +359,5 @@ func recordedNamespace(dir string) string {
 	if !ok {
 		return ""
 	}
-	return stamp.Namespace()
+	return stamp.InstanceID
 }
