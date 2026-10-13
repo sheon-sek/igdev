@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -96,7 +97,7 @@ func ReadImage(image, scratch string) ([]bundle, error) {
 // createContainer creates a container of image without starting it.
 func createContainer(image string) (string, error) {
 	var stdout, stderr bytes.Buffer
-	create := exec.Command("docker", "create", "--entrypoint", "true", image)
+	create := exec.Command("docker", "create", "--label", "dev.igdev.purpose=lookup", "--entrypoint", "true", image)
 	create.Stdout, create.Stderr = &stdout, &stderr
 	if err := create.Run(); err != nil {
 		return "", &EngineError{Action: "docker create " + image, Output: stderr.String(), Err: err}
@@ -104,7 +105,12 @@ func createContainer(image string) (string, error) {
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-func removeContainer(id string) { _ = exec.Command("docker", "rm", "--force", id).Run() }
+func removeContainer(id string) {
+	output, err := exec.Command("docker", "rm", "--force", id).CombinedOutput()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: removing lookup container %s failed: %v: %s\n", id, err, strings.TrimSpace(string(output)))
+	}
+}
 
 // copyOut streams one container directory as a tar archive into read.
 func copyOut[T any](id, dir string, read func(io.Reader) ([]T, error)) ([]T, error) {
