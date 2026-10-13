@@ -1076,6 +1076,15 @@ obsolete image of this Instance was built from it and no other image, container 
 current contract still references it; every other official tag is listed as kept. Every
 image goes by its immutable ID, never forced, and an image with several tags is kept.
 
+What cleanup keeps is not igdev's to remove. The Docker build cache is shared with every
+image build on the machine: igdev never prunes it, in any scope, and the operator owns its
+growth with Docker's own tools and settings (`docker builder du`, `docker builder prune`,
+the engine's builder GC configuration). igdev makes no claim about whether that GC is
+enabled on a given host. Gateway data lives in each Instance's named volume, which Docker
+log rotation does not bound; a volume with no running container may be data kept on
+purpose, and only the named verbs (`gateway down --volumes`, `gateway reset`, `cleanup`)
+remove one. ADR 0016 records the proposed read-only volume and disk reporting.
+
 ## Host prerequisites
 
 `igdev doctor` audits the host read-only and never fails: the exit level stays 0 and
