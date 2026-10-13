@@ -123,6 +123,7 @@ igdev cleanup                         # this checkout: Gateway containers, volum
 igdev cleanup --deinit                # also igdev.toml, the AGENTS.md block, a repo-scope skill
 igdev cleanup --machine --yes         # every igdev Instance, base images, cache/state/config, global skills
 igdev cleanup --uninstall --yes       # all of that, then the igdev binary and its PATH entry
+igdev cleanup --obsolete-images       # only images an [ignition].version change left behind; keeps the Instance
 ```
 
 The Gateway's projects go with it, so `igdev project export` what you want to keep first.

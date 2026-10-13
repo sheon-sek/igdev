@@ -263,8 +263,10 @@ igdev gateway status for the follow-up. --timeout takes seconds or a duration li
 request in order with path, url, status, ok, and the error when it did not answer, and a
 failing check is IGDEV_E_GATEWAY_UNHEALTHY naming the endpoint.`,
 	"igdev gateway status": `pass --json for the machine contract. data carries the address block plus
-state (the compose project's overall verdict) and services, one entry per service with
-name, service, state, and status as the container engine reports them, so an agent reads
+state (the Gateway's own state from the gateway service alone: running, stopped, or
+absent — a trial keeper running without the Gateway is not running) and services, one
+entry per service, the trial keeper included, with name, service, state, and status as
+the container engine reports them, so an agent reads
 the engine's own words instead of parsing human output. trial is the Gateway's own trial
 report (license_mode, seconds_left, expired) while it runs, and null otherwise.`,
 	"igdev gateway trial": `pass --json for the machine contract. data carries instance_id, url,

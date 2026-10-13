@@ -17,6 +17,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/config"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/docker"
+	"github.com/sheon-sek/igdev/internal/interrupt"
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/xdg"
 )
@@ -284,12 +285,13 @@ func (a *App) ciLocalGateway(data *ciLocalData) ([]string, func(), error) {
 		Action: ensured.Action, Reason: ensured.Reason,
 		URL: inNetworkURL, HostURL: ensured.URL, Network: network,
 	}
-	dir, err := os.MkdirTemp("", "igdev-ci-local-")
+	// The files carry the Instance token, so their removal is registered with the
+	// interrupt handler: a Ctrl-C or SIGTERM removes them too.
+	dir, cleanup, err := interrupt.MkdirTemp("", "igdev-ci-local-")
 	if err != nil {
 		return nil, nil, contract.NewFault(contract.CodeInternal, contract.ExitFailure,
 			fmt.Sprintf("cannot create the act variable files: %v", err)).WithCause(err)
 	}
-	cleanup := func() { _ = os.RemoveAll(dir) }
 	envFile, secretFile := filepath.Join(dir, "gateway.env"), filepath.Join(dir, "gateway.secrets")
 	vars := gatewayURLVar + "=" + inNetworkURL + "\n"
 	secrets := ""
@@ -328,7 +330,7 @@ func (a *App) runAct(res *config.Resolution, bin string, data ciLocalData) error
 	if !res.IsJSON() {
 		a.printCILocalStart(data)
 	}
-	runErr := child.Run()
+	runErr := interrupt.Run(child)
 	data.OutputTail = tail.Lines()
 	if runErr != nil {
 		exit := 1

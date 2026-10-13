@@ -491,10 +491,8 @@ without them (ADR 0006).`,
 				return err
 			}
 			decision := a.admit(g, force)
-			a.stage("gateway up: starting %s (docker compose up --detach --build %s)",
-				g.stamp.Namespace(), strings.Join(g.compose.UpServices(), " "))
-			if fault := g.compose.Up(); fault != nil {
-				return fault
+			if err := a.startGateway(g, "up"); err != nil {
+				return err
 			}
 			data := gatewayUpData{gatewayAddress: g.address(), Capacity: capacityOf(decision, force)}
 			a.emit(g.res, data, func() { a.printGatewayStart("up", data) })
@@ -573,10 +571,8 @@ Low free memory is a warning on stderr, as for up.`,
 			if fault := g.compose.Down(true); fault != nil {
 				return fault
 			}
-			a.stage("gateway reset: starting %s (docker compose up --detach --build %s)",
-				g.stamp.Namespace(), strings.Join(g.compose.UpServices(), " "))
-			if fault := g.compose.Up(); fault != nil {
-				return fault
+			if err := a.startGateway(g, "reset"); err != nil {
+				return err
 			}
 			if err := a.waitForGateway(g, timeout); err != nil {
 				return err
@@ -995,17 +991,76 @@ func (c gatewaySmokeCheck) reason() string {
 	return fmt.Sprintf("GET %s answered %d", c.URL, c.Status)
 }
 
-// gatewayState summarizes the compose services into one word.
+// gatewayState is the Gateway's own state in one word, read from the gateway
+// service alone: a trial keeper that runs next to a stopped or missing Gateway
+// does not make the Gateway running (igdev#147).
 func gatewayState(services []gatewayService) string {
-	if len(services) == 0 {
-		return "absent"
-	}
+	state := "absent"
 	for _, service := range services {
+		if service.Service != docker.GatewayServiceName {
+			continue
+		}
 		if service.State == "running" {
 			return "running"
 		}
+		state = "stopped"
 	}
-	return "stopped"
+	return state
+}
+
+// startGateway is the `docker compose up` every starting verb runs. A rendered
+// project without the trial keeper first drops a keeper an earlier contract
+// started, which a plain `up` of the Gateway would leave resetting a trial the
+// contract no longer resets (igdev#147); the Gateway and its volume are untouched.
+func (a *App) startGateway(g *gateway, verb string) error {
+	if err := a.removeStaleTrialKeeper(g, verb); err != nil {
+		return err
+	}
+	a.stage("gateway %s: starting %s (docker compose up --detach --build %s)",
+		verb, g.stamp.Namespace(), strings.Join(g.compose.UpServices(), " "))
+	if fault := g.compose.Up(); fault != nil {
+		return fault
+	}
+	return nil
+}
+
+// removeStaleTrialKeeper removes the keeper containers of a project whose contract
+// no longer runs one, and says so when it removed any.
+func (a *App) removeStaleTrialKeeper(g *gateway, verb string) error {
+	if g.compose.TrialKeeper {
+		return nil
+	}
+	removed, fault := g.compose.RemoveStaleTrialKeeper()
+	if fault != nil {
+		return fault
+	}
+	if len(removed) > 0 {
+		a.stage("gateway %s: removed the trial keeper the contract no longer runs (%s)",
+			verb, strings.Join(removed, " "))
+	}
+	return nil
+}
+
+// reconcileTrialKeeper brings the keeper next to a running, healthy Gateway in
+// line with the contract without touching the Gateway: it starts a missing or
+// exited keeper the contract asks for, and removes one it no longer does. services
+// is what `compose ps` reported, which lists running containers only.
+func (a *App) reconcileTrialKeeper(g *gateway, services []docker.Service, verb string) error {
+	if !g.compose.TrialKeeper {
+		return a.removeStaleTrialKeeper(g, verb)
+	}
+	for _, service := range services {
+		if service.Service == docker.TrialKeeperServiceName && service.State == "running" {
+			return nil
+		}
+	}
+	a.stage("gateway %s: starting the trial keeper of %s next to its running Gateway "+
+		"(docker compose up --detach --no-deps --no-build %s)",
+		verb, g.stamp.Namespace(), docker.TrialKeeperServiceName)
+	if fault := g.compose.StartTrialKeeper(); fault != nil {
+		return fault
+	}
+	return nil
 }
 
 // parseTimeout reads --timeout: bare seconds, as the legacy interface took them, or
