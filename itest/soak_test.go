@@ -234,6 +234,46 @@ func soakClaimDirs(reportDir string) (string, string, error) {
 	return reportDir, checkout, nil
 }
 
+// soakCheckRoot requires that igdev, run in checkout, discovers want as its
+// Project Root. Discovery walks upward to the nearest igdev.toml, and init writes
+// to the root it finds, so a fresh checkout under another project (a relative
+// IGDEV_SOAK_REPORT_DIR resolves under itest/, inside this repository) would have
+// init rewrite that project's contract. Before init want is "": no project above
+// the checkout. After init it is the checkout itself. The binary answers, through
+// `igdev status --json`, so the check walks exactly the path init walks.
+func soakCheckRoot(env *testrig.Env, checkout, want string) error {
+	res := env.Run(testrig.Run{Args: []string{"status", "--json"}, Dir: checkout})
+	if res.Err != nil {
+		return fmt.Errorf("igdev status in %s: %w", checkout, res.Err)
+	}
+	var status struct {
+		ProjectRoot string `json:"project_root"`
+	}
+	if err := soakData(res.Stdout, &status); err != nil {
+		return fmt.Errorf("igdev status in %s printed no readable envelope (exit %d): %w", checkout, res.Exit, err)
+	}
+	got := status.ProjectRoot
+	switch {
+	case want == "" && got != "":
+		return fmt.Errorf("the soak checkout %s lies inside the igdev project at %s, so init would rewrite that project's contract; "+
+			"set IGDEV_SOAK_REPORT_DIR to an absolute path outside every igdev project", checkout, got)
+	case want != "" && !soakSamePath(got, want):
+		return fmt.Errorf("after init, igdev in %s finds the Project Root %q, want the soak checkout %s", checkout, got, want)
+	}
+	return nil
+}
+
+// soakSamePath reports whether a and b name the same directory once symlinks
+// are resolved.
+func soakSamePath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	return errA == nil && errB == nil && ra == rb
+}
+
 // soakPreexisting lists what the engine held of namespace ns before the soak
 // started. A namespace the soak's own Setup names must be one it minted, so any
 // object of it already on the engine means the soak is about to adopt an Instance
@@ -271,11 +311,17 @@ func (s *soak) run() {
 // phaseInit writes the soak checkout's contract and a tracked seed, and records
 // the Instance namespace the Checkout Setup names.
 func (s *soak) phaseInit() {
+	if err := soakCheckRoot(s.env, s.dir, ""); err != nil {
+		s.t.Fatal(err)
+	}
 	args := []string{"init", "--yes", "--json", "--name", "igdev-soak", "--gateway-memory-mb", strconv.Itoa(s.cfg.memoryMB)}
 	if s.cfg.version != "" {
 		args = append(args, "--ignition-version", s.cfg.version)
 	}
 	s.must("init", args...)
+	if err := soakCheckRoot(s.env, s.dir, s.dir); err != nil {
+		s.t.Fatal(err)
+	}
 	s.writeSeed(0)
 	contractPath := filepath.Join(s.dir, project.ContractFile)
 	body, err := os.ReadFile(contractPath)

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sheon-sek/igdev/internal/project"
+	"github.com/sheon-sek/igdev/internal/testrig"
 )
 
 // The real-Gateway soak (soak_test.go) records observations, never verdicts about
@@ -366,5 +367,59 @@ func TestSoakPreexisting(t *testing.T) {
 	}
 	if got := soakPreexisting("igdev-ffff0000", before); len(got) != 0 {
 		t.Errorf("a freshly minted namespace matched %v", got)
+	}
+}
+
+// A fresh checkout under an existing igdev project is refused before init: the
+// built binary's discovery would find the ancestor's igdev.toml and init would
+// rewrite it. After init, the checkout itself must be the Project Root.
+func TestSoakCheckRootRefusesACheckoutInsideAProject(t *testing.T) {
+	env := testrig.NewEnv(t)
+	parent := t.TempDir()
+	parentContract := filepath.Join(parent, project.ContractFile)
+	const body = "schema = 1\n\n[project]\nname = \"parent-proj\"\n"
+	if err := os.WriteFile(parentContract, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(parent, link); err != nil {
+		t.Fatal(err)
+	}
+	for name, reportDir := range map[string]string{
+		"nested":            filepath.Join(parent, "report"),
+		"through a symlink": filepath.Join(link, "deeper", "report"),
+	} {
+		_, checkout, err := soakClaimDirs(reportDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := soakCheckRoot(env, checkout, ""); err == nil || !strings.Contains(err.Error(), "inside the igdev project") {
+			t.Errorf("%s: before init = %v, want a refusal naming the ancestor project", name, err)
+		}
+		if err := soakCheckRoot(env, checkout, checkout); err == nil {
+			t.Errorf("%s: after init accepted the ancestor's root as the checkout's", name)
+		}
+		if entries, err := os.ReadDir(checkout); err != nil || len(entries) != 0 {
+			t.Errorf("%s: checkout = %v, %v; want it still empty", name, entries, err)
+		}
+	}
+	if got, err := os.ReadFile(parentContract); err != nil || string(got) != body {
+		t.Errorf("the ancestor's contract = %q, %v; want it untouched", got, err)
+	}
+
+	// Outside every project the check passes, and after the binary's own init the
+	// checkout is its Project Root.
+	_, checkout, err := soakClaimDirs(filepath.Join(t.TempDir(), "report"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := soakCheckRoot(env, checkout, ""); err != nil {
+		t.Fatalf("a checkout outside every project: %v", err)
+	}
+	if res := env.RunIn(checkout, "init", "--yes", "--json", "--name", "igdev-soak"); res.Exit != 0 {
+		t.Fatalf("init: exit %d\n%s%s", res.Exit, res.Stdout, res.Stderr)
+	}
+	if err := soakCheckRoot(env, checkout, checkout); err != nil {
+		t.Errorf("after init: %v", err)
 	}
 }

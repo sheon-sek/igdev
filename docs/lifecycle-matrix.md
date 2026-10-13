@@ -123,7 +123,11 @@ its exit, duration and peak RSS.
 Everything goes to the report directory: `IGDEV_SOAK_REPORT_DIR`, default a fresh
 `$TMPDIR/igdev-soak-<UTC time>-<random>`. A named directory must not exist yet: the
 soak creates it and its checkout itself and refuses an existing path or a symlink, so
-it never adopts another checkout's Setup or Instance. It holds `summary.md`
+it never adopts another checkout's Setup or Instance. The checkout must not lie inside
+an igdev project either: `init` writes to the nearest `igdev.toml` above it, so before
+`init` the soak requires that `igdev status` in the checkout finds no Project Root,
+and after it that the root is the checkout. Name an absolute path outside every
+project; a relative one resolves under `itest/`, inside this repository. It holds `summary.md`
 (environment, workload, evidence, the trend table with first, last, min, max and
 least-squares slope per hour, and pre-existing host objects that changed),
 `samples.jsonl`, `commands.jsonl`,
