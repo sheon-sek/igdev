@@ -436,3 +436,42 @@ func TestCILocalHelpIsTheReference(t *testing.T) {
 	}
 	res.AssertNoLeaks(t)
 }
+
+func TestCILocalBoundsHugeFailureDiagnosticsWhileStreaming(t *testing.T) {
+	env := testrig.NewEnv(t)
+	env.ShimAct()
+	act := filepath.Join(env.Shim, testrig.ShimActFile)
+	dir := ciLocalFixture(t, env)
+	// Generate large output in the child rather than passing it through the
+	// environment, which has a host-dependent size limit.
+	script := `#!/bin/sh
+head -c 4194304 /dev/zero | tr '\000' x
+printf 'last failure\r\n'
+exit 7
+`
+	if err := os.WriteFile(act, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res := env.Run(testrig.Run{Args: []string{"ci-local", "--job", "foundation", "--json"}, Dir: dir})
+	testrig.WantExit(t, res, contract.Exit(7))
+	testrig.WantCode(t, testrig.Envelope(t, res.Stdout), contract.CodeActFailed)
+	data := ciLocalData(t, res.Stdout)
+	bytes := 0
+	for _, line := range data.OutputTail {
+		bytes += len(line)
+		if len(line) > 16*1024 {
+			t.Fatalf("retained line has %d bytes", len(line))
+		}
+	}
+	if bytes > 256*1024 {
+		t.Fatalf("retained %d bytes", bytes)
+	}
+	if !strings.Contains(strings.Join(data.OutputTail, "\n"), "last failure") {
+		t.Fatal("missing failure diagnostic")
+	}
+	if len(res.Stderr) < 4194304 || !strings.Contains(res.Stderr, "last failure\r\n") {
+		t.Fatal("child output did not stream in full")
+	}
+	env.AssertNoDockerCalls(t)
+	res.AssertNoLeaksOutside(t, env.Path("state"))
+}
