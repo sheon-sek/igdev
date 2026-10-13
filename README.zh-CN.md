@@ -78,6 +78,7 @@ igdev cleanup                         # 本检出：Gateway 容器、数据卷�
 igdev cleanup --deinit                # 再删 igdev.toml、AGENTS.md 托管块、仓库级 skill
 igdev cleanup --machine --yes         # 整机所有 igdev 实例、基础镜像、缓存/状态/配置、全局 skill
 igdev cleanup --uninstall --yes       # 以上全部，最后删除 igdev 本身和它的 PATH 行
+igdev cleanup --obsolete-images       # 只删除 [ignition].version 变更后遗留的镜像，保留当前实例
 ```
 
 Gateway 里的项目会一起删掉，需要保留的先 `igdev project export`。`--machine` 会删除 Consent

@@ -87,6 +87,56 @@ func (c Compose) Up() *contract.Fault {
 	return c.faultOf("up", stdout, stderr, err)
 }
 
+// StartTrialKeeper starts the trial keeper next to a Gateway that already runs,
+// creating it when it is missing and starting it when it exited. It never builds,
+// and --no-deps keeps Compose from recreating or restarting the Gateway the keeper
+// depends on, so the Gateway's process and data are left exactly as they are.
+func (c Compose) StartTrialKeeper() *contract.Fault {
+	stdout, stderr, err := c.exec("up", "--detach", "--no-deps", "--no-build", TrialKeeperServiceName)
+	return c.faultOf("up "+TrialKeeperServiceName, stdout, stderr, err)
+}
+
+// The Compose labels that tie a container to the service Compose created it for.
+// An image Compose built carries the project and service labels too, and a
+// container created straight from that image inherits them; only a container
+// Compose created itself also carries oneoff=False.
+const (
+	labelComposeProject = "com.docker.compose.project"
+	labelComposeService = "com.docker.compose.service"
+	labelComposeOneOff  = "com.docker.compose.oneoff"
+)
+
+// RemoveStaleTrialKeeper removes this project's trial-keeper containers, running
+// or not, and reports their names. It is for a rendered project that no longer has
+// the keeper, which Compose then cannot address by service name. The match is
+// deliberately narrow — this project, the trial-keeper service, created by Compose
+// — so a Gateway container, a lookup leftover that inherited the image's labels,
+// and every other project are never touched, and no volume is removed.
+func (c Compose) RemoveStaleTrialKeeper() ([]string, *contract.Fault) {
+	stdout, stderr, err := c.engine("container", "ls", "--all",
+		"--filter", "label="+labelComposeProject+"="+c.Namespace,
+		"--filter", "label="+labelComposeService+"="+TrialKeeperServiceName,
+		"--filter", "label="+labelComposeOneOff+"=False",
+		"--format", "{{.Names}}")
+	if err != nil {
+		return nil, Fault("docker container ls", stdout+stderr, err)
+	}
+	var names []string
+	for _, line := range strings.Split(stdout, "\n") {
+		if name := strings.TrimSpace(line); name != "" {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return nil, nil
+	}
+	stdout, stderr, err = c.engine(append([]string{"rm", "--force"}, names...)...)
+	if err != nil {
+		return nil, Fault("docker rm", stdout+stderr, err)
+	}
+	return names, nil
+}
+
 // Down stops and removes the project's containers. volumes also removes the named
 // volume, which is what discards the Gateway's data.
 func (c Compose) Down(volumes bool) *contract.Fault {
@@ -203,6 +253,17 @@ func (c Compose) run(progress io.Writer, verb ...string) (stdout, stderr string,
 	cmd.Env = append(os.Environ(), c.Env...)
 	var out, errBuf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = sink(&out, progress), sink(&errBuf, progress)
+	err = cmd.Run()
+	return out.String(), errBuf.String(), err
+}
+
+// engine runs the docker CLI itself, outside compose, for the few calls Compose
+// cannot address by service: a service the rendered project no longer declares.
+func (c Compose) engine(args ...string) (stdout, stderr string, err error) {
+	cmd := exec.Command("docker", args...)
+	cmd.Dir = c.Dir
+	var out, errBuf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errBuf
 	err = cmd.Run()
 	return out.String(), errBuf.String(), err
 }
