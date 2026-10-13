@@ -65,6 +65,41 @@ func TestReleaseRunsOnceAndUnregisters(t *testing.T) {
 	}
 }
 
+// A signal that arrives while the normal path is still running a cleanup waits
+// for that cleanup to finish before the process exits: a removal cut off midway
+// leaves the state it was removing.
+func TestSignalDuringReleaseWaitsForTheCleanup(t *testing.T) {
+	h := newHandler()
+	entered, unblock := make(chan struct{}), make(chan struct{})
+	finished := false
+	release := h.deferFn(func() {
+		close(entered)
+		<-unblock
+		finished = true
+	})
+	released := make(chan struct{})
+	go func() {
+		defer close(released)
+		release()
+	}()
+	<-entered
+	signals, _, exited := watching(h)
+	signals <- syscall.SIGTERM
+	select {
+	case <-exited:
+		t.Fatal("the handler exited while the normal path was still running a cleanup")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(unblock)
+	if got := waitExit(t, exited); got != syscall.SIGTERM {
+		t.Errorf("exited by %v, want SIGTERM", got)
+	}
+	<-released
+	if !finished {
+		t.Error("the handler exited before the cleanup finished")
+	}
+}
+
 // A signal runs every registered cleanup, newest first, then exits by the same
 // signal and says so on stderr.
 func TestSignalRunsCleanupsNewestFirst(t *testing.T) {

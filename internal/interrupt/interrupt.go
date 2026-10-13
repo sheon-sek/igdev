@@ -137,12 +137,14 @@ func (h *handler) deferFn(fn func()) func() {
 		c.run()
 	}
 	return func() {
+		// Run before unregistering: a signal that arrives meanwhile finds the
+		// cleanup still registered and waits for this run to finish.
+		c.run()
 		h.mu.Lock()
 		if index < len(h.cleanups) && h.cleanups[index] == c {
 			h.cleanups[index] = nil
 		}
 		h.mu.Unlock()
-		c.run()
 	}
 }
 
