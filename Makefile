@@ -3,7 +3,7 @@
 GO      ?= go
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 
-.PHONY: all build test test-quick gates vet fmt fmt-check package goldens reference reference-check clean
+.PHONY: all build test test-quick gates soak vet fmt fmt-check package goldens reference reference-check clean
 
 all: fmt-check vet test
 
@@ -21,6 +21,12 @@ test-quick:
 
 gates:
 	$(GO) test ./itest/ -run 'TestGate' -v
+
+# The opt-in real-Gateway soak: real docker, a person's Consent record, and one
+# disposable Instance it removes again. Never part of `all`, `test` or CI; its
+# workload, knobs and guarantees are in docs/lifecycle-matrix.md.
+soak:
+	IGDEV_SOAK=1 $(GO) test ./itest/ -run 'TestSoakRealGateway' -count=1 -v -timeout 180m
 
 vet:
 	$(GO) vet ./...

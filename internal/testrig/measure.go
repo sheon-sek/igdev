@@ -14,10 +14,17 @@ type sample struct {
 	peakKB int64
 }
 
+// defaultRSSInterval is how often a sampled run reads /proc: fast enough to catch
+// a command that exits within a few milliseconds.
+const defaultRSSInterval = 100 * time.Microsecond
+
 // startRSSPoll watches /proc/<pid>/status for the child's VmHWM (kernel-tracked
-// high-water mark, so a single reading is already the peak) and returns a
-// collector that stops the poller and gathers the readings.
-func startRSSPoll(pid int) func() []sample {
+// high-water mark, so a single reading is already the peak) every interval and
+// returns a collector that stops the poller and gathers the readings.
+func startRSSPoll(pid int, interval time.Duration) func() []sample {
+	if interval <= 0 {
+		interval = defaultRSSInterval
+	}
 	stop := make(chan struct{})
 	done := make(chan struct{})
 	readings := make(chan sample, 256)
@@ -25,7 +32,7 @@ func startRSSPoll(pid int) func() []sample {
 		defer close(readings)
 		defer close(done)
 		path := fmt.Sprintf("/proc/%d/status", pid)
-		ticker := time.NewTicker(100 * time.Microsecond)
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {

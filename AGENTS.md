@@ -34,6 +34,9 @@ Repository tooling (the Go half of this tree):
 - `make gates` — the resource and hygiene gates alone
 - `make reference-check` — fails when `docs/reference/` drifts from the command definitions
 - `make package` — release tarballs and checksums under `dist/`
+- `make soak` — the opt-in real-Gateway soak (`docs/lifecycle-matrix.md`): real Docker, a
+  person's existing Consent record, one disposable Instance it removes again; never part of
+  `make all` or CI
 
 ## Escalation rules
 
