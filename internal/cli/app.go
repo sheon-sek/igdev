@@ -18,6 +18,7 @@ import (
 	"github.com/sheon-sek/igdev/internal/consent"
 	"github.com/sheon-sek/igdev/internal/contract"
 	"github.com/sheon-sek/igdev/internal/gate"
+	"github.com/sheon-sek/igdev/internal/interrupt"
 	"github.com/sheon-sek/igdev/internal/project"
 	"github.com/sheon-sek/igdev/internal/projectseed"
 	"github.com/sheon-sek/igdev/internal/updater"
@@ -66,6 +67,9 @@ func Execute(args []string, app *App) int {
 	root.SetErr(app.Stderr)
 
 	cmd, err := root.ExecuteC()
+	// An interrupted command reports nothing: the interrupt handler cleans up and
+	// ends the process by the signal.
+	interrupt.Settle()
 	if err != nil {
 		fault := classify(cmd, err)
 		app.report(fault)
@@ -315,19 +319,24 @@ func (a *App) report(f *contract.Fault) {
 		a.writeEnvelope(contract.Failure(f))
 		return
 	}
-	fmt.Fprintf(a.Stderr, "[igdev] ERROR %s: %s\n", f.Code, f.Message)
-	for _, r := range f.Remediation {
-		fmt.Fprintf(a.Stderr, "[igdev]   fix: %s  (%s)\n", r.Command, r.Why)
-	}
+	interrupt.Report(func() {
+		fmt.Fprintf(a.Stderr, "[igdev] ERROR %s: %s\n", f.Code, f.Message)
+		for _, r := range f.Remediation {
+			fmt.Fprintf(a.Stderr, "[igdev]   fix: %s  (%s)\n", r.Command, r.Why)
+		}
+	})
 }
 
+// writeEnvelope writes env on stdout. Like every result, it goes through
+// interrupt.Report: an interrupted run prints no envelope, even when its command
+// finished while the interrupt cleanup was still running.
 func (a *App) writeEnvelope(env contract.Envelope) {
 	raw, err := contract.Encode(env)
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "[igdev] ERROR %s: cannot encode response: %v\n", contract.CodeInternal, err)
 		return
 	}
-	a.Stdout.Write(raw)
+	interrupt.Report(func() { a.Stdout.Write(raw) })
 }
 
 // emit prints a successful result in the dialect the resolved config asked for,
@@ -336,7 +345,7 @@ func (a *App) emit(res *config.Resolution, data any, human func()) {
 	if res.IsJSON() {
 		a.writeEnvelope(contract.Success(data))
 	} else {
-		human()
+		interrupt.Report(human)
 	}
 	a.updateNotice(res)
 }

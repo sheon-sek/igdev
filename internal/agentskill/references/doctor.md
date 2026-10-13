@@ -15,7 +15,19 @@ prerequisite is not present.
 
 doctor never fails: the exit level stays 0 and the audit is the payload, so an agent
 reads the report instead of an error string. Probing touches nothing: no file is
-written and no container is created.
+written and no container is created, stopped or removed.
+
+data.instances.items lists every igdev Instance the Docker engine holds containers for, with
+the checkout its containers were created from and whether that path still exists:
+active (the checkout's Setup records this Instance), needs_review (the path exists but
+its Setup is missing or names another Instance), or checkout_missing. A missing path is
+an observation, not proof the Instance is unwanted: a moved checkout keeps its old path
+until its next up. Each container is running, restartable (the engine is restarting
+it), or unknown (stopped; the engine does not say whether an operator stopped it). An
+engine that cannot be asked is reported as unknown, never as zero Instances. A
+non-active Instance carries a suggestion — docker compose -p <namespace> stop — that
+stops only its containers without its Compose file and keeps its data volume; doctor
+never runs it.
 
 ## Usage
 
