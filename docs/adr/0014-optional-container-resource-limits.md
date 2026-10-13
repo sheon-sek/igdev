@@ -55,8 +55,11 @@ Scenarios: idle after start; first start with every staged module (including a p
 module such as `com.inductiveautomation.mcp`); a seeded project import; a tag provider
 with representative tag count and scan rate; one and three concurrent Designer sessions;
 a trial reset by the keeper. Record host, engine and version, cgroup version, Ignition
-version, `-m`, module set and time after start with each result. All measurements use `igdev gateway *` verbs on
-a disposable local Gateway only.
+version, `-m`, module set and time after start with each result. All measurements run
+against a disposable local Gateway only, through `igdev gateway *` verbs where one exists
+and read-only `docker stats` otherwise. `igdev gateway exec` reaches only the Gateway
+container (`Compose.Exec` targets `GatewayServiceName`), so the keeper's figures come
+from `docker stats` alone.
 
 ## Options
 
@@ -77,11 +80,15 @@ a disposable local Gateway only.
 Option 2.
 
 **Configuration surface.** Limits are a property of the machine, like ports (ADR 0003),
-so they live in the machine-local tiers, not the tracked `igdev.toml`:
-`.igdev/local.toml` and `IGDEV_*` environment, following the existing precedence
-(flag > environment > `.igdev/local.toml` > `igdev.toml` > embedded defaults). A
-syntax sketch, not a commitment to names; the placeholders are deliberate and **no value
-is recommended**:
+so they do not go in the tracked `igdev.toml`. They are read from `.igdev/local.toml`
+only: no `IGDEV_*` environment variable and no flag sets a limit. An environment tier
+would make the variable's presence an input to staleness, so an invocation without it
+(another shell, an agent subprocess) would refresh setup, render the Compose file without
+the limit, and the next start would run uncapped. The Gateway port pin avoids this because
+setup records it into `.igdev/local.toml` (`localconfig.WritePort`) and the Setup Stamp's
+`ports`; recording environment limits the same way is possible later but is not proposed
+here. A syntax sketch, not a commitment to names; the placeholders are deliberate and
+**no value is recommended**:
 
 ```toml
 # .igdev/local.toml
@@ -100,24 +107,49 @@ Each key renders only when set; `memory_swap` is never derived from `memory`, so
 introduces no swap default. Absent keys render nothing, so the Compose file is
 byte-identical to today's when no limit is set.
 
-The keys are read by a bespoke machine-local reader, like `localconfig.LoadPort`, not added to
-the frozen `config.Schema`: `status --json` `config.resolved` is built from that schema,
-so new schema keys would change the `status` golden.
+The keys are read by a bespoke machine-local reader, like `localconfig.LoadPort`, not
+added to the frozen `config.Schema`: `status --json` `config.resolved` is built from that
+schema, so new schema keys would change the `status` golden.
 
-**Applying a changed limit.** The Compose file is rendered only by `igdev setup`, and the
-Setup Stamp today covers only the contract digest, seed digest, schema and CLI contract
-(`internal/gate/gate.go`), so a limit edited after setup would be silently ignored by
-`gateway up`. The follow-up must close that gap: setup records a digest of the resolved
-limits (from `.igdev/local.toml` and `IGDEV_*`) in the Setup Stamp, and the existing
-staleness gate recomputes it on every gated command. Any change, file or environment,
-makes the Checkout Setup stale (`IGDEV_E_SETUP_STALE`), and the Gate repairs that as it
-does today (ADR 0012; `App.requireSetup`, `repairableBySetup` in `internal/cli`): setup
-re-runs automatically, re-renders the Compose file, and the command continues. Only a
-failed refresh fails the command, through the existing setup error path. Limit
-environment variables are therefore setup-time inputs, like `IGDEV_GATEWAY_PORT`
-(`gatewayPortPin`), and a change between runs is applied rather than dropped. This adds
-an input to an existing digest and reuses existing codes, exit levels and refresh
-behavior, so it is not a CLI Contract change.
+**Applying a changed limit.** Two steps are needed, and the second is the one a person
+can miss.
+
+*Rendering.* The Compose file is rendered only by `igdev setup`, and the Setup Stamp
+today compares only the stamp schema, contract digest, seed digest, contract schema and
+CLI contract (`stampState`, `internal/gate/gate.go`), so a limit edited after setup would
+never reach the Compose file. The follow-up adds a digest of the limits read from
+`.igdev/local.toml` to the Setup Stamp and to that comparison. A changed digest makes the
+Checkout Setup stale (`IGDEV_E_SETUP_STALE`), and the Gate repairs that as it does today
+(ADR 0012; `App.requireSetup`, `repairableBySetup` in `internal/cli`): setup re-runs,
+re-renders the Compose file, and the command continues. Only a failed refresh fails the
+command, through the existing setup error path. The field is a tolerant addition, not a
+`StampSchema` bump: it is omitted when no limit is set, and `Decode` (`json.Unmarshal`)
+reads a stamp without it as empty, so existing checkouts with no limits stay current
+instead of refreshing once for nothing.
+
+*Reaching a running container.* A re-rendered Compose file does not change a container
+that is already running. Only `docker compose up` applies it: Compose recreates a service
+whose configuration changed since the container was created (Compose's documented `up`
+behavior, not reproduced with igdev for this ADR), which restarts the JVM and keeps the
+named volume. In igdev that is `igdev gateway up`, `igdev gateway reset`,
+`igdev check --all --gateway`, and `igdev gateway ensure` only when it starts or resets
+the Gateway (`compose.Up` in `internal/cli`). `gateway ensure` reusing a healthy Gateway
+(`ensureReused`) runs no `compose up`, and `igdev gateway restart` and `igdev restart`
+run `docker compose restart gateway` (`Compose.Restart`), which restarts the same
+container with its old HostConfig. So after a limit change, a Gateway left running, or
+reused or restarted, keeps its old limits until one of the `compose up` verbs above runs.
+The follow-up does not change `ensure` or `restart` to recreate (that would add an
+`ensure` action or reason, a contract item); instead `gateway status` warns when the
+running container's HostConfig differs from the rendered limits and names
+`igdev gateway up` as the repair, the same repair igdev already gives for another
+rendered setting ("recreate the Gateway container with it, keeping the volume",
+`internal/cli/gateway_rest.go`).
+The same applies to the trial keeper, which `compose up` also recreates.
+
+This adds one input to the existing staleness check and reuses existing codes, exit levels
+and refresh behavior. How the new `gateway status` warnings (here and below) are printed
+is left to the follow-up; any new `--json` field for them goes through CLI Contract
+review (see Consequences).
 
 **Validation, warning-only.** When a Gateway memory limit is set, igdev warns (does not
 refuse) if it is below `-m` plus a non-heap floor, because that configuration will be
@@ -130,17 +162,31 @@ start fails with the engine's message through the existing error path; igdev doe
 silently drop a limit the person asked for. When the engine accepts but ignores it
 (for example rootless without cgroup v2 delegation, or cgroup v1 without the controller),
 `docker inspect` HostConfig still shows the requested values: Docker's rootless mode
-drops the resources from the OCI runtime spec without touching HostConfig. HostConfig is
-therefore reported in `gateway status` only as the *configured* limit and never as proof
-of enforcement. Enforcement is established from the container's own cgroup, read through
-`igdev gateway exec` (cgroup v2 `memory.max`, `memory.swap.max`, `cpu.max`, `pids.max`,
-or the v1 equivalents), optionally preceded by an engine capability check (`docker info`
-cgroup version, driver and rootless security option). When the cgroup value matches the
-request the limit is reported as enforced; when it differs, is `max`, or cannot be read,
-`gateway status` warns that the limit is unsupported or unverified on this host. It never
-retries without the limit. On Docker Desktop the limit is still enforced
-by the cgroups inside the VM; the VM's own size is a separate, host-level bound that
-igdev neither sets nor reports.
+drops the resources from the OCI runtime spec without touching HostConfig.
+`gateway status` therefore keeps three things apart: the *rendered* limit (the Compose
+file), the container's *configured* limit (its HostConfig, compared with the rendered one
+as above), and *enforcement*, which HostConfig never proves.
+
+For the Gateway, enforcement is read from the running container's own cgroup through the
+same path `igdev gateway exec` uses (cgroup v2 `memory.max`, `memory.swap.max`,
+`cpu.max`, `pids.max`, or the v1 equivalents), optionally preceded by an engine
+capability check (`docker info` cgroup version, driver and rootless security option).
+When the cgroup value matches the request the limit is reported as enforced; when it
+differs or is `max`, `gateway status` warns that the limit is not enforced on this host;
+when the file cannot be read, it warns that enforcement is unverified. A Gateway that is
+not running has no cgroup to read: status says the container is not running and reports
+no enforcement verdict, rather than the not-enforced warning. igdev never retries a start
+without the limit.
+
+For the trial keeper this ADR proposes the configured limit only, reported as
+unverified. `igdev gateway exec` reaches only the Gateway (`Compose.Exec` hard-codes
+`GatewayServiceName`, and its help says "inside this Instance's Gateway container"), and
+giving it a service selector would change its help text and `docs/reference/`, a CLI
+Contract change that is not proposed. Verifying the keeper would need either that change,
+through contract review, or a separate internal read that this ADR does not design.
+
+On Docker Desktop the limit is still enforced by the cgroups inside the VM; the VM's own
+size is a separate, host-level bound that igdev neither sets nor reports.
 
 **OOM kills and restart.** Both services use `restart: unless-stopped`, so a capped
 Gateway that is OOM-killed restarts, possibly in a loop. The follow-up surfaces
