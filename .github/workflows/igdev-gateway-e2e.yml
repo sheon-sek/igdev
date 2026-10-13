@@ -168,8 +168,8 @@ jobs:
             > tests/seed/ignition/tag-provider/igdev-sim/config.json
           # [gateway] is the last table init renders, so the key lands in it.
           printf 'seed = ["tests/seed"]\n' >> igdev.toml
-          igdev gateway url --json > stale.json || true
-          jq -e '.code == "IGDEV_E_SETUP_STALE"' stale.json >/dev/null
+          # ADR 0012: the Gate refreshes a stale Checkout Setup instead of stopping.
+          igdev gateway url --json | jq -e '.ok' >/dev/null
           igdev setup --json | jq -e '.ok' >/dev/null
           igdev gateway ensure --fresh --json | jq -e '.data.action == "reset" and .data.reason == "fresh"' >/dev/null
           token="$(igdev gateway credentials --json | jq -r '.data.api_token')"
