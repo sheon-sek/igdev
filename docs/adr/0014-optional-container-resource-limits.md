@@ -1,11 +1,9 @@
-# Optional per-container resource limits for the Gateway and trial keeper (proposed)
+# Optional per-container resource limits for the Gateway and trial keeper
 
-**Status: proposed, design only (igdev#141, part of #140).** Nothing here is
-implemented, and no default limit is approved. Implementation needs this ADR approved
-and a separate, later-reviewed issue. On approval this file is edited in place: the
-"(proposed)" title suffix and this status line are removed and any approver decision
-(see Open questions) is recorded here; later changes follow as numbered amendments, as
-in ADR 0003.
+**Status: accepted, design only (igdev#141, part of #140). Approved by the owner
+(sheon-sek) on 2026-10-19.** Nothing here is implemented, and no default limit is
+approved. Implementation needs a separate, later-reviewed issue. Later changes follow as
+numbered amendments, as in ADR 0003.
 
 ## Context
 
@@ -202,14 +200,12 @@ runaway Gateway. It does **not** remove pressure from many legitimately running 
 (see igdev#152, forgotten Instances) or from image builds and pulls, which run outside
 the Instance's containers.
 
-## Open questions for the approver
+## Approver decision (2026-10-19)
 
-- **Acceptance criterion 2 (workload evidence).** igdev#141 asks for workload
-  measurements with method and environment. Only idle samples exist, and they lack the
-  protocol's environment fields. The approver must decide whether "a defined measurement
-  protocol, and no number proposed" satisfies that criterion for this design-only ADR,
-  or whether the measurements must be collected before approval. This is a human owner
-  decision; the ADR does not presume it.
+- **Acceptance criterion 2 (workload evidence).** The owner accepted "a defined
+  measurement protocol, and no number proposed" as sufficient for this design-only ADR.
+  Workload measurements under the protocol above are collected in the implementation
+  follow-up, before any limit value or default is proposed.
 
 ## Consequences
 
