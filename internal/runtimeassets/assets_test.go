@@ -100,6 +100,27 @@ func TestComposeCarriesNamespacePortsAndMounts(t *testing.T) {
 	}
 }
 
+// A Designer follows a fixed Gateway public address when it logs in, so a pinned
+// localhost:8088 sent it to whatever else answered there — on a desk with a native
+// Gateway, a different version, refused as "not compatible with the gateway
+// version". The command pins no address and turns address detection on, which the
+// image writes into gateway.xml on every start, existing volumes included.
+func TestComposeLeavesThePublicAddressAutoDetected(t *testing.T) {
+	raw, err := Compose(sampleInput())
+	if err != nil {
+		t.Fatalf("Compose: %v", err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "\n      gateway.publicAddress.autoDetect=true\n") {
+		t.Errorf("compose command does not turn public address detection on:\n%s", body)
+	}
+	for _, pinned := range []string{"\n      -a ", "\n      -h ", "\n      -s "} {
+		if strings.Contains(body, pinned) {
+			t.Errorf("compose command pins a public address (%q):\n%s", strings.TrimSpace(pinned), body)
+		}
+	}
+}
+
 // No rendered runtime file may carry a credential. The structural proof is that
 // Input has no password field at all; this pins the visible consequence — nothing
 // renders an assignment of one — so the files stay safe to diff, to print, and to

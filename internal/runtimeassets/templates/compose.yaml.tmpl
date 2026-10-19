@@ -56,14 +56,18 @@ services:
       IGNITION_EDITION: {{ quote .Edition }}
       GATEWAY_MODULES_ENABLED: {{ quote .ModuleList }}
       TZ: {{ quote .Timezone }}
+    # No fixed public address (-a/-h/-s). The host reaches the Gateway on a
+    # port igdev allocates, never on 8088, and a Designer follows a fixed public
+    # address on login: it would leave this Gateway for whatever answers on
+    # localhost:8088. gateway.publicAddress.autoDetect=true is written into
+    # gateway.xml on every start, so a volume from an older igdev, or one
+    # restored from a backup that fixed an address, is corrected too.
     command: >-
       -n {{ .Namespace }}
       -m {{ .MemoryMB }}
-      -a localhost
-      -h 8088
-      -s 8043
       ${GATEWAY_RESTORE_ARGS:-}
       --
+      gateway.publicAddress.autoDetect=true
       -Dignition.allowunsignedmodules=${IGNITION_ALLOW_UNSIGNED_MODULES:-true}
     # The Gateway reaches services on the host, a simulator's OPC UA server for
     # one, at {{ .HostAddress }}.
